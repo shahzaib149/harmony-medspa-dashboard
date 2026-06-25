@@ -1,43 +1,58 @@
-import { GoogleAdsApi, enums } from "google-ads-api";
+import { createAuthenticatedClient } from "./oauth";
 
-let _client: GoogleAdsApi | null = null;
+const API_VERSION = "v19";
+const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
-function getClient(): GoogleAdsApi {
-  if (!_client) {
-    _client = new GoogleAdsApi({
-      client_id: process.env.GOOGLE_ADS_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
-      developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-    });
-  }
-  return _client;
+async function getAccessToken(): Promise<string> {
+  const auth = createAuthenticatedClient(process.env.GOOGLE_ADS_REFRESH_TOKEN!);
+  const { token } = await auth.getAccessToken();
+  if (!token) throw new Error("Failed to get Google access token");
+  return token;
 }
 
-function customer() {
-  return getClient().Customer({
-    customer_id: process.env.GOOGLE_ADS_CUSTOMER_ID!,
-    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN!,
-    login_customer_id: process.env.GOOGLE_ADS_MCC_ID,
+async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const token = await getAccessToken();
+
+  const res = await fetch(`${BASE_URL}/customers/${customerId}/googleAds:search`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+      "Content-Type": "application/json",
+      ...(process.env.GOOGLE_ADS_MCC_ID
+        ? { "login-customer-id": process.env.GOOGLE_ADS_MCC_ID }
+        : {}),
+    },
+    body: JSON.stringify({ query }),
   });
+
+  const data = await res.json() as { results?: Record<string, unknown>[]; error?: { message: string } };
+
+  if (!res.ok) {
+    throw new Error(data?.error?.message ?? `Google Ads API error ${res.status}`);
+  }
+
+  return data.results ?? [];
 }
 
-// Cast a query row to a plain object for safe property access
-function row(r: unknown): Record<string, Record<string, unknown>> {
-  return r as Record<string, Record<string, unknown>>;
+function num(val: unknown): number {
+  return Number(val ?? 0);
 }
 
-function microsToDollars(micros: unknown): number {
-  return Math.round(Number(micros) / 1_000_000 * 100) / 100;
+function micros(val: unknown): number {
+  return Math.round(num(val) / 1_000_000 * 100) / 100;
 }
 
 // ─── Campaign Performance ─────────────────────────────────────────────────────
 
 export async function fetchCampaignPerformance(from: string, to: string) {
-  const rows = await customer().query(`
+  const rows = await adsQuery(`
     SELECT
       campaign.id, campaign.name, campaign.status,
       metrics.cost_micros, metrics.impressions, metrics.clicks,
-      metrics.ctr, metrics.conversions, metrics.cost_per_conversion
+      metrics.ctr, metrics.conversions, metrics.cost_per_conversion,
+      metrics.average_cpc
     FROM campaign
     WHERE segments.date BETWEEN '${from}' AND '${to}'
       AND campaign.status != 'REMOVED'
@@ -45,19 +60,21 @@ export async function fetchCampaignPerformance(from: string, to: string) {
   `);
 
   return rows.map((r) => {
-    const { campaign: c, metrics: m } = row(r);
-    const spend = microsToDollars(m.cost_micros);
-    const conv = Number(m.conversions);
+    const c = r.campaign as Record<string, unknown>;
+    const m = r.metrics as Record<string, unknown>;
+    const spend = micros(m.costMicros);
+    const conv = num(m.conversions);
     return {
       campaign_id: String(c.id),
       campaign_name: String(c.name),
       status: String(c.status),
       spend,
-      impressions: Number(m.impressions),
-      clicks: Number(m.clicks),
-      ctr: Math.round(Number(m.ctr) * 10000) / 100,
+      impressions: num(m.impressions),
+      clicks: num(m.clicks),
+      ctr: Math.round(num(m.ctr) * 10000) / 100,
       conversions: conv,
       cpl: conv > 0 ? Math.round((spend / conv) * 100) / 100 : 0,
+      avg_cpc: micros(m.averageCpc),
     };
   });
 }
@@ -65,11 +82,11 @@ export async function fetchCampaignPerformance(from: string, to: string) {
 // ─── Search Terms ─────────────────────────────────────────────────────────────
 
 export async function fetchSearchTerms(from: string, to: string) {
-  const rows = await customer().query(`
+  const rows = await adsQuery(`
     SELECT
       search_term_view.search_term,
-      metrics.clicks, metrics.impressions, metrics.conversions,
-      metrics.cost_micros, metrics.ctr
+      metrics.clicks, metrics.impressions,
+      metrics.conversions, metrics.cost_micros, metrics.ctr
     FROM search_term_view
     WHERE segments.date BETWEEN '${from}' AND '${to}'
       AND metrics.clicks > 0
@@ -78,14 +95,15 @@ export async function fetchSearchTerms(from: string, to: string) {
   `);
 
   return rows.map((r) => {
-    const { search_term_view: v, metrics: m } = row(r);
+    const v = r.searchTermView as Record<string, unknown>;
+    const m = r.metrics as Record<string, unknown>;
     return {
-      term: String(v.search_term),
-      clicks: Number(m.clicks),
-      impressions: Number(m.impressions),
-      conversions: Number(m.conversions),
-      cost: microsToDollars(m.cost_micros),
-      ctr: Math.round(Number(m.ctr) * 10000) / 100,
+      term: String(v.searchTerm),
+      clicks: num(m.clicks),
+      impressions: num(m.impressions),
+      conversions: num(m.conversions),
+      cost: micros(m.costMicros),
+      ctr: Math.round(num(m.ctr) * 10000) / 100,
     };
   });
 }
@@ -93,7 +111,7 @@ export async function fetchSearchTerms(from: string, to: string) {
 // ─── Ad Copy Performance ──────────────────────────────────────────────────────
 
 export async function fetchAdPerformance(from: string, to: string) {
-  const rows = await customer().query(`
+  const rows = await adsQuery(`
     SELECT
       ad_group_ad.ad.responsive_search_ad.headlines,
       ad_group_ad.ad.responsive_search_ad.descriptions,
@@ -107,16 +125,17 @@ export async function fetchAdPerformance(from: string, to: string) {
   `);
 
   return rows.map((r) => {
-    const { ad_group_ad: aga, metrics: m } = row(r);
-    const ad = aga.ad as Record<string, unknown> | undefined;
-    const rsa = ad?.responsive_search_ad as Record<string, { text: string }[]> | undefined;
+    const aga = r.adGroupAd as Record<string, unknown>;
+    const ad = aga?.ad as Record<string, unknown> | undefined;
+    const rsa = ad?.responsiveSearchAd as Record<string, { text: string }[]> | undefined;
+    const m = r.metrics as Record<string, unknown>;
     return {
-      headline: rsa?.headlines?.map((h) => h.text).filter(Boolean).join(" | ") ?? "—",
+      headline: rsa?.headlines?.map((h) => h.text).filter(Boolean).slice(0, 3).join(" | ") ?? "—",
       description: rsa?.descriptions?.[0]?.text ?? "—",
-      impressions: Number(m.impressions),
-      clicks: Number(m.clicks),
-      ctr: Math.round(Number(m.ctr) * 10000) / 100,
-      conversions: Number(m.conversions),
+      impressions: num(m.impressions),
+      clicks: num(m.clicks),
+      ctr: Math.round(num(m.ctr) * 10000) / 100,
+      conversions: num(m.conversions),
     };
   });
 }
@@ -124,7 +143,7 @@ export async function fetchAdPerformance(from: string, to: string) {
 // ─── Keywords ─────────────────────────────────────────────────────────────────
 
 export async function fetchKeywords(from: string, to: string) {
-  const rows = await customer().query(`
+  const rows = await adsQuery(`
     SELECT
       ad_group_criterion.keyword.text,
       ad_group_criterion.keyword.match_type,
@@ -141,18 +160,20 @@ export async function fetchKeywords(from: string, to: string) {
   `);
 
   return rows.map((r) => {
-    const { ad_group_criterion: agc, campaign: c, metrics: m } = row(r);
-    const kw = agc.keyword as Record<string, unknown> | undefined;
+    const agc = r.adGroupCriterion as Record<string, unknown>;
+    const kw = agc?.keyword as Record<string, unknown> | undefined;
+    const c = r.campaign as Record<string, unknown>;
+    const m = r.metrics as Record<string, unknown>;
     return {
       text: String(kw?.text ?? ""),
-      match_type: String(kw?.match_type ?? ""),
-      status: String(agc.status),
-      campaign: String(c.name),
-      clicks: Number(m.clicks),
-      impressions: Number(m.impressions),
-      ctr: Math.round(Number(m.ctr) * 10000) / 100,
-      avg_cpc: microsToDollars(m.average_cpc),
-      conversions: Number(m.conversions),
+      match_type: String(kw?.matchType ?? ""),
+      status: String(agc?.status ?? ""),
+      campaign: String(c?.name ?? ""),
+      clicks: num(m.clicks),
+      impressions: num(m.impressions),
+      ctr: Math.round(num(m.ctr) * 10000) / 100,
+      avg_cpc: micros(m.averageCpc),
+      conversions: num(m.conversions),
     };
   });
 }
@@ -160,7 +181,7 @@ export async function fetchKeywords(from: string, to: string) {
 // ─── Hourly Performance ───────────────────────────────────────────────────────
 
 export async function fetchHourlyPerformance(from: string, to: string) {
-  const rows = await customer().query(`
+  const rows = await adsQuery(`
     SELECT
       segments.hour, segments.day_of_week,
       metrics.impressions, metrics.clicks,
@@ -171,41 +192,80 @@ export async function fetchHourlyPerformance(from: string, to: string) {
   `);
 
   return rows.map((r) => {
-    const { segments: s, metrics: m } = row(r);
+    const s = r.segments as Record<string, unknown>;
+    const m = r.metrics as Record<string, unknown>;
     return {
-      hour: Number(s.hour),
-      day: String(s.day_of_week),
-      impressions: Number(m.impressions),
-      clicks: Number(m.clicks),
-      conversions: Number(m.conversions),
-      spend: microsToDollars(m.cost_micros),
+      hour: num(s.hour),
+      day: String(s.dayOfWeek),
+      impressions: num(m.impressions),
+      clicks: num(m.clicks),
+      conversions: num(m.conversions),
+      spend: micros(m.costMicros),
     };
   });
 }
 
-// ─── Keyword Actions ──────────────────────────────────────────────────────────
+// ─── Add Keyword ──────────────────────────────────────────────────────────────
 
-export async function addKeyword(
-  adGroupId: string,
-  text: string,
-  matchType: "BROAD" | "PHRASE" | "EXACT"
-) {
-  await customer().adGroupCriteria.create([{
-    ad_group: `customers/${process.env.GOOGLE_ADS_CUSTOMER_ID}/adGroups/${adGroupId}`,
-    keyword: { text, match_type: enums.KeywordMatchType[matchType] },
-    status: enums.AdGroupCriterionStatus.ENABLED,
-  }]);
+export async function addKeyword(adGroupId: string, text: string, matchType: "BROAD" | "PHRASE" | "EXACT") {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const token = await getAccessToken();
+
+  const res = await fetch(`${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      operations: [{
+        create: {
+          adGroup: `customers/${customerId}/adGroups/${adGroupId}`,
+          status: "ENABLED",
+          keyword: { text, matchType },
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json() as { error?: { message: string } };
+    throw new Error(err?.error?.message ?? `Failed to add keyword (${res.status})`);
+  }
 }
+
+// ─── Add Negative Keyword ─────────────────────────────────────────────────────
 
 export async function addNegativeKeyword(campaignId: string, text: string) {
-  await customer().campaignCriteria.create([{
-    campaign: `customers/${process.env.GOOGLE_ADS_CUSTOMER_ID}/campaigns/${campaignId}`,
-    keyword: { text, match_type: enums.KeywordMatchType.BROAD },
-    negative: true,
-  }]);
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const token = await getAccessToken();
+
+  const res = await fetch(`${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      operations: [{
+        create: {
+          campaign: `customers/${customerId}/campaigns/${campaignId}`,
+          negative: true,
+          keyword: { text, matchType: "BROAD" },
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json() as { error?: { message: string } };
+    throw new Error(err?.error?.message ?? `Failed to add negative keyword (${res.status})`);
+  }
 }
 
-// ─── Ad Creation ──────────────────────────────────────────────────────────────
+// ─── Create Responsive Search Ad ─────────────────────────────────────────────
 
 export async function createResponsiveSearchAd(params: {
   adGroupId: string;
@@ -213,27 +273,65 @@ export async function createResponsiveSearchAd(params: {
   descriptions: string[];
   finalUrl: string;
 }) {
-  await customer().adGroupAds.create([{
-    ad_group: `customers/${process.env.GOOGLE_ADS_CUSTOMER_ID}/adGroups/${params.adGroupId}`,
-    status: enums.AdGroupAdStatus.PAUSED,
-    ad: {
-      final_urls: [params.finalUrl],
-      responsive_search_ad: {
-        headlines: params.headlines.map((text) => ({ text })),
-        descriptions: params.descriptions.map((text) => ({ text })),
-      },
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const token = await getAccessToken();
+
+  const res = await fetch(`${BASE_URL}/customers/${customerId}/adGroupAds:mutate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+      "Content-Type": "application/json",
     },
-  }]);
+    body: JSON.stringify({
+      operations: [{
+        create: {
+          adGroup: `customers/${customerId}/adGroups/${params.adGroupId}`,
+          status: "PAUSED",
+          ad: {
+            finalUrls: [params.finalUrl],
+            responsiveSearchAd: {
+              headlines: params.headlines.map((text) => ({ text })),
+              descriptions: params.descriptions.map((text) => ({ text })),
+            },
+          },
+        },
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json() as { error?: { message: string } };
+    throw new Error(err?.error?.message ?? `Failed to create ad (${res.status})`);
+  }
 }
 
-// ─── Campaign Control ─────────────────────────────────────────────────────────
+// ─── Campaign Status ──────────────────────────────────────────────────────────
 
-export async function setCampaignStatus(
-  campaignId: string,
-  status: "ENABLED" | "PAUSED"
-) {
-  await customer().campaigns.update([{
-    resource_name: `customers/${process.env.GOOGLE_ADS_CUSTOMER_ID}/campaigns/${campaignId}`,
-    status: enums.CampaignStatus[status],
-  }]);
+export async function setCampaignStatus(campaignId: string, status: "ENABLED" | "PAUSED") {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const token = await getAccessToken();
+
+  const res = await fetch(`${BASE_URL}/customers/${customerId}/campaigns:mutate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      operations: [{
+        update: {
+          resourceName: `customers/${customerId}/campaigns/${campaignId}`,
+          status,
+        },
+        updateMask: "status",
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json() as { error?: { message: string } };
+    throw new Error(err?.error?.message ?? `Failed to update campaign (${res.status})`);
+  }
 }
