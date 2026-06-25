@@ -27,7 +27,14 @@ async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
     body: JSON.stringify({ query }),
   });
 
-  const data = await res.json() as { results?: Record<string, unknown>[]; error?: { message: string } };
+  const text = await res.text();
+
+  let data: { results?: Record<string, unknown>[]; error?: { message: string; details?: unknown[] } };
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Google Ads API returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`);
+  }
 
   if (!res.ok) {
     throw new Error(data?.error?.message ?? `Google Ads API error ${res.status}`);
@@ -113,8 +120,12 @@ export async function fetchSearchTerms(from: string, to: string) {
 export async function fetchAdPerformance(from: string, to: string) {
   const rows = await adsQuery(`
     SELECT
-      ad_group_ad.ad.responsive_search_ad.headlines,
-      ad_group_ad.ad.responsive_search_ad.descriptions,
+      ad_group_ad.ad.id,
+      ad_group_ad.ad.name,
+      ad_group_ad.ad.type,
+      ad_group_ad.ad.final_urls,
+      campaign.name,
+      ad_group.name,
       metrics.impressions, metrics.clicks, metrics.ctr, metrics.conversions
     FROM ad_group_ad
     WHERE segments.date BETWEEN '${from}' AND '${to}'
@@ -127,11 +138,13 @@ export async function fetchAdPerformance(from: string, to: string) {
   return rows.map((r) => {
     const aga = r.adGroupAd as Record<string, unknown>;
     const ad = aga?.ad as Record<string, unknown> | undefined;
-    const rsa = ad?.responsiveSearchAd as Record<string, { text: string }[]> | undefined;
+    const adGroup = r.adGroup as Record<string, unknown>;
+    const campaign = r.campaign as Record<string, unknown>;
     const m = r.metrics as Record<string, unknown>;
+    const urls = ad?.finalUrls as string[] | undefined;
     return {
-      headline: rsa?.headlines?.map((h) => h.text).filter(Boolean).slice(0, 3).join(" | ") ?? "—",
-      description: rsa?.descriptions?.[0]?.text ?? "—",
+      headline: String(ad?.name ?? adGroup?.name ?? campaign?.name ?? "Ad"),
+      description: urls?.[0] ?? String(ad?.type ?? "—"),
       impressions: num(m.impressions),
       clicks: num(m.clicks),
       ctr: Math.round(num(m.ctr) * 10000) / 100,
