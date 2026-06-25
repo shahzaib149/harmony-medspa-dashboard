@@ -1,12 +1,5 @@
 import { createGBPPost } from "@/lib/google/business-client";
-import { createServiceClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
-
-async function getRefreshToken(): Promise<string | null> {
-  const supabase = await createServiceClient();
-  const { data } = await supabase.from("settings").select("value").eq("key", "google_tokens").single();
-  return (data?.value as { refresh_token?: string })?.refresh_token ?? null;
-}
 
 // GET — AI draft a GBP post
 export async function GET(request: Request) {
@@ -35,8 +28,8 @@ Return ONLY the post text.`,
 // POST — publish a post to GBP
 export async function POST(request: Request) {
   const { topicType, summary, callToAction } = await request.json();
-  const refreshToken = await getRefreshToken();
-  if (!refreshToken) return Response.json({ error: "Google not connected" }, { status: 503 });
+  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  if (!refreshToken) return Response.json({ error: "Google not connected — missing GOOGLE_ADS_REFRESH_TOKEN" }, { status: 503 });
 
   try {
     const result = await createGBPPost(

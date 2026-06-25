@@ -5,7 +5,6 @@ import {
   fetchKeywords,
   fetchHourlyPerformance,
 } from "@/lib/google/ads-client";
-import { mockGoogleAdsSnapshots } from "@/lib/mock-data";
 
 function dateRange(days: number) {
   const to = new Date().toISOString().split("T")[0];
@@ -17,20 +16,17 @@ export async function POST(request: Request) {
   const { days = 30 } = await request.json().catch(() => ({}));
   const { from, to } = dateRange(Number(days));
 
-  const hasCredentials =
-    process.env.GOOGLE_ADS_DEVELOPER_TOKEN &&
-    process.env.GOOGLE_ADS_REFRESH_TOKEN &&
-    process.env.GOOGLE_ADS_CUSTOMER_ID;
+  const missing = [
+    !process.env.GOOGLE_ADS_DEVELOPER_TOKEN && "GOOGLE_ADS_DEVELOPER_TOKEN",
+    !process.env.GOOGLE_ADS_REFRESH_TOKEN && "GOOGLE_ADS_REFRESH_TOKEN",
+    !process.env.GOOGLE_ADS_CUSTOMER_ID && "GOOGLE_ADS_CUSTOMER_ID",
+  ].filter(Boolean);
 
-  if (!hasCredentials) {
-    return Response.json({
-      source: "mock",
-      campaigns: mockGoogleAdsSnapshots,
-      searchTerms: [],
-      adPerformance: [],
-      keywords: [],
-      hourly: [],
-    });
+  if (missing.length > 0) {
+    return Response.json(
+      { error: `Missing credentials: ${missing.join(", ")}` },
+      { status: 503 }
+    );
   }
 
   try {
@@ -41,9 +37,21 @@ export async function POST(request: Request) {
       fetchKeywords(from, to),
       fetchHourlyPerformance(from, to),
     ]);
-    return Response.json({ source: "live", campaigns, searchTerms, adPerformance, keywords, hourly });
+
+    return Response.json({
+      source: "live",
+      dateRange: { from, to },
+      campaigns,
+      searchTerms,
+      adPerformance,
+      keywords,
+      hourly,
+    });
   } catch (err) {
     console.error("/api/google-ads/campaigns error:", err);
-    return Response.json({ error: String(err) }, { status: 500 });
+    return Response.json(
+      { error: String(err) },
+      { status: 500 }
+    );
   }
 }
