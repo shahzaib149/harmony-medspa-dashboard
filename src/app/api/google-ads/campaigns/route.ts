@@ -3,7 +3,6 @@ import {
   fetchSearchTerms,
   fetchAdPerformance,
   fetchKeywords,
-  fetchHourlyPerformance,
 } from "@/lib/google/ads-client";
 
 function dateRange(days: number) {
@@ -12,46 +11,60 @@ function dateRange(days: number) {
   return { from, to };
 }
 
+async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<{ data: T; error?: string }> {
+  try {
+    return { data: await fn() };
+  } catch (err) {
+    return { data: fallback, error: String(err) };
+  }
+}
+
 export async function POST(request: Request) {
   const { days = 30 } = await request.json().catch(() => ({}));
   const { from, to } = dateRange(Number(days));
 
   const missing = [
+    !process.env.GOOGLE_ADS_CLIENT_ID && "GOOGLE_ADS_CLIENT_ID",
+    !process.env.GOOGLE_ADS_CLIENT_SECRET && "GOOGLE_ADS_CLIENT_SECRET",
     !process.env.GOOGLE_ADS_DEVELOPER_TOKEN && "GOOGLE_ADS_DEVELOPER_TOKEN",
     !process.env.GOOGLE_ADS_REFRESH_TOKEN && "GOOGLE_ADS_REFRESH_TOKEN",
     !process.env.GOOGLE_ADS_CUSTOMER_ID && "GOOGLE_ADS_CUSTOMER_ID",
   ].filter(Boolean);
 
   if (missing.length > 0) {
-    return Response.json(
-      { error: `Missing credentials: ${missing.join(", ")}` },
-      { status: 503 }
-    );
+    return Response.json({ error: `Missing credentials: ${missing.join(", ")}` }, { status: 503 });
   }
 
-  try {
-    const [campaigns, searchTerms, adPerformance, keywords, hourly] = await Promise.all([
-      fetchCampaignPerformance(from, to),
-      fetchSearchTerms(from, to),
-      fetchAdPerformance(from, to),
-      fetchKeywords(from, to),
-      fetchHourlyPerformance(from, to),
-    ]);
+  // Run all queries independently — partial failures don't block campaign data
+  const [campaigns, searchTerms, adPerformance, keywords] = await Promise.all([
+    safe(() => fetchCampaignPerformance(from, to), []),
+    safe(() => fetchSearchTerms(from, to), []),
+    safe(() => fetchAdPerformance(from, to), []),
+    safe(() => fetchKeywords(from, to), []),
+  ]);
 
-    return Response.json({
-      source: "live",
-      dateRange: { from, to },
-      campaigns,
-      searchTerms,
-      adPerformance,
-      keywords,
-      hourly,
-    });
-  } catch (err) {
-    console.error("/api/google-ads/campaigns error:", err);
-    return Response.json(
-      { error: String(err) },
-      { status: 500 }
-    );
+  // Surface the first critical error (from campaigns) if it exists
+  if (campaigns.error && campaigns.data.length === 0) {
+    console.error("Google Ads campaigns error:", campaigns.error);
+    return Response.json({ error: campaigns.error }, { status: 500 });
   }
+
+  // Log non-critical errors without failing the response
+  if (searchTerms.error) console.warn("Search terms error:", searchTerms.error);
+  if (adPerformance.error) console.warn("Ad performance error:", adPerformance.error);
+  if (keywords.error) console.warn("Keywords error:", keywords.error);
+
+  return Response.json({
+    source: "live",
+    dateRange: { from, to },
+    campaigns: campaigns.data,
+    searchTerms: searchTerms.data,
+    adPerformance: adPerformance.data,
+    keywords: keywords.data,
+    warnings: {
+      searchTerms: searchTerms.error,
+      adPerformance: adPerformance.error,
+      keywords: keywords.error,
+    },
+  });
 }

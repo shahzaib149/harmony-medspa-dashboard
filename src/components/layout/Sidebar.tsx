@@ -6,7 +6,7 @@ import { LayoutDashboard, TrendingUp, MapPin } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/google-ads", label: "Google Ads", icon: TrendingUp },
+  { href: "/google-ads-analytics", label: "Google Ads", icon: TrendingUp },
   { href: "/google-business", label: "Google Business", icon: MapPin },
 ];
 
@@ -16,49 +16,45 @@ export default function Sidebar() {
   return (
     <aside
       className="fixed left-0 top-0 h-full w-[240px] flex flex-col z-50"
-      style={{ backgroundColor: "#0D2B45" }}
+      style={{
+        backgroundColor: "#08080C",
+        borderRight: "1px solid rgba(201,168,76,0.1)",
+      }}
     >
-      {/* Logo / Brand */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-            style={{ backgroundColor: "#1A6B6B" }}
-          >
-            H
-          </div>
-          <div>
-            <p className="text-white font-semibold text-sm leading-tight">
-              Harmony
+      {/* Brand */}
+      <div className="px-6 py-6" style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}>
+        <Link href="/dashboard" className="block">
+          <p style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, fontStyle: "italic", color: "#C9A84C", lineHeight: 1, letterSpacing: "0.5px" }}>
+            Harmony
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+            <div style={{ flex: 1, height: "0.5px", backgroundColor: "rgba(201,168,76,0.3)" }} />
+            <p style={{ fontSize: 9, letterSpacing: "4px", color: "#C9A84C", opacity: 0.7, fontWeight: 500 }}>
+              MED SPA
             </p>
-            <p className="text-white/50 text-xs leading-tight">
-              Growth Command
-            </p>
+            <div style={{ flex: 1, height: "0.5px", backgroundColor: "rgba(201,168,76,0.3)" }} />
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto scrollbar-thin">
+      <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                transition-colors duration-150
-                ${
-                  active
-                    ? "bg-white/10 text-white border-l-[3px] border-[#1A6B6B] pl-[9px]"
-                    : "text-white/60 hover:text-white hover:bg-white/5"
-                }
-              `}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
+              style={{
+                backgroundColor: active ? "rgba(201,168,76,0.1)" : "transparent",
+                color: active ? "#C9A84C" : "#6B6B7A",
+                borderLeft: active ? "2px solid #C9A84C" : "2px solid transparent",
+              }}
             >
               <Icon
-                size={18}
-                className={active ? "text-[#1A6B6B]" : "text-white/60"}
+                size={17}
+                style={{ color: active ? "#C9A84C" : "#6B6B7A" }}
               />
               <span>{label}</span>
             </Link>
@@ -66,16 +62,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="px-6 py-4 border-t border-white/10">
-        <p className="text-white/30 text-xs leading-snug">
-          Powered by
-          <br />
-          <span className="text-white/50 font-medium">
-            CodeSquad AI Solutions
-          </span>
-        </p>
-      </div>
     </aside>
   );
 }

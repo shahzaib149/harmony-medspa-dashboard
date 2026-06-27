@@ -1,34 +1,18 @@
-import { fetchReviews, replyToReview } from "@/lib/google/business-client";
+import { fetchReviews, replyToReview } from "@/lib/google/gbp-client";
 
 export async function GET() {
-  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-  if (!refreshToken) return Response.json({ error: "Google not connected — missing GOOGLE_ADS_REFRESH_TOKEN", reviews: [] });
-
   try {
-    const reviews = await fetchReviews(
-      refreshToken,
-      process.env.GOOGLE_BUSINESS_ACCOUNT_ID!,
-      process.env.GOOGLE_BUSINESS_LOCATION_ID!
-    );
-    return Response.json({ reviews });
+    const data = await fetchReviews();
+    return Response.json(data);
   } catch (err) {
-    return Response.json({ error: String(err) }, { status: 500 });
+    return Response.json({ error: String(err), reviews: [], averageRating: 0, totalReviewCount: 0 }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   const { reviewId, comment } = await request.json();
-  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-  if (!refreshToken) return Response.json({ error: "Google not connected" }, { status: 503 });
-
   try {
-    const result = await replyToReview(
-      refreshToken,
-      process.env.GOOGLE_BUSINESS_ACCOUNT_ID!,
-      process.env.GOOGLE_BUSINESS_LOCATION_ID!,
-      reviewId,
-      comment
-    );
+    const result = await replyToReview(reviewId, comment);
     return Response.json({ success: true, result });
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });

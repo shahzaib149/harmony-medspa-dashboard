@@ -1,20 +1,35 @@
-import { createAuthenticatedClient } from "./oauth";
-
-const API_VERSION = "v19";
+const API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? "v19";
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
 async function getAccessToken(): Promise<string> {
-  const auth = createAuthenticatedClient(process.env.GOOGLE_ADS_REFRESH_TOKEN!);
-  const { token } = await auth.getAccessToken();
-  if (!token) throw new Error("Failed to get Google access token");
-  return token;
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_ADS_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
+      refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN!,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const data = await res.json() as { access_token?: string; error?: string; error_description?: string };
+
+  if (!res.ok || !data.access_token) {
+    throw new Error(`Token exchange failed: ${data.error} — ${data.error_description}`);
+  }
+
+  console.log("[Google Ads] Access token obtained, length:", data.access_token.length);
+  return data.access_token;
 }
 
 async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
   const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
   const token = await getAccessToken();
 
-  const res = await fetch(`${BASE_URL}/customers/${customerId}/googleAds:search`, {
+  const url = `${BASE_URL}/customers/${customerId}/googleAds:search`;
+  console.log("[Google Ads] POST", url);
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -33,7 +48,7 @@ async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(`Google Ads API returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`);
+    throw new Error(`Google Ads API 404 — URL tried: ${url} — Response: ${text.slice(0, 150)}`);
   }
 
   if (!res.ok) {

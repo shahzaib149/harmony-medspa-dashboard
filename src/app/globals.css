@@ -1,16 +1,18 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-primary-dark: #0D2B45;
-  --color-primary-teal: #1A6B6B;
-  --color-bg: #F5F7FA;
-  --color-card: #FFFFFF;
-  --color-text-primary: #1A1A2E;
-  --color-text-secondary: #6B7280;
-  --color-success: #10B981;
-  --color-warning: #F59E0B;
-  --color-danger: #EF4444;
-  --color-border: #E5E7EB;
+  --color-primary-dark: #08080C;
+  --color-primary-gold: #C9A84C;
+  --color-bg: #0A0A0D;
+  --color-card: #111117;
+  --color-card-hover: #18181F;
+  --color-text-primary: #F0ECE4;
+  --color-text-secondary: #7A7A8A;
+  --color-success: #2DD4BF;
+  --color-warning: #C9A84C;
+  --color-danger: #F87171;
+  --color-border: rgba(255,255,255,0.07);
+  --color-gold-border: rgba(201,168,76,0.2);
 }
 
 * {
@@ -18,31 +20,56 @@
 }
 
 body {
-  background-color: #F5F7FA;
-  color: #1A1A2E;
+  background-color: #0A0A0D;
+  color: #F0ECE4;
   margin: 0;
   padding: 0;
 }
 
-html,
-body {
+html, body {
   height: 100%;
 }
 
-.scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: #E5E7EB transparent;
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #111117; }
+::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.3); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(201,168,76,0.5); }
+
+/* Dark input overrides */
+input, textarea, select {
+  background-color: #1A1A22 !important;
+  color: #F0ECE4 !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+input::placeholder, textarea::placeholder { color: #5A5A6A !important; }
+input:focus, textarea:focus {
+  border-color: rgba(201,168,76,0.5) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(201,168,76,0.1) !important;
 }
 
-.scrollbar-thin::-webkit-scrollbar {
-  width: 4px;
-}
+/* ── Dark overrides for light-coded Tailwind classes ── */
+.bg-white { background-color: #111117 !important; }
+.bg-\[\#F5F7FA\] { background-color: #0A0A0D !important; }
+.bg-\[\#FAFAFA\] { background-color: #18181F !important; }
+.bg-gray-50, .hover\:bg-gray-50:hover { background-color: #18181F !important; }
+.bg-gray-100 { background-color: #1E1E28 !important; }
 
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
-}
+.text-\[\#1A1A2E\] { color: #F0ECE4 !important; }
+.text-\[\#374151\] { color: #D0CCC4 !important; }
+.text-\[\#6B7280\] { color: #7A7A8A !important; }
+.text-\[\#9CA3AF\] { color: #5A5A6A !important; }
 
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: #E5E7EB;
-  border-radius: 2px;
+.border-\[\#E5E7EB\] { border-color: rgba(201,168,76,0.12) !important; }
+.border-\[\#F3F4F6\] { border-color: rgba(255,255,255,0.04) !important; }
+.border-\[\#F9FAFB\] { border-color: rgba(255,255,255,0.03) !important; }
+
+.hover\:bg-\[\#F9FAFB\]:hover { background-color: rgba(201,168,76,0.04) !important; }
+
+/* Recharts dark chart overrides */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: rgba(255,255,255,0.05) !important;
 }
+.recharts-text { fill: #7A7A8A !important; }
