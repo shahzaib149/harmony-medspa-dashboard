@@ -67,6 +67,29 @@ input:focus, textarea:focus {
 
 .hover\:bg-\[\#F9FAFB\]:hover { background-color: rgba(201,168,76,0.04) !important; }
 
+/* ── Responsive: AI Suggestions detail panel ── */
+.ad-detail-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 768px) {
+  .ad-detail-panel {
+    grid-template-columns: 1fr 300px;
+  }
+  .ad-detail-left {
+    border-right-width: 1px;
+    border-right-style: solid;
+    border-right-color: rgba(201,168,76,0.08);
+  }
+}
+
+/* Hide scrollbar for tab navs */
+.overflow-x-auto { -webkit-overflow-scrolling: touch; }
+.overflow-x-auto::-webkit-scrollbar { display: none; }
+
+/* Ensure tables scroll on mobile */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
 /* Recharts dark chart overrides */
 .recharts-cartesian-grid-horizontal line,
 .recharts-cartesian-grid-vertical line {

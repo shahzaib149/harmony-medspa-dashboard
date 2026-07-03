@@ -7,6 +7,8 @@ import CampaignsTab from "./components/CampaignsTab";
 import AdGroupsTab from "./components/AdGroupsTab";
 import CreativesTab from "./components/CreativesTab";
 import KeywordsTab from "./components/KeywordsTab";
+import AISuggestionsTab from "./components/AISuggestionsTab";
+import PendingAdsPanel from "@/app/dashboard/PendingAdsPanel";
 
 export type Campaign = {
   id: string; accountName: string; campaignId: string; campaignName: string;
@@ -26,6 +28,8 @@ export type Creative = {
   campaignName: string; adGroupName: string; cost: number; clicks: number;
   impressions: number; ctrPct: number; conversions: number; conversionValue: number;
   roas: number; date: string; creativeTagSuggestions: string;
+  headlines: string; descriptions: string;
+  finalUrl: string; displayUrl: string; path1: string; path2: string;
 };
 export type Keyword = {
   id: string; keywordText: string; matchType: string; campaignId: string;
@@ -35,10 +39,12 @@ export type Keyword = {
 };
 
 const TABS = [
-  { id: "campaigns", label: "Campaigns" },
-  { id: "ad-groups", label: "Ad Groups" },
-  { id: "creatives", label: "Creatives" },
-  { id: "keywords", label: "Keywords" },
+  { id: "campaigns",       label: "Campaigns" },
+  { id: "ad-groups",       label: "Ad Groups" },
+  { id: "creatives",       label: "Creatives" },
+  { id: "keywords",        label: "Keywords" },
+  { id: "ai-suggestions",  label: "✦ AI Suggestions" },
+  { id: "pending-review",  label: "⏳ Pending Review" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -92,10 +98,10 @@ function AnalyticsInner() {
     setError(null);
     try {
       const [cr, ag, cv, kw] = await Promise.all([
-        fetch("/api/airtable?table=campaigns").then(r => r.json()),
-        fetch("/api/airtable?table=ad-groups").then(r => r.json()),
-        fetch("/api/airtable?table=creatives").then(r => r.json()),
-        fetch("/api/airtable?table=keywords").then(r => r.json()),
+        fetch(`/api/airtable?table=campaigns&days=${days}`).then(r => r.json()),
+        fetch(`/api/airtable?table=ad-groups&days=${days}`).then(r => r.json()),
+        fetch(`/api/airtable?table=creatives&days=${days}`).then(r => r.json()),
+        fetch(`/api/airtable?table=keywords&days=${days}`).then(r => r.json()),
       ]);
       if (cr.error) throw new Error(cr.error);
       setCampaigns(cr.data ?? []);
@@ -108,7 +114,7 @@ function AnalyticsInner() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [days]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -128,7 +134,12 @@ function AnalyticsInner() {
   const totalClicks = campaigns.reduce((s, c) => s + c.clicks, 0);
   const totalConversions = campaigns.reduce((s, c) => s + c.conversions, 0);
   const totalConvValue = campaigns.reduce((s, c) => s + c.conversionValue, 0);
-  const overallRoas = totalSpend > 0 ? totalConvValue / totalSpend : 0;
+  // Use conversionValue/spend if available; otherwise use spend-weighted average of per-campaign ROAS from Airtable
+  const overallRoas = totalSpend > 0
+    ? totalConvValue > 0
+      ? totalConvValue / totalSpend
+      : campaigns.reduce((s, c) => s + c.roas * c.cost, 0) / totalSpend
+    : 0;
   const accountName = campaigns[0]?.accountName ?? "Harmony MedSpa";
   const latestSync = campaigns.reduce((latest, c) => c.pulledAt > latest ? c.pulledAt : latest, "");
 
@@ -146,11 +157,11 @@ function AnalyticsInner() {
           </p>
           {campaigns.length > 0 && (
             <p className="text-xs mt-1" style={{ color: "#5A5A6A" }}>
-              {accountName} · {campaigns.length} campaigns
+              {accountName} · {campaigns.length} campaigns · last {days} days
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <span className="px-3 py-1 rounded-full text-xs font-semibold"
             style={{ backgroundColor: `${GOLD}15`, color: GOLD }}>
             Google Ads
@@ -197,15 +208,21 @@ function AnalyticsInner() {
 
       {/* Tab nav */}
       <div style={{ borderBottom: `1px solid ${BORDER}` }}>
-        <div className="flex gap-0">
+        <div className="flex gap-0 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           {TABS.map(tab => {
             const active = activeTab === tab.id;
+            const isAI      = tab.id === "ai-suggestions";
+            const isPending = tab.id === "pending-review";
+            const accentColor = isPending ? "#2DD4BF" : GOLD;
             return (
               <button key={tab.id} onClick={() => setTab(tab.id)}
-                className="px-5 py-2.5 text-sm font-medium transition-colors"
+                className="px-4 md:px-5 py-2.5 text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0"
                 style={{
-                  borderBottom: active ? `2px solid ${GOLD}` : "2px solid transparent",
-                  color: active ? GOLD : MUTED,
+                  borderBottomWidth: "2px",
+                  borderBottomStyle: "solid",
+                  borderBottomColor: active ? accentColor : "transparent",
+                  color: active ? accentColor : (isAI || isPending) ? `${accentColor}90` : MUTED,
+                  fontWeight: (isAI || isPending) ? 600 : 500,
                 }}>
                 {tab.label}
               </button>
@@ -221,10 +238,19 @@ function AnalyticsInner() {
         </div>
       ) : (
         <>
-          {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} />}
-          {activeTab === "ad-groups" && <AdGroupsTab adGroups={adGroups} />}
-          {activeTab === "creatives" && <CreativesTab creatives={creatives} />}
-          {activeTab === "keywords" && <KeywordsTab keywords={keywords} />}
+          {activeTab === "campaigns"      && <CampaignsTab campaigns={campaigns} />}
+          {activeTab === "ad-groups"      && <AdGroupsTab adGroups={adGroups} />}
+          {activeTab === "creatives"      && <CreativesTab creatives={creatives} />}
+          {activeTab === "keywords"       && <KeywordsTab keywords={keywords} />}
+          {activeTab === "ai-suggestions" && (
+            <AISuggestionsTab
+              campaigns={campaigns}
+              creatives={creatives}
+              keywords={keywords}
+              days={days}
+            />
+          )}
+          {activeTab === "pending-review" && <PendingAdsPanel />}
         </>
       )}
     </div>

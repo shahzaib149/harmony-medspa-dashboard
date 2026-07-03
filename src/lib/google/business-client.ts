@@ -37,7 +37,7 @@ export async function fetchGBPLocations(refreshToken: string, accountId: string)
 export async function fetchReviews(refreshToken: string, accountId: string, locationId: string) {
   const token = await bearerToken(refreshToken);
   const res = await fetch(
-    `https://mybusiness.googleapis.com/v4/${accountId}/${locationId}/reviews?pageSize=50`,
+    `https://mybusinessreviews.googleapis.com/v4/${accountId}/${locationId}/reviews?pageSize=50&orderBy=updateTime%20desc`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json() as { reviews?: unknown[] };
@@ -53,7 +53,7 @@ export async function replyToReview(
 ) {
   const token = await bearerToken(refreshToken);
   const res = await fetch(
-    `https://mybusiness.googleapis.com/v4/${accountId}/${locationId}/reviews/${reviewId}/reply`,
+    `https://mybusinessreviews.googleapis.com/v4/${accountId}/${locationId}/reviews/${reviewId}/reply`,
     {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -87,34 +87,40 @@ export async function createGBPPost(
 
 export async function fetchGBPInsights(
   refreshToken: string,
-  accountId: string,
+  _accountId: string,
   locationId: string,
   startTime: string,
   endTime: string
 ) {
   const token = await bearerToken(refreshToken);
+
+  // Extract bare location ID (strip "locations/" prefix if present)
+  const locId = locationId.replace(/^locations\//, "");
+
+  const metrics = [
+    "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+    "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+    "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+    "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+    "WEBSITE_CLICKS",
+    "CALL_CLICKS",
+    "BUSINESS_DIRECTION_REQUESTS",
+  ];
+
+  const start = new Date(startTime);
+  const end   = new Date(endTime);
+  const params = new URLSearchParams();
+  metrics.forEach(m => params.append("dailyMetrics", m));
+  params.set("dailyRange.start_date.year",  String(start.getFullYear()));
+  params.set("dailyRange.start_date.month", String(start.getMonth() + 1));
+  params.set("dailyRange.start_date.day",   String(start.getDate()));
+  params.set("dailyRange.end_date.year",    String(end.getFullYear()));
+  params.set("dailyRange.end_date.month",   String(end.getMonth() + 1));
+  params.set("dailyRange.end_date.day",     String(end.getDate()));
+
   const res = await fetch(
-    `https://mybusiness.googleapis.com/v4/${accountId}/${locationId}:reportInsights`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        locationNames: [`${accountId}/${locationId}`],
-        basicRequest: {
-          metricRequests: [
-            { metric: "QUERIES_DIRECT" },
-            { metric: "QUERIES_INDIRECT" },
-            { metric: "VIEWS_MAPS" },
-            { metric: "VIEWS_SEARCH" },
-            { metric: "ACTIONS_PHONE" },
-            { metric: "ACTIONS_DRIVING_DIRECTIONS" },
-            { metric: "ACTIONS_WEBSITE" },
-            { metric: "PHOTOS_VIEWS_MERCHANT" },
-          ],
-          timeRange: { startTime, endTime },
-        },
-      }),
-    }
+    `https://businessprofileperformance.googleapis.com/v1/locations/${locId}:fetchMultiDailyMetricsTimeSeries?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } }
   );
   return res.json();
 }

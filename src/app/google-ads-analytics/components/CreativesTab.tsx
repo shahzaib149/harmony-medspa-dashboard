@@ -192,7 +192,7 @@ export default function CreativesTab({ creatives }: { creatives: Creative[] }) {
                 <tr key={c.id} className="border-b border-[#F9FAFB] hover:bg-[#F9FAFB]">
                   <td className="py-2.5 pr-3 max-w-[200px]">
                     <Link
-                      href={`/google-ads-analytics/creative-detail?name=${encodeURIComponent(c.adName)}`}
+                      href={`/google-ads-analytics/creative-detail?name=${encodeURIComponent(c.adName)}&adId=${encodeURIComponent(c.adId)}`}
                       className="font-medium hover:underline"
                       style={{ color: "#1A6B6B" }}
                     >

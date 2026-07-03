@@ -3,6 +3,7 @@ const API_KEY = process.env.AIRTABLE_API_KEY!;
 
 export interface RawRecord {
   id: string;
+  createdTime: string;
   fields: Record<string, unknown>;
 }
 
@@ -20,11 +21,16 @@ export async function fetchAllRecords(tableName: string): Promise<RawRecord[]> {
     );
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as { error?: { message: string; type: string } };
-      throw new Error(err?.error?.message ?? `Airtable error ${res.status} on table "${tableName}"`);
+      const raw = await res.text().catch(() => "");
+      let detail = "";
+      try {
+        const parsed = JSON.parse(raw) as { error?: { message?: string; type?: string } };
+        detail = parsed?.error?.message ?? parsed?.error?.type ?? "";
+      } catch { detail = raw.slice(0, 300); }
+      throw new Error(`Airtable ${res.status} on table "${tableName}"${detail ? `: ${detail}` : ""}`);
     }
 
-    const data = await res.json() as { records: RawRecord[]; offset?: string };
+    const data = await res.json() as { records: Array<{ id: string; createdTime: string; fields: Record<string, unknown> }>; offset?: string };
     records.push(...data.records);
     offset = data.offset;
   } while (offset);

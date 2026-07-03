@@ -24,7 +24,7 @@ export default function OverviewClient() {
   return (
     <div className="space-y-6">
       {/* KPI Bar */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <KPICard
           title="Total Visits This Month"
           value={312}
@@ -65,9 +65,9 @@ export default function OverviewClient() {
       </div>
 
       {/* Main content */}
-      <div className="grid grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left — 60% */}
-        <div className="col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           {/* Lead Source Breakdown */}
           <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
@@ -100,7 +100,7 @@ export default function OverviewClient() {
         </div>
 
         {/* Right — 40% */}
-        <div className="col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6">
           {/* Automation Status */}
           <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-6">
             <h2 className="text-base font-semibold text-[#1A1A2E] mb-4">
@@ -161,6 +161,7 @@ export default function OverviewClient() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

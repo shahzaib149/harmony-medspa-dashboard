@@ -213,7 +213,7 @@ export default function GoogleBusinessClient() {
 
       {/* Tabs */}
       <div style={{ borderBottom: `1px solid ${BORDER}` }}>
-        <div className="flex gap-0">
+        <div className="flex gap-0 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           {([
             { key: "reviews", label: "Reviews", icon: Star },
             { key: "insights", label: "Local Insights", icon: MapPin },
@@ -250,7 +250,7 @@ export default function GoogleBusinessClient() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* Summary card */}
             <Card>
               <div className="p-6">
@@ -291,7 +291,7 @@ export default function GoogleBusinessClient() {
             </Card>
 
             {/* Review feed */}
-            <div className="col-span-2 space-y-3">
+            <div className="md:col-span-2 space-y-3">
               {reviews.length === 0 ? (
                 <div className="text-center py-16" style={{ color: MUTED }}>No reviews found</div>
               ) : (
@@ -369,7 +369,7 @@ export default function GoogleBusinessClient() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <Card>
               <div className="p-6">
                 <h2 className="text-sm font-semibold mb-5" style={{ color: TEXT }}>Search Visibility</h2>
@@ -438,7 +438,7 @@ export default function GoogleBusinessClient() {
 
       {/* ─── Posts Tab ─── */}
       {tab === "posts" && (
-        <div className="grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Card>
             <div className="p-6 space-y-4">
               <h2 className="text-sm font-semibold" style={{ color: TEXT }}>Create GBP Post</h2>
