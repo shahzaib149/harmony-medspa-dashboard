@@ -28,7 +28,6 @@ const MAX_HISTORY  = 7;
 const MAKE_WEBHOOK = "https://hook.us2.make.com/pwe6qssw5klmlhf958exyotd845uiahy";
 const GOLD         = "#C9A84C";
 const CARD         = "#111117";
-const CARD2        = "#0D0D12";
 const BORDER       = "rgba(201,168,76,0.12)";
 const BORDER2      = "rgba(201,168,76,0.08)";
 const TEXT         = "#F0ECE4";

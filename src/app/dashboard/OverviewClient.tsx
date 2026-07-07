@@ -5,7 +5,6 @@ import KPICard from "@/components/ui/KPICard";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ChartLine from "@/components/ui/ChartLine";
 import ChartDonut from "@/components/ui/ChartDonut";
-import InsightCard from "@/components/ui/InsightCard";
 import { mockVisitsData, mockLeadSourceData, mockAIInsights } from "@/lib/mock-data";
 import { Zap, Mail, RefreshCw, CalendarCheck, Share2 } from "lucide-react";
 

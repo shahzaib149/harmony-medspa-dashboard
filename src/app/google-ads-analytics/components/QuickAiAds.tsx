@@ -18,7 +18,6 @@ const GOLD   = "#C9A84C";
 const CARD   = "#111117";
 const BORDER = "rgba(201,168,76,0.12)";
 const MUTED  = "#7A7A8A";
-const TEXT   = "#F0ECE4";
 
 const QA_KEY = "harmony_quick_ads_v1";
 const QA_TTL = 24 * 60 * 60 * 1000; // 24 hours

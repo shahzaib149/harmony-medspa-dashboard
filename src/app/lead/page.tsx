@@ -141,12 +141,6 @@ function LeadFormInner() {
     borderColor: "#E5E0D8",
   };
   const inpErr: React.CSSProperties = { ...inp, borderColor: "#DC2626" };
-  const inpFocus = `
-    .hm-input:focus { border-color: #C9A84C !important; box-shadow: 0 0 0 3px rgba(201,168,76,0.15) !important; }
-    .hm-input::placeholder { color: #B5ADA3 !important; }
-    .hm-input option { background: #fff; color: #1A1A1A; }
-  `;
-
   const lbl: React.CSSProperties = {
     display: "block", fontSize: 13, fontWeight: 600,
     color: "#4A4040", marginBottom: 6, letterSpacing: "0.01em",
