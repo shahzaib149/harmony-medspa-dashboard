@@ -68,7 +68,7 @@ function googleBusinessStatus(): IntegrationStatus {
 
 async function checkAirtable(item: IntegrationStatus): Promise<IntegrationStatus> {
   if (item.status === "missing") return item;
-  const baseId = process.env.AIRTABLE_BASE_ID ?? "appNL010pW9LUpgST";
+  const baseId = process.env.AIRTABLE_LEADS_BASE_ID ?? "appNL010pW9LUpgST";
   const apiKey = process.env.AIRTABLE_API_KEY;
   if (!apiKey) return item;
 
@@ -90,18 +90,18 @@ async function checkAirtable(item: IntegrationStatus): Promise<IntegrationStatus
 async function checkSupabase(item: IntegrationStatus): Promise<IntegrationStatus> {
   if (item.status === "missing") return item;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) return item;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRole) return item;
 
   try {
-    const res = await fetch(`${url.replace(/\/$/, "")}/rest/v1/`, {
-      headers: { apikey: anon, Authorization: `Bearer ${anon}` },
+    const res = await fetch(`${url.replace(/\/$/, "")}/rest/v1/profiles?select=id&limit=1`, {
+      headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` },
       cache: "no-store",
     });
-    if (!res.ok && res.status !== 404) {
+    if (!res.ok) {
       return { ...item, status: "error", detail: `Supabase REST responded with ${res.status}` };
     }
-    return { ...item, status: "connected", detail: "Project URL and anon key accepted" };
+    return { ...item, status: "connected", detail: "Project URL and service role accepted" };
   } catch (error) {
     return { ...item, status: "error", detail: String(error) };
   }

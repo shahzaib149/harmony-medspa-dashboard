@@ -1,5 +1,7 @@
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+
 const TABLE_NAME = "Leads";
-const BASE_ID    = "appNL010pW9LUpgST";
+const BASE_ID    = process.env.AIRTABLE_LEADS_BASE_ID ?? "appNL010pW9LUpgST";
 const API_KEY    = process.env.AIRTABLE_API_KEY!;
 
 export interface Lead {
@@ -85,6 +87,12 @@ export async function GET(request: Request) {
 
 // PATCH — update a lead's status
 export async function PATCH(request: Request) {
+  try {
+    await requireRole(request, "editor");
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
   const { id, status } = await request.json() as { id: string; status: string };
@@ -103,5 +111,33 @@ export async function PATCH(request: Request) {
     const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
     return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
+  return Response.json({ success: true });
+}
+
+export async function DELETE(request: Request) {
+  try {
+    await requireRole(request, "editor");
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
+  if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+
+  const { id } = await request.json() as { id: string };
+  if (!id) return Response.json({ error: "id required" }, { status: 400 });
+
+  const res = await fetch(
+    `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${id}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${API_KEY}` },
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
+  }
+
   return Response.json({ success: true });
 }

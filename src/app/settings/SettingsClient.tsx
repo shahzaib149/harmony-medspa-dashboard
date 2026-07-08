@@ -11,16 +11,16 @@ import {
   KeyRound,
   Loader2,
   Mail,
-  Plus,
   RefreshCw,
   Save,
   ShieldCheck,
   SlidersHorizontal,
-  Trash2,
   UserCog,
   Users,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 
 type IntegrationStatus = {
   id: string;
@@ -44,14 +44,6 @@ type StatusResponse = {
   integrations: IntegrationStatus[];
 };
 
-type StaffMember = {
-  id: string;
-  name: string;
-  email: string;
-  role: "Owner" | "Manager" | "Marketing" | "Front Desk" | "Read Only";
-  status: "Active" | "Invited";
-};
-
 type ClinicProfile = {
   clinicName: string;
   phone: string;
@@ -72,15 +64,8 @@ const MUTED = "#7A7A8A";
 const DIM = "#5A5A6A";
 const TEAL = "#2DD4BF";
 
-const STAFF_KEY = "harmony_settings_staff_v1";
 const PROFILE_KEY = "harmony_settings_profile_v1";
 const AUTOMATION_KEY = "harmony_settings_automations_v1";
-
-const defaultStaff: StaffMember[] = [
-  { id: "owner", name: "Clinic Owner", email: "owner@harmonymedspa.com", role: "Owner", status: "Active" },
-  { id: "front-desk", name: "Front Desk", email: "frontdesk@harmonymedspa.com", role: "Front Desk", status: "Active" },
-  { id: "marketing", name: "Marketing Admin", email: "marketing@harmonymedspa.com", role: "Marketing", status: "Active" },
-];
 
 const defaultProfile: ClinicProfile = {
   clinicName: "Harmony MedSpa",
@@ -171,12 +156,13 @@ function Panel({ title, icon: Icon, children, action }: {
   );
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
+function Toggle({ checked, disabled = false, onChange }: { checked: boolean; disabled?: boolean; onChange: (next: boolean) => void }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="relative h-6 w-11 rounded-full transition-colors"
+      className="relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       style={{ backgroundColor: checked ? GOLD : "#2A2A32" }}
       aria-pressed={checked}
     >
@@ -206,15 +192,28 @@ function Field({ label, value, onChange }: {
   );
 }
 
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="block">
+      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: DIM }}>{label}</span>
+      <div
+        className="min-h-11 w-full rounded-xl px-3 py-2.5 text-sm"
+        style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: value ? TEXT : MUTED }}
+      >
+        {value || "-"}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsClient() {
+  const { role } = useAuth();
+  const canEditSettings = role === "admin";
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [staff, setStaff] = useState<StaffMember[]>(defaultStaff);
   const [profile, setProfile] = useState<ClinicProfile>(defaultProfile);
   const [automations, setAutomations] = useState<Record<AutomationKey, boolean>>(defaultAutomations);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<StaffMember["role"]>("Front Desk");
   const [saved, setSaved] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -233,7 +232,6 @@ export default function SettingsClient() {
   }, []);
 
   useEffect(() => {
-    setStaff(readStored(STAFF_KEY, defaultStaff));
     setProfile(readStored(PROFILE_KEY, defaultProfile));
     setAutomations(readStored(AUTOMATION_KEY, defaultAutomations));
     queueMicrotask(() => { void loadStatus(); });
@@ -245,26 +243,11 @@ export default function SettingsClient() {
   }, [status]);
 
   function saveAll() {
-    writeStored(STAFF_KEY, staff);
+    if (!canEditSettings) return;
     writeStored(PROFILE_KEY, profile);
     writeStored(AUTOMATION_KEY, automations);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
-  }
-
-  function addInvite() {
-    const email = inviteEmail.trim().toLowerCase();
-    if (!email || staff.some((member) => member.email.toLowerCase() === email)) return;
-    const name = email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-    setStaff((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), name, email, role: inviteRole, status: "Invited" },
-    ]);
-    setInviteEmail("");
-  }
-
-  function removeMember(id: string) {
-    setStaff((prev) => prev.filter((member) => member.id !== id));
   }
 
   return (
@@ -357,74 +340,55 @@ export default function SettingsClient() {
 
           <Panel title="Clinic Profile" icon={Building2}>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label="Clinic Name" value={profile.clinicName} onChange={(value) => setProfile((prev) => ({ ...prev, clinicName: value }))} />
-              <Field label="Phone" value={profile.phone} onChange={(value) => setProfile((prev) => ({ ...prev, phone: value }))} />
-              <Field label="Website" value={profile.website} onChange={(value) => setProfile((prev) => ({ ...prev, website: value }))} />
-              <Field label="Booking URL" value={profile.bookingUrl} onChange={(value) => setProfile((prev) => ({ ...prev, bookingUrl: value }))} />
-              <Field label="Timezone" value={profile.timezone} onChange={(value) => setProfile((prev) => ({ ...prev, timezone: value }))} />
-              <Field label="Front Desk Email" value={profile.frontDeskEmail} onChange={(value) => setProfile((prev) => ({ ...prev, frontDeskEmail: value }))} />
+              {canEditSettings ? (
+                <>
+                  <Field label="Clinic Name" value={profile.clinicName} onChange={(value) => setProfile((prev) => ({ ...prev, clinicName: value }))} />
+                  <Field label="Phone" value={profile.phone} onChange={(value) => setProfile((prev) => ({ ...prev, phone: value }))} />
+                  <Field label="Website" value={profile.website} onChange={(value) => setProfile((prev) => ({ ...prev, website: value }))} />
+                  <Field label="Booking URL" value={profile.bookingUrl} onChange={(value) => setProfile((prev) => ({ ...prev, bookingUrl: value }))} />
+                  <Field label="Timezone" value={profile.timezone} onChange={(value) => setProfile((prev) => ({ ...prev, timezone: value }))} />
+                  <Field label="Front Desk Email" value={profile.frontDeskEmail} onChange={(value) => setProfile((prev) => ({ ...prev, frontDeskEmail: value }))} />
+                </>
+              ) : (
+                <>
+                  <ReadOnlyField label="Clinic Name" value={profile.clinicName} />
+                  <ReadOnlyField label="Phone" value={profile.phone} />
+                  <ReadOnlyField label="Website" value={profile.website} />
+                  <ReadOnlyField label="Booking URL" value={profile.bookingUrl} />
+                  <ReadOnlyField label="Timezone" value={profile.timezone} />
+                  <ReadOnlyField label="Front Desk Email" value={profile.frontDeskEmail} />
+                </>
+              )}
             </div>
           </Panel>
         </div>
 
         <div className="space-y-6 xl:col-span-2">
-          <Panel title="Account Access" icon={Users}>
-            <div className="space-y-3">
-              {staff.map((member) => (
-                <div key={member.id} className="flex items-center gap-3 rounded-xl p-3" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${GOLD}12`, color: GOLD }}>
-                    <UserCog size={16} />
+          {role === "admin" && (
+            <Panel title="Account Access" icon={Users}>
+              <div className="rounded-2xl p-4" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${GOLD}12`, color: GOLD }}>
+                    <UserCog size={18} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold" style={{ color: TEXT }}>{member.name}</p>
-                    <p className="truncate text-xs" style={{ color: MUTED }}>{member.email}</p>
+                    <p className="text-sm font-bold" style={{ color: TEXT }}>Dashboard users</p>
+                    <p className="mt-1 text-xs leading-5" style={{ color: MUTED }}>
+                      Add users with an email and password, set Admin, Editor, or Viewer access, deactivate accounts, and reset passwords.
+                    </p>
                   </div>
-                  <select
-                    value={member.role}
-                    onChange={(event) => {
-                      const role = event.target.value as StaffMember["role"];
-                      setStaff((prev) => prev.map((item) => item.id === member.id ? { ...item, role } : item));
-                    }}
-                    className="rounded-lg px-2 py-1 text-xs outline-none"
-                    style={{ backgroundColor: "#18181F", border: `1px solid ${BORDER}`, color: TEXT }}
-                  >
-                    {["Owner", "Manager", "Marketing", "Front Desk", "Read Only"].map((role) => (
-                      <option key={role}>{role}</option>
-                    ))}
-                  </select>
-                  {member.id !== "owner" && (
-                    <button onClick={() => removeMember(member.id)} className="p-1.5" style={{ color: "#F87171" }} aria-label={`Remove ${member.name}`}>
-                      <Trash2 size={14} />
-                    </button>
-                  )}
                 </div>
-              ))}
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-              <input
-                value={inviteEmail}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                placeholder="name@example.com"
-                className="rounded-xl px-3 py-2.5 text-sm outline-none"
-                style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: TEXT }}
-              />
-              <select
-                value={inviteRole}
-                onChange={(event) => setInviteRole(event.target.value as StaffMember["role"])}
-                className="rounded-xl px-3 py-2.5 text-sm outline-none"
-                style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: TEXT }}
-              >
-                {["Manager", "Marketing", "Front Desk", "Read Only"].map((role) => (
-                  <option key={role}>{role}</option>
-                ))}
-              </select>
-              <button onClick={addInvite} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
-                style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
-                <Plus size={15} /> Invite
-              </button>
-            </div>
-          </Panel>
+                <Link
+                  href="/settings/users"
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
+                  style={{ backgroundColor: GOLD, color: "#0A0A0D" }}
+                >
+                  <Users size={15} />
+                  Manage users
+                </Link>
+              </div>
+            </Panel>
+          )}
 
           <Panel title="Automations" icon={SlidersHorizontal}>
             <div className="space-y-3">
@@ -436,21 +400,27 @@ export default function SettingsClient() {
                   </div>
                   <Toggle
                     checked={automations[item.key]}
-                    onChange={(next) => setAutomations((prev) => ({ ...prev, [item.key]: next }))}
+                    disabled={!canEditSettings}
+                    onChange={(next) => {
+                      if (!canEditSettings) return;
+                      setAutomations((prev) => ({ ...prev, [item.key]: next }));
+                    }}
                   />
                 </div>
               ))}
             </div>
           </Panel>
 
-          <button
-            onClick={saveAll}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold"
-            style={{ backgroundColor: saved ? TEAL : GOLD, color: "#0A0A0D" }}
-          >
-            {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
-            {saved ? "Saved" : "Save settings"}
-          </button>
+          {canEditSettings && (
+            <button
+              onClick={saveAll}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold"
+              style={{ backgroundColor: saved ? TEAL : GOLD, color: "#0A0A0D" }}
+            >
+              {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
+              {saved ? "Saved" : "Save settings"}
+            </button>
+          )}
         </div>
       </div>
     </div>

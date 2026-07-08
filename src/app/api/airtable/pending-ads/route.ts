@@ -1,3 +1,5 @@
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+
 const BASE_ID  = process.env.AIRTABLE_BASE_ID ?? "appGumYdPTtL5GW6M";
 const TABLE_ID = "tbl8XpPEGCr720IUi";
 const API_KEY  = process.env.AIRTABLE_API_KEY!;
@@ -81,4 +83,35 @@ export async function GET() {
   }));
 
   return Response.json({ ads, count: ads.length });
+}
+
+export async function PATCH(request: Request) {
+  try {
+    await requireRole(request, "editor");
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
+  if (!API_KEY) {
+    return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+  }
+
+  const { id, status } = await request.json() as { id?: string; status?: "Approved" | "Rejected" | "Published" };
+  if (!id || !status) return Response.json({ error: "id and status required" }, { status: 400 });
+
+  const res = await fetch(
+    `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${id}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { status } }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
+  }
+
+  return Response.json({ success: true });
 }

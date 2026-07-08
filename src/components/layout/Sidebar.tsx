@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Settings, TrendingUp, Users, X } from "lucide-react";
+import { LayoutDashboard, LogOut, MessageSquare, Settings, TrendingUp, UserCircle, Users, X } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatRole } from "@/lib/auth/permissions";
 
 const navItems = [
   { href: "/dashboard",             label: "Overview",   icon: LayoutDashboard },
   { href: "/google-ads-analytics",  label: "Google Ads", icon: TrendingUp },
   { href: "/leads",                 label: "Leads",      icon: Users },
+  { href: "/message-logs",          label: "Message Logs", icon: MessageSquare },
   { href: "/settings",              label: "Settings",   icon: Settings },
   // Google Business — hidden until GBP API access is granted. See docs/google-business-profile.md
 ];
@@ -19,6 +22,8 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onClose = () => {} }: SidebarProps) {
   const pathname = usePathname();
+  const { profile, role, signOut } = useAuth();
+  const displayName = profile?.full_name || profile?.email || "Signed in";
 
   return (
     <aside
@@ -79,6 +84,33 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
           );
         })}
       </nav>
+
+      <div className="p-3" style={{ borderTop: "1px solid rgba(201,168,76,0.1)" }}>
+        <div className="rounded-xl border p-3" style={{ backgroundColor: "rgba(255,255,255,0.025)", borderColor: "rgba(201,168,76,0.12)" }}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ color: "#C9A84C", backgroundColor: "rgba(201,168,76,0.10)" }}>
+              <UserCircle size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-bold" style={{ color: "#F0ECE4" }}>{displayName}</p>
+              {role && (
+                <span className="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#4ECDC4", backgroundColor: "rgba(78,205,196,0.10)" }}>
+                  {formatRole(role)}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { onClose(); void signOut(); }}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold"
+            style={{ borderColor: "rgba(201,168,76,0.14)", color: "#C9A84C", backgroundColor: "rgba(201,168,76,0.06)" }}
+          >
+            <LogOut size={14} />
+            Sign out
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }

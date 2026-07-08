@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Loader2, RefreshCw, ExternalLink, Send, CheckCircle, XCircle, Clock, AlertCircle, Zap } from "lucide-react";
 import type { PendingAd } from "@/app/api/airtable/pending-ads/route";
+import PermissionGate from "@/components/auth/PermissionGate";
+import { createClient } from "@/lib/supabase/client";
 
 const PUBLISH_WEBHOOK = "https://hook.us2.make.com/j51ev3akcj3svqgnxbi52f8a9v4rczhk";
 
@@ -28,6 +30,7 @@ function GoogleLogo() {
 }
 
 function AdCard({ ad }: { ad: PendingAd }) {
+  const supabase = useMemo(() => createClient(), []);
   const [state, setState]   = useState<PublishState>("idle");
   const [errMsg, setErrMsg] = useState("");
 
@@ -37,10 +40,27 @@ function AdCard({ ad }: { ad: PendingAd }) {
 
   const headlines = [ad.headline1, ad.headline2, ad.headline3].filter(Boolean).join(" | ");
 
+  async function getAuthHeaders(): Promise<HeadersInit> {
+    const { data } = await supabase.auth.getSession();
+    return {
+      "Content-Type": "application/json",
+      ...(data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+    };
+  }
+
   async function handlePublish() {
     setState("publishing");
     setErrMsg("");
     try {
+      const approval = await fetch("/api/airtable/pending-ads", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ id: ad.id, status: "Approved" }),
+      });
+      const approvalData = await approval.json().catch(() => ({})) as { error?: string };
+      if (!approval.ok || approvalData.error) throw new Error(approvalData.error ?? `Approval ${approval.status}`);
+
       const res = await fetch(PUBLISH_WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,6 +70,25 @@ function AdCard({ ad }: { ad: PendingAd }) {
         }),
       });
       if (!res.ok) throw new Error(`Webhook ${res.status}`);
+      setState("published");
+    } catch (e) {
+      setErrMsg(String(e));
+      setState("error");
+    }
+  }
+
+  async function handleReject() {
+    setState("publishing");
+    setErrMsg("");
+    try {
+      const res = await fetch("/api/airtable/pending-ads", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ id: ad.id, status: "Rejected" }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? `Reject ${res.status}`);
       setState("published");
     } catch (e) {
       setErrMsg(String(e));
@@ -189,9 +228,25 @@ function AdCard({ ad }: { ad: PendingAd }) {
           {state === "published" ? (
             <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 10, backgroundColor: `${TEAL}12`, borderWidth: "1px", borderStyle: "solid", borderColor: `${TEAL}30` }}>
               <CheckCircle size={13} style={{ color: TEAL }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: TEAL }}>Published</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: TEAL }}>Reviewed</span>
             </div>
           ) : (
+            <PermissionGate action="approve:ads">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={handleReject}
+              disabled={state === "publishing"}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "9px 12px", borderRadius: 10, cursor: state === "publishing" ? "not-allowed" : "pointer",
+                fontWeight: 700, fontSize: 12,
+                backgroundColor: "rgba(248,113,113,0.10)",
+                color: "#F87171",
+                border: "1px solid rgba(248,113,113,0.25)",
+              }}
+            >
+              <XCircle size={12} /> Reject
+            </button>
             <button
               onClick={handlePublish}
               disabled={state === "publishing"}
@@ -212,6 +267,8 @@ function AdCard({ ad }: { ad: PendingAd }) {
                 : <><Send size={12} /> Publish</>
               }
             </button>
+            </div>
+            </PermissionGate>
           )}
         </div>
 

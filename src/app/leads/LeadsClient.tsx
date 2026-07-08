@@ -16,9 +16,12 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import type { Lead } from "@/app/api/airtable/leads/route";
+import { useAuth } from "@/contexts/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 
 const GOLD = "#C9A84C";
 const BG = "#0A0A0D";
@@ -240,27 +243,41 @@ function LeadSlideOver({
   duplicate,
   onClose,
   onStatusChange,
+  canUpdate,
+  canDelete,
+  onDelete,
+  getAuthHeaders,
 }: {
   lead: Lead | null;
   duplicate: boolean;
   onClose: () => void;
   onStatusChange: (id: string, status: string) => void;
+  canUpdate: boolean;
+  canDelete: boolean;
+  onDelete: (lead: Lead) => void;
+  getAuthHeaders: () => Promise<HeadersInit>;
 }) {
   const [updating, setUpdating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   if (!lead) return null;
 
   async function changeStatus(status: string) {
     if (!lead) return;
     setUpdating(true);
+    setActionError(null);
     try {
       const res = await fetch("/api/airtable/leads", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ id: lead.id, status }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error ?? "Could not update status");
+      if (!res.ok || data.error) {
+        setActionError(data.error ?? "Could not update status");
+        return;
+      }
       onStatusChange(lead.id, status);
     } finally {
       setUpdating(false);
@@ -304,6 +321,25 @@ function LeadSlideOver({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(lead)}
+              className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold"
+              style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}
+            >
+              <Trash2 size={15} />
+              Delete lead
+            </button>
+          )}
+
+          {actionError && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm" style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}>
+              <AlertCircle size={16} />
+              {actionError}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={lead.status} />
             {duplicate && <StatusPill status="Duplicate" />}
@@ -336,28 +372,30 @@ function LeadSlideOver({
             ))}
           </div>
 
-          <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
-              Inline status change
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {STATUS_OPTIONS.map((status) => (
-                <button
-                  key={status}
-                  disabled={updating || lead.status === status}
-                  onClick={() => changeStatus(status)}
-                  className="rounded-xl border px-3 py-2 text-left text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{
-                    borderColor: lead.status === status ? STATUS_CONFIG[status].border : BORDER_SOFT,
-                    color: lead.status === status ? STATUS_CONFIG[status].color : MUTED,
-                    backgroundColor: lead.status === status ? STATUS_CONFIG[status].bg : "rgba(255,255,255,0.025)",
-                  }}
-                >
-                  {status}
-                </button>
-              ))}
+          {canUpdate && (
+            <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+                Inline status change
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {STATUS_OPTIONS.map((status) => (
+                  <button
+                    key={status}
+                    disabled={updating || lead.status === status}
+                    onClick={() => changeStatus(status)}
+                    className="rounded-xl border px-3 py-2 text-left text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      borderColor: lead.status === status ? STATUS_CONFIG[status].border : BORDER_SOFT,
+                      color: lead.status === status ? STATUS_CONFIG[status].color : MUTED,
+                      backgroundColor: lead.status === status ? STATUS_CONFIG[status].bg : "rgba(255,255,255,0.025)",
+                    }}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
             <p className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
@@ -417,6 +455,10 @@ function LeadSlideOver({
 }
 
 export default function LeadsClient() {
+  const { can } = useAuth();
+  const supabase = useMemo(() => createClient(), []);
+  const canUpdateLeads = can("update:leads");
+  const canDeleteLeads = can("delete:leads");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -428,6 +470,7 @@ export default function LeadsClient() {
   const [emailFilter, setEmailFilter] = useState<SentFilter>("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -498,11 +541,21 @@ export default function LeadsClient() {
     setSelectedLead((lead) => lead?.id === id ? { ...lead, status } : lead);
   }
 
+  async function getAuthHeaders(): Promise<HeadersInit> {
+    const { data } = await supabase.auth.getSession();
+    return {
+      "Content-Type": "application/json",
+      ...(data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+    };
+  }
+
   async function changeRowStatus(lead: Lead, status: string) {
+    if (!canUpdateLeads) return;
     setOpenMenuId(null);
     const res = await fetch("/api/airtable/leads", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ id: lead.id, status }),
     });
     const data = await res.json().catch(() => ({}));
@@ -513,9 +566,43 @@ export default function LeadsClient() {
     updateStatus(lead.id, status);
   }
 
+  async function deleteLead(lead: Lead) {
+    if (!canDeleteLeads) return;
+    setOpenMenuId(null);
+    setDeleteError(null);
+    const res = await fetch("/api/airtable/leads", {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ id: lead.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      setDeleteError(data.error ?? "Could not delete lead");
+      return;
+    }
+    setLeads((current) => current.filter((item) => item.id !== lead.id));
+    setSelectedLead((current) => current?.id === lead.id ? null : current);
+  }
+
   return (
     <div className="space-y-5">
       <LeadTicker lead={latestLead} />
+
+      {deleteError && (
+        <div className="flex items-start justify-between gap-3 rounded-2xl border p-4" style={{ borderColor: "rgba(248,113,113,0.25)", backgroundColor: "rgba(248,113,113,0.08)" }}>
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} style={{ color: "#F87171" }} />
+            <div>
+              <p className="text-sm font-bold" style={{ color: "#F87171" }}>Could not delete lead</p>
+              <p className="mt-1 text-xs" style={{ color: MUTED }}>{deleteError}</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setDeleteError(null)} className="rounded-lg p-1" style={{ color: MUTED }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <StatCard label="Total leads" value={leads.length} meta={`${filtered.length} visible`} color={GOLD} />
@@ -664,38 +751,59 @@ export default function LeadsClient() {
                         <td className="border-b px-4 py-3 text-sm" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{lead.email || "-"}</td>
                         <td className="border-b px-4 py-3 text-xs font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{sourceLabel(lead.source)}</td>
                         <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
-                          <select
-                            value={lead.status}
-                            onChange={(event) => changeRowStatus(lead, event.target.value)}
-                            className="rounded-full border px-2.5 py-1 text-[11px] font-bold"
-                            style={{
-                              color: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).color,
-                              backgroundColor: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).bg,
-                              borderColor: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).border,
-                            }}
-                            aria-label={`Change status for ${lead.name}`}
-                          >
-                            {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
-                          </select>
+                          {canUpdateLeads ? (
+                            <select
+                              value={lead.status}
+                              onChange={(event) => changeRowStatus(lead, event.target.value)}
+                              className="rounded-full border px-2.5 py-1 text-[11px] font-bold"
+                              style={{
+                                color: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).color,
+                                backgroundColor: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).bg,
+                                borderColor: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).border,
+                              }}
+                              aria-label={`Change status for ${lead.name}`}
+                            >
+                              {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                            </select>
+                          ) : (
+                            <StatusPill status={lead.status} />
+                          )}
                         </td>
                         <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><DeliveryPill label="SMS" value={lead.smsSentStatus} /></td>
                         <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><DeliveryPill label="Email" value={lead.emailSentStatus} /></td>
                         <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{timeAgo(lead.createdAt)}</td>
                         <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{lastContacted(lead) ? timeAgo(lastContacted(lead)) : "Not contacted"}</td>
                         <td className="relative border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
-                          <button
-                            className="rounded-lg border p-1.5"
-                            style={{ borderColor: BORDER_SOFT, color: MUTED, backgroundColor: "rgba(255,255,255,0.025)" }}
-                            aria-label={`Open quick actions for ${lead.name}`}
-                            onClick={() => setOpenMenuId(openMenuId === lead.id ? null : lead.id)}
-                          >
-                            <MoreHorizontal size={15} />
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {canDeleteLeads && (
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition hover:brightness-125"
+                                style={{ borderColor: "rgba(248,113,113,0.25)", color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)" }}
+                                aria-label={`Delete ${lead.name || "lead"}`}
+                                onClick={() => void deleteLead(lead)}
+                                title="Delete lead"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                            <button
+                              className="rounded-lg border p-1.5"
+                              style={{ borderColor: BORDER_SOFT, color: MUTED, backgroundColor: "rgba(255,255,255,0.025)" }}
+                              aria-label={`Open quick actions for ${lead.name}`}
+                              onClick={() => setOpenMenuId(openMenuId === lead.id ? null : lead.id)}
+                            >
+                              <MoreHorizontal size={15} />
+                            </button>
+                          </div>
                           {openMenuId === lead.id && (
                             <div className="absolute right-3 top-10 z-20 w-44 rounded-xl border p-1 text-left" style={{ backgroundColor: "#08080C", borderColor: BORDER, boxShadow: "0 18px 50px rgba(0,0,0,0.35)" }}>
                               <a href={`tel:${lead.phone}`} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold" style={{ color: TEXT }}><Phone size={13} /> Call</a>
                               <a href={`mailto:${lead.email}`} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold" style={{ color: TEXT }}><Mail size={13} /> Email</a>
                               <button onClick={() => navigator.clipboard?.writeText(`${lead.name} ${lead.phone} ${lead.email}`)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold" style={{ color: TEXT }}><Copy size={13} /> Copy contact</button>
+                              {canDeleteLeads && (
+                                <button type="button" onClick={() => void deleteLead(lead)} className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold" style={{ color: "#F87171" }}><Trash2 size={13} /> Delete lead</button>
+                              )}
                             </div>
                           )}
                         </td>
@@ -711,7 +819,7 @@ export default function LeadsClient() {
             {filtered.map((lead) => {
               const duplicate = isDuplicateLead(lead);
               return (
-                <button
+                <div
                   key={lead.id}
                   onClick={() => setSelectedLead(lead)}
                   className="rounded-2xl border p-4 text-left"
@@ -744,7 +852,21 @@ export default function LeadsClient() {
                     <DeliveryPill label="SMS" value={lead.smsSentStatus} />
                     <DeliveryPill label="Email" value={lead.emailSentStatus} />
                   </div>
-                </button>
+                  {canDeleteLeads && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteLead(lead);
+                      }}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"
+                      style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}
+                    >
+                      <Trash2 size={14} />
+                      Delete lead
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -756,6 +878,10 @@ export default function LeadsClient() {
         duplicate={selectedLead ? isDuplicateLead(selectedLead) : false}
         onClose={() => setSelectedLead(null)}
         onStatusChange={updateStatus}
+        canUpdate={canUpdateLeads}
+        canDelete={canDeleteLeads}
+        onDelete={(lead) => void deleteLead(lead)}
+        getAuthHeaders={getAuthHeaders}
       />
     </div>
   );
