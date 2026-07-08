@@ -380,7 +380,7 @@ function CreativeDetailInner() {
   if (rows.length === 0 && !adPreview) {
     return (
       <div className="text-center py-16 text-[#6B7280]">
-        Ad "{adName}" not found.{" "}
+        Ad &quot;{adName}&quot; not found.{" "}
         <Link href="/google-ads-analytics?tab=creatives" className="text-[#1A6B6B] underline">← Back</Link>
       </div>
     );

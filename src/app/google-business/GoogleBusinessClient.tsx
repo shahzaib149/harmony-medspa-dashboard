@@ -52,15 +52,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   );
 }
 
-function Pill({ label, color = GOLD }: { label: string; color?: string }) {
-  return (
-    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium"
-      style={{ backgroundColor: `${color}15`, color }}>
-      {label}
-    </span>
-  );
-}
-
 export default function GoogleBusinessClient() {
   const [days, setDays] = useState(30);
   const [tab, setTab] = useState<"reviews" | "insights" | "posts">("reviews");

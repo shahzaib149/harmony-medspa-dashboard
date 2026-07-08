@@ -2,16 +2,9 @@
 
 import { useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 import type { Campaign } from "../GoogleAdsAnalyticsClient";
-
-const CARD = "#111117";
-const BORDER = "rgba(201,168,76,0.12)";
-const TEXT = "#F0ECE4";
-const MUTED = "#7A7A8A";
-const DIM = "#5A5A6A";
-const GOLD = "#C9A84C";
 
 const CHANNEL_COLORS: Record<string, string> = {
   SEARCH: "#2563EB", DISPLAY: "#0D9488", VIDEO: "#DC2626",
@@ -119,7 +112,7 @@ export default function CampaignsTab({ campaigns }: { campaigns: Campaign[] }) {
                 <YAxis type="category" dataKey="name" width={120}
                   tick={{ fill: "#6B7280", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip
-                  formatter={(v, _, p) => [fmt$(Number(v)), "Spend"]}
+                  formatter={(v) => [fmt$(Number(v)), "Spend"]}
                   content={({ active, payload }) => {
                     if (!active || !payload?.[0]) return null;
                     const d = payload[0].payload;

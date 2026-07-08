@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, TrendingUp, Users, X } from "lucide-react";
+import { LayoutDashboard, Settings, TrendingUp, Users, X } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard",             label: "Overview",   icon: LayoutDashboard },
   { href: "/google-ads-analytics",  label: "Google Ads", icon: TrendingUp },
   { href: "/leads",                 label: "Leads",      icon: Users },
+  { href: "/settings",              label: "Settings",   icon: Settings },
   // Google Business — hidden until GBP API access is granted. See docs/google-business-profile.md
 ];
 

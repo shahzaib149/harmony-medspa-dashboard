@@ -172,6 +172,12 @@ function AnalyticsInner() {
               Synced {new Date(latestSync).toLocaleDateString()}
             </span>
           )}
+          {lastRefresh && (
+            <span className="px-3 py-1 rounded-full text-xs"
+              style={{ backgroundColor: "rgba(255,255,255,0.05)", color: MUTED }}>
+              Refreshed {lastRefresh.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          )}
           <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
             {[7, 14, 30, 90].map(d => (
               <button key={d} onClick={() => setDays(d)}
