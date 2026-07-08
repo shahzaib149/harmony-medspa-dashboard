@@ -1,17 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Eye, EyeOff, Loader2, Lock, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-const GOLD = "#C9A84C";
 const BG = "#0A0A0F";
-const TEAL = "#4ECDC4";
 
 const inputClassName =
-  "login-input h-13 w-full rounded-xl border bg-[#0A0A0F]/85 px-11 text-[15px] font-medium text-[#F0ECE4] outline-none transition duration-200 placeholder:text-[#5A5A6A] disabled:cursor-not-allowed disabled:opacity-55";
+  "login-input h-11 w-full rounded-lg border bg-[#0A0A0F]/88 px-10 text-sm font-medium text-[#F0ECE4] outline-none transition duration-200 placeholder:text-[#5A5A6A] disabled:cursor-not-allowed disabled:opacity-55";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -64,18 +61,22 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="login-shell relative flex min-h-screen overflow-hidden px-4 py-8 text-[#F0ECE4] sm:px-6 sm:py-10" style={{ backgroundColor: BG }}>
+    <main
+      className="login-shell relative flex h-screen min-h-screen items-center justify-center overflow-hidden px-4 py-4 text-[#F0ECE4] sm:px-6"
+      style={{ backgroundColor: BG }}
+    >
       <style>{`
         .login-shell::before {
           content: "";
           position: absolute;
           inset: 0;
           pointer-events: none;
+          opacity: 0.42;
           background-image:
-            linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-          background-size: 46px 46px;
-          mask-image: radial-gradient(circle at center, rgba(0,0,0,0.72), transparent 72%);
+            linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+          background-size: 52px 52px;
+          mask-image: radial-gradient(circle at center, rgba(0,0,0,0.58), transparent 70%);
         }
 
         .login-shell::after {
@@ -83,26 +84,14 @@ export default function LoginPage() {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          opacity: 0.24;
-          background-image:
-            radial-gradient(circle at 20% 30%, rgba(255,255,255,0.12) 0 1px, transparent 1px),
-            radial-gradient(circle at 70% 20%, rgba(255,255,255,0.10) 0 1px, transparent 1px),
-            radial-gradient(circle at 45% 70%, rgba(255,255,255,0.08) 0 1px, transparent 1px);
-          background-size: 170px 170px, 230px 230px, 190px 190px;
+          opacity: 0.18;
+          background-image: radial-gradient(circle at center, rgba(255,255,255,0.09) 0 1px, transparent 1px);
+          background-size: 180px 180px;
         }
 
         .login-panel {
-          animation: loginPanelIn 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+          animation: loginPanelIn 420ms ease-out both;
         }
-
-        .constellation-node {
-          animation: nodePulse 5.6s ease-in-out infinite;
-          transform-origin: center;
-        }
-
-        .constellation-node:nth-of-type(2) { animation-delay: 700ms; }
-        .constellation-node:nth-of-type(3) { animation-delay: 1400ms; }
-        .constellation-node:nth-of-type(4) { animation-delay: 2100ms; }
 
         .login-input {
           border-color: rgba(42,42,58,0.95) !important;
@@ -132,23 +121,17 @@ export default function LoginPage() {
         }
 
         @keyframes loginPanelIn {
-          from { opacity: 0; transform: translateY(14px) scale(0.985); }
+          from { opacity: 0; transform: translateY(8px) scale(0.99); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        @keyframes nodePulse {
-          0%, 100% { opacity: 0.42; transform: scale(1); }
-          50% { opacity: 0.92; transform: scale(1.18); }
-        }
-
         @media (max-width: 640px) {
-          .login-shell::before { opacity: 0.45; background-size: 58px 58px; }
-          .login-shell::after { opacity: 0.14; }
+          .login-shell::before { opacity: 0.32; background-size: 58px 58px; }
+          .login-shell::after { opacity: 0.1; }
         }
 
         @media (prefers-reduced-motion: reduce) {
           .login-panel,
-          .constellation-node,
           .login-motion {
             animation: none !important;
             transition: none !important;
@@ -156,45 +139,33 @@ export default function LoginPage() {
         }
       `}</style>
 
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[720px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(201,168,76,0.22)_0%,rgba(201,168,76,0.08)_34%,transparent_68%)] blur-2xl sm:h-[860px] sm:w-[860px]" />
-      <div className="pointer-events-none absolute -right-28 bottom-10 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(78,205,196,0.18)_0%,rgba(78,205,196,0.06)_36%,transparent_70%)] blur-2xl sm:h-[420px] sm:w-[420px]" />
-      <div className="pointer-events-none absolute -left-32 top-12 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(201,168,76,0.08)_0%,transparent_68%)] blur-3xl" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(201,168,76,0.12)_0%,rgba(201,168,76,0.045)_36%,transparent_70%)] blur-3xl sm:h-[620px] sm:w-[620px]" />
+      <div className="pointer-events-none absolute -right-24 bottom-8 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(78,205,196,0.12)_0%,rgba(78,205,196,0.04)_42%,transparent_72%)] blur-3xl" />
 
-      <AutomationConstellation />
-
-      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[480px] items-center sm:min-h-[calc(100vh-5rem)]">
+      <div className="relative z-10 w-full max-w-[420px]">
         <section
-          className="login-panel relative w-full overflow-hidden rounded-[28px] border border-[#2A2A3A]/90 bg-[#12121A]/88 p-[1px] shadow-[0_34px_90px_rgba(0,0,0,0.58),0_0_55px_rgba(201,168,76,0.12)] backdrop-blur-xl"
+          className="login-panel relative w-full overflow-hidden rounded-2xl border border-[#2A2A3A] bg-[#12121A]/96 shadow-[0_24px_70px_rgba(0,0,0,0.5),0_0_36px_rgba(201,168,76,0.08)] backdrop-blur-xl"
           aria-label="Harmony MedSpa secure login"
         >
-          <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[linear-gradient(135deg,rgba(201,168,76,0.32),rgba(255,255,255,0.05)_34%,rgba(78,205,196,0.18)_72%,rgba(42,42,58,0.24))]" />
-          <div className="relative rounded-[27px] bg-[linear-gradient(180deg,rgba(18,18,26,0.98),rgba(10,10,15,0.96))] px-5 py-6 sm:px-8 sm:py-8">
-            <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#F0ECE4]/28 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#C9A84C]/42 to-transparent" />
 
-            <div className="mb-7 text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#C9A84C] shadow-[0_0_30px_rgba(201,168,76,0.16)]">
-                <LockKeyhole size={26} strokeWidth={1.7} />
+          <div className="relative px-5 py-6 sm:px-7 sm:py-7">
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#C9A84C] shadow-[0_0_22px_rgba(201,168,76,0.13)]">
+                <LockKeyhole size={20} strokeWidth={1.8} />
               </div>
 
-              <Image
-                src="/harmony-logo.svg"
-                alt="Harmony MedSpa"
-                width={220}
-                height={72}
-                priority
-                className="mx-auto h-auto w-[190px] sm:w-[210px]"
-              />
-
-              <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.28em] text-[#C9A84C]">
+              <h1 className="text-2xl font-semibold tracking-normal text-[#F0ECE4]">Harmony MedSpa</h1>
+              <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[#C9A84C]">
                 Patient Growth Dashboard
               </p>
-              <p className="mx-auto mt-3 max-w-[330px] text-sm leading-6 text-[#B8B3A8]">
-                Access leads, follow-up activity, ads, and automation health.
+              <p className="mx-auto mt-3 max-w-[320px] text-sm leading-5 text-[#8B8AA3]">
+                Secure access to leads, ads, and automation activity.
               </p>
             </div>
 
             <form
-              className="space-y-4"
+              className="space-y-3.5"
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleSignIn();
@@ -212,6 +183,7 @@ export default function LoginPage() {
                     className={inputClassName}
                     autoComplete="email"
                     aria-invalid={Boolean(error)}
+                    placeholder="staff@harmonymedspa.com"
                   />
                 </span>
               </label>
@@ -228,6 +200,7 @@ export default function LoginPage() {
                     className={`${inputClassName} pr-12`}
                     autoComplete="current-password"
                     aria-invalid={Boolean(error)}
+                    placeholder="Enter password"
                   />
                   <button
                     type="button"
@@ -255,75 +228,22 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || !email || !password}
-                className="login-motion group flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-[#C9A84C] text-sm font-extrabold text-[#0A0A0F] shadow-[0_14px_34px_rgba(201,168,76,0.22)] outline-none transition duration-200 hover:-translate-y-0.5 hover:bg-[#D8B95A] hover:shadow-[0_18px_42px_rgba(201,168,76,0.30)] focus-visible:ring-2 focus-visible:ring-[#C9A84C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0F] disabled:translate-y-0 disabled:cursor-not-allowed disabled:bg-[#8D793D] disabled:opacity-65 disabled:shadow-none"
+                className="login-motion group flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#C9A84C] text-sm font-extrabold text-[#0A0A0F] shadow-[0_12px_28px_rgba(201,168,76,0.2)] outline-none transition duration-200 hover:bg-[#D8B95A] hover:shadow-[0_16px_34px_rgba(201,168,76,0.26)] focus-visible:ring-2 focus-visible:ring-[#C9A84C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0F] disabled:cursor-not-allowed disabled:bg-[#8D793D] disabled:opacity-65 disabled:shadow-none"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {loading ? "Signing in..." : "Sign in"}
               </button>
             </form>
 
-            <div className="mt-6 border-t border-white/[0.06] pt-5">
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {["Leads", "Automations", "Ads"].map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-full border border-[#2A2A3A] bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-[#B8B3A8] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-4 flex items-center justify-center gap-2 text-center text-xs font-medium text-[#7A7A8A]">
+            <div className="mt-5 border-t border-white/[0.06] pt-4">
+              <p className="flex items-center justify-center gap-2 text-center text-xs font-medium text-[#8B8AA3]">
                 <ShieldCheck size={14} className="text-[#4ECDC4]" />
-                Secure staff access for Harmony MedSpa.
+                Secure staff access
               </p>
             </div>
           </div>
         </section>
       </div>
     </main>
-  );
-}
-
-function AutomationConstellation() {
-  return (
-    <svg
-      className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[560px] w-[760px] max-w-none -translate-x-1/2 -translate-y-1/2 opacity-70 sm:h-[660px] sm:w-[980px]"
-      viewBox="0 0 980 660"
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="automation-line" x1="140" x2="840" y1="220" y2="460" gradientUnits="userSpaceOnUse">
-          <stop stopColor={GOLD} stopOpacity="0.04" />
-          <stop offset="0.52" stopColor={TEAL} stopOpacity="0.18" />
-          <stop offset="1" stopColor={GOLD} stopOpacity="0.08" />
-        </linearGradient>
-        <filter id="automation-glow" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="4" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      <path d="M162 334 C278 214 350 218 468 316 S684 466 820 342" fill="none" stroke="url(#automation-line)" strokeWidth="1.5" />
-      <path d="M222 438 C342 374 420 410 534 356 S674 236 784 250" fill="none" stroke="url(#automation-line)" strokeDasharray="5 14" strokeWidth="1" />
-
-      {[
-        { cx: 162, cy: 334, label: "Lead Capture", color: GOLD },
-        { cx: 392, cy: 266, label: "Airtable", color: TEAL },
-        { cx: 592, cy: 390, label: "SMS/Email", color: GOLD },
-        { cx: 820, cy: 342, label: "Booking Follow-up", color: TEAL },
-      ].map((node) => (
-        <g key={node.label} filter="url(#automation-glow)">
-          <circle className="constellation-node" cx={node.cx} cy={node.cy} r="5.5" fill={node.color} fillOpacity="0.74" />
-          <circle cx={node.cx} cy={node.cy} r="16" fill="none" stroke={node.color} strokeOpacity="0.16" />
-          <text x={node.cx} y={node.cy + 33} textAnchor="middle" fill="#F0ECE4" fillOpacity="0.22" fontSize="12" fontWeight="600">
-            {node.label}
-          </text>
-        </g>
-      ))}
-    </svg>
   );
 }

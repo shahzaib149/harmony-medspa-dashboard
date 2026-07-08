@@ -25,18 +25,26 @@ function str(fields: Record<string, unknown>, key: string): string {
   return String(value);
 }
 
-function nullableStr(fields: Record<string, unknown>, key: string): string | null {
-  const value = str(fields, key);
-  return value || null;
+function strAny(fields: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = str(fields, key);
+    if (value) return value;
+  }
+  return "";
 }
 
 function channel(value: string): MessageChannel {
-  if (value === "Email" || value === "SMS") return value;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "email") return "Email";
+  if (normalized === "sms" || normalized === "text") return "SMS";
   return "Unknown";
 }
 
 function deliveryStatus(value: string): DeliveryStatus {
-  if (value === "Pending" || value === "Sent" || value === "Failed") return value;
+  const normalized = value.trim().toLowerCase();
+  if (["pending", "queued", "scheduled", "sending"].includes(normalized)) return "Pending";
+  if (["sent", "delivered", "success", "successful", "ok"].includes(normalized)) return "Sent";
+  if (["failed", "fail", "error", "rejected", "bounced", "undelivered", "invalid"].includes(normalized)) return "Failed";
   return "Unknown";
 }
 
@@ -103,10 +111,10 @@ async function fetchLeadSummaries(leadIds: string[]) {
       const records = await fetchAirtableRecords(LEADS_TABLE, params);
       for (const record of records) {
         leadMap.set(record.id, {
-          name: nullableStr(record.fields, "Name"),
-          email: nullableStr(record.fields, "Email"),
-          phone: nullableStr(record.fields, "Phone"),
-          status: nullableStr(record.fields, "Status"),
+          name: strAny(record.fields, "Name", "Full Name", "Patient Name", "Lead Name") || null,
+          email: strAny(record.fields, "Email", "Email Address") || null,
+          phone: strAny(record.fields, "Phone", "Phone Number", "Mobile") || null,
+          status: strAny(record.fields, "Status", "Lead Status") || null,
         });
       }
     } catch (error) {
@@ -182,12 +190,12 @@ export async function GET(request: Request) {
         recipientLeadEmail: lead?.email ?? null,
         recipientLeadPhone: lead?.phone ?? null,
         recipientLeadStatus: lead?.status ?? null,
-        channel: channel(str(record.fields, "Channel")),
-        messageBody: str(record.fields, "Message Body"),
-        deliveryStatus: deliveryStatus(str(record.fields, "Delivery Status")),
-        sentAt: nullableStr(record.fields, "Sent At"),
-        mandrillMessageId: nullableStr(record.fields, "Mandrill Message ID"),
-        errorReason: nullableStr(record.fields, "Error Reason"),
+        channel: channel(strAny(record.fields, "Channel", "Message Channel", "Type")),
+        messageBody: strAny(record.fields, "Message Body", "Body", "Message", "Content"),
+        deliveryStatus: deliveryStatus(strAny(record.fields, "Delivery Status", "Status", "Mandrill Status")),
+        sentAt: strAny(record.fields, "Sent At", "Sent Date", "Created At") || record.createdTime,
+        mandrillMessageId: strAny(record.fields, "Mandrill Message ID", "Mandrill ID", "Message ID") || null,
+        errorReason: strAny(record.fields, "Error Reason", "Error", "Failure Reason") || null,
         createdTime: record.createdTime,
       };
     }).filter((log) => {
