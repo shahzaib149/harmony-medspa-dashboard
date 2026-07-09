@@ -476,7 +476,7 @@ export default function LeadsClient() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/airtable/leads?status=all");
+      const res = await fetch("/api/airtable/leads?status=all", { cache: "no-store" });
       const data = await res.json() as { leads?: Lead[]; error?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? "Could not load leads");
       setLeads(data.leads ?? []);

@@ -4,6 +4,9 @@ const TABLE_NAME = "Leads";
 const BASE_ID    = process.env.AIRTABLE_LEADS_BASE_ID ?? "appNL010pW9LUpgST";
 const API_KEY    = process.env.AIRTABLE_API_KEY!;
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export interface Lead {
   id: string;
   name: string;
@@ -30,6 +33,39 @@ function str(fields: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
+type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
+
+async function fetchLeadRecords(params: URLSearchParams) {
+  const records: AirtableRecord[] = [];
+  let offset: string | undefined;
+
+  do {
+    const pageParams = new URLSearchParams(params);
+    if (offset) pageParams.set("offset", offset);
+
+    const res = await fetch(
+      `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}?${pageParams}`,
+      { headers: { Authorization: `Bearer ${API_KEY}` }, cache: "no-store" }
+    );
+
+    if (!res.ok) {
+      const raw = await res.text().catch(() => "");
+      let detail = "";
+      try {
+        const parsed = JSON.parse(raw) as { error?: { message?: string; type?: string } };
+        detail = parsed?.error?.message ?? parsed?.error?.type ?? raw.slice(0, 200);
+      } catch { detail = raw.slice(0, 200); }
+      throw new Error(`Airtable ${res.status}: ${detail}`);
+    }
+
+    const data = await res.json() as { records: AirtableRecord[]; offset?: string };
+    records.push(...data.records);
+    offset = data.offset;
+  } while (offset);
+
+  return records;
+}
+
 export async function GET(request: Request) {
   if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
@@ -45,26 +81,14 @@ export async function GET(request: Request) {
     params.set("filterByFormula", `{Status}="${statusFilter}"`);
   }
 
-  const res = await fetch(
-    `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}?${params}`,
-    { headers: { Authorization: `Bearer ${API_KEY}` }, next: { revalidate: 30 } }
-  );
-
-  if (!res.ok) {
-    const raw = await res.text().catch(() => "");
-    let detail = "";
-    try {
-      const parsed = JSON.parse(raw) as { error?: { message?: string; type?: string } };
-      detail = parsed?.error?.message ?? parsed?.error?.type ?? raw.slice(0, 200);
-    } catch { detail = raw.slice(0, 200); }
-    return Response.json({ error: `Airtable ${res.status}: ${detail}` }, { status: 500 });
+  let records: AirtableRecord[];
+  try {
+    records = await fetchLeadRecords(params);
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Could not load Airtable leads" }, { status: 500 });
   }
 
-  const data = await res.json() as {
-    records: Array<{ id: string; createdTime: string; fields: Record<string, unknown> }>;
-  };
-
-  const leads: Lead[] = data.records.map(r => ({
+  const leads: Lead[] = records.map(r => ({
     id:              r.id,
     name:            str(r.fields, "Name"),
     phone:           str(r.fields, "Phone"),
@@ -82,7 +106,10 @@ export async function GET(request: Request) {
     smsSentStatus:   str(r.fields, "SMS Sent Status"),
   }));
 
-  return Response.json({ leads, count: leads.length });
+  return Response.json(
+    { leads, count: leads.length },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 // PATCH — update a lead's status
