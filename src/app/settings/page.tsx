@@ -4,8 +4,8 @@ import SettingsClient from "./SettingsClient";
 export default function SettingsPage() {
   return (
     <DashboardLayout
-      title="Staff"
-      subtitle="Manage who has access to this dashboard"
+      title="Settings"
+      subtitle="Manage staff accounts and dashboard access"
     >
       <SettingsClient />
     </DashboardLayout>
