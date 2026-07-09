@@ -1,428 +1,215 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  Bot,
-  Building2,
-  CheckCircle2,
-  Database,
-  ExternalLink,
-  KeyRound,
-  Loader2,
-  Mail,
-  RefreshCw,
-  Save,
-  ShieldCheck,
-  SlidersHorizontal,
-  UserCog,
-  Users,
-  XCircle,
+  Building2, CheckCircle2, Globe, Mail, Phone, Save, UserCog, Users, Clock, BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 
-type IntegrationStatus = {
-  id: string;
-  name: string;
-  status: "connected" | "partial" | "missing" | "error";
-  detail: string;
-  required: string[];
-  configured: string[];
-  missing: string[];
-  checkedAt: string;
-  actionHref?: string;
-};
+const GOLD   = "#C9A84C";
+const CARD   = "#111117";
+const CARD2  = "#0D0D12";
+const BORDER = "rgba(201,168,76,0.12)";
+const TEXT   = "#F0ECE4";
+const MUTED  = "#7A7A8A";
+const DIM    = "#5A5A6A";
+const TEAL   = "#2DD4BF";
 
-type StatusResponse = {
-  checkedAt: string;
-  connected: number;
-  total: number;
-  errors: number;
-  environment: string;
-  appUrl: string;
-  integrations: IntegrationStatus[];
-};
+const PROFILE_KEY = "harmony_settings_profile_v1";
 
 type ClinicProfile = {
-  clinicName: string;
-  phone: string;
-  website: string;
-  bookingUrl: string;
-  timezone: string;
+  clinicName:     string;
+  phone:          string;
+  website:        string;
+  bookingUrl:     string;
+  timezone:       string;
   frontDeskEmail: string;
 };
 
-type AutomationKey = "speedToLead" | "pendingAds" | "aiSuggestions" | "reviewDrafts" | "leadWebhook";
-
-const GOLD = "#C9A84C";
-const CARD = "#111117";
-const CARD2 = "#0D0D12";
-const BORDER = "rgba(201,168,76,0.12)";
-const TEXT = "#F0ECE4";
-const MUTED = "#7A7A8A";
-const DIM = "#5A5A6A";
-const TEAL = "#2DD4BF";
-
-const PROFILE_KEY = "harmony_settings_profile_v1";
-const AUTOMATION_KEY = "harmony_settings_automations_v1";
-
-const defaultProfile: ClinicProfile = {
-  clinicName: "Harmony MedSpa",
-  phone: "(941) 306-3696",
-  website: "https://www.harmonymedspafl.com/",
-  bookingUrl: "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
-  timezone: "America/New_York",
+const DEFAULT_PROFILE: ClinicProfile = {
+  clinicName:     "Harmony MedSpa",
+  phone:          "(941) 306-3696",
+  website:        "https://www.harmonymedspafl.com/",
+  bookingUrl:     "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
+  timezone:       "America/New_York",
   frontDeskEmail: "frontdesk@harmonymedspa.com",
 };
 
-const defaultAutomations: Record<AutomationKey, boolean> = {
-  speedToLead: true,
-  pendingAds: true,
-  aiSuggestions: true,
-  reviewDrafts: false,
-  leadWebhook: true,
-};
-
-const automationLabels: Array<{ key: AutomationKey; label: string; detail: string }> = [
-  { key: "speedToLead", label: "Speed-to-lead follow up", detail: "Lead form to staff and patient response flow" },
-  { key: "pendingAds", label: "Pending ad approval", detail: "Show Make.com generated ads for approval" },
-  { key: "aiSuggestions", label: "AI ad suggestions", detail: "Generate ad copy from Google Ads and website data" },
-  { key: "reviewDrafts", label: "Review reply drafts", detail: "Draft responses for Google Business Profile reviews" },
-  { key: "leadWebhook", label: "Lead capture webhook", detail: "Send public lead form submissions to automation" },
-];
-
-const integrationIcons: Record<string, React.ElementType> = {
-  airtable: Database,
-  "google-ads": SlidersHorizontal,
-  "google-business": Building2,
-  anthropic: Bot,
-  supabase: ShieldCheck,
-  "lead-form": Mail,
-};
-
-function readStored<T>(key: string, fallback: T): T {
+function read<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
-  }
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as T : fallback; }
+  catch { return fallback; }
 }
 
-function writeStored<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function statusColor(status: IntegrationStatus["status"]) {
-  if (status === "connected") return TEAL;
-  if (status === "partial") return GOLD;
-  if (status === "error") return "#F87171";
-  return DIM;
-}
-
-function StatusPill({ status }: { status: IntegrationStatus["status"] }) {
-  const color = statusColor(status);
-  const Icon = status === "connected" ? CheckCircle2 : status === "error" ? XCircle : AlertTriangle;
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-      style={{ color, backgroundColor: `${color}15` }}>
-      <Icon size={12} />
-      {status}
-    </span>
-  );
-}
-
-function Panel({ title, icon: Icon, children, action }: {
-  title: string;
-  icon: React.ElementType;
-  children: React.ReactNode;
-  action?: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-      <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: `${GOLD}15`, color: GOLD }}>
-            <Icon size={18} />
-          </div>
-          <h2 className="text-sm font-bold" style={{ color: TEXT }}>{title}</h2>
-        </div>
-        {action}
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
-  );
-}
-
-function Toggle({ checked, disabled = false, onChange }: { checked: boolean; disabled?: boolean; onChange: (next: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className="relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-      style={{ backgroundColor: checked ? GOLD : "#2A2A32" }}
-      aria-pressed={checked}
-    >
-      <span
-        className="absolute top-1 h-4 w-4 rounded-full bg-white transition-transform"
-        style={{ left: checked ? 23 : 4 }}
-      />
-    </button>
-  );
-}
-
-function Field({ label, value, onChange }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
+/* ── Editable field ── */
+function Field({ label, value, onChange, icon: Icon, type = "text", readOnly = false }: {
+  label: string; value: string; onChange?: (v: string) => void;
+  icon: React.ElementType; type?: string; readOnly?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: DIM }}>{label}</span>
+      <span className="flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-[0.09em]"
+        style={{ color: DIM }}>
+        <Icon size={10} />
+        {label}
+      </span>
       <input
+        type={type}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: TEXT }}
+        readOnly={readOnly}
+        onChange={e => onChange?.(e.target.value)}
+        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-colors"
+        style={{
+          backgroundColor: CARD2,
+          border: `1px solid ${BORDER}`,
+          color: readOnly ? MUTED : TEXT,
+          cursor: readOnly ? "default" : "text",
+        }}
       />
     </label>
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: DIM }}>{label}</span>
-      <div
-        className="min-h-11 w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: value ? TEXT : MUTED }}
-      >
-        {value || "-"}
-      </div>
-    </div>
-  );
-}
-
 export default function SettingsClient() {
-  const { role } = useAuth();
-  const canEditSettings = role === "admin";
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<ClinicProfile>(defaultProfile);
-  const [automations, setAutomations] = useState<Record<AutomationKey, boolean>>(defaultAutomations);
-  const [saved, setSaved] = useState(false);
+  const { profile: authProfile, role } = useAuth();
+  const isAdmin   = role === "admin";
+  const isEditor  = role === "admin" || role === "editor";
 
-  const loadStatus = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/settings/status", { cache: "no-store" });
-      const data = await res.json() as StatusResponse & { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? `Status check failed (${res.status})`);
-      setStatus(data);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [clinic, setClinic] = useState<ClinicProfile>(DEFAULT_PROFILE);
+  const [saved, setSaved]   = useState(false);
 
   useEffect(() => {
-    setProfile(readStored(PROFILE_KEY, defaultProfile));
-    setAutomations(readStored(AUTOMATION_KEY, defaultAutomations));
-    queueMicrotask(() => { void loadStatus(); });
-  }, [loadStatus]);
+    setClinic(read(PROFILE_KEY, DEFAULT_PROFILE));
+  }, []);
 
-  const health = useMemo(() => {
-    if (!status) return 0;
-    return Math.round((status.connected / status.total) * 100);
-  }, [status]);
+  function set(key: keyof ClinicProfile) {
+    return (v: string) => setClinic(prev => ({ ...prev, [key]: v }));
+  }
 
-  function saveAll() {
-    if (!canEditSettings) return;
-    writeStored(PROFILE_KEY, profile);
-    writeStored(AUTOMATION_KEY, automations);
+  function save() {
+    if (!isEditor) return;
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(clinic));
     setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className="rounded-2xl p-5 xl:col-span-2" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-          <div className="flex items-start justify-between gap-4">
+    <div className="space-y-6 max-w-4xl">
+
+      {/* ── My Account (read-only from Supabase auth) ── */}
+      <section className="rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: `${GOLD}15`, color: GOLD }}>
+            <UserCog size={17} />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold" style={{ color: TEXT }}>My Account</h2>
+            <p className="text-xs" style={{ color: MUTED }}>Your login details</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Field label="Name"  value={authProfile?.full_name ?? "—"} icon={UserCog} readOnly />
+          <Field label="Email" value={authProfile?.email     ?? "—"} icon={Mail}    readOnly />
+          <div>
+            <span className="flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-[0.09em]"
+              style={{ color: DIM }}>
+              <Users size={10} /> Role
+            </span>
+            <div className="rounded-xl px-3 py-2.5 text-sm"
+              style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
+              <span className="font-bold capitalize"
+                style={{ color: role === "admin" ? GOLD : role === "editor" ? TEAL : MUTED }}>
+                {role ?? "viewer"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Clinic Profile ── */}
+      <section className="rounded-2xl border" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b" style={{ borderColor: BORDER }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${GOLD}15`, color: GOLD }}>
+              <Building2 size={17} />
+            </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: GOLD }}>System Health</p>
-              <h1 className="mt-1 text-2xl font-bold" style={{ color: TEXT }}>
-                {status ? `${status.connected}/${status.total} connected` : "Checking connections"}
-              </h1>
-              <p className="mt-1 text-sm" style={{ color: MUTED }}>
-                {status ? `Environment: ${status.environment}` : "Running server-side checks"}
-              </p>
+              <h2 className="text-sm font-bold" style={{ color: TEXT }}>Clinic Profile</h2>
+              <p className="text-xs" style={{ color: MUTED }}>Basic info used across the dashboard</p>
             </div>
-            <button
-              onClick={loadStatus}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold"
-              style={{ border: `1px solid ${BORDER}`, color: loading ? DIM : GOLD }}
-            >
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Refresh
+          </div>
+          {!isEditor && (
+            <span className="text-[11px] font-semibold px-3 py-1 rounded-full"
+              style={{ color: MUTED, backgroundColor: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}` }}>
+              View only
+            </span>
+          )}
+        </div>
+
+        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Clinic Name"      value={clinic.clinicName}     onChange={isEditor ? set("clinicName")     : undefined} icon={Building2} readOnly={!isEditor} />
+          <Field label="Phone"            value={clinic.phone}          onChange={isEditor ? set("phone")          : undefined} icon={Phone}     readOnly={!isEditor} type="tel" />
+          <Field label="Website"          value={clinic.website}        onChange={isEditor ? set("website")        : undefined} icon={Globe}     readOnly={!isEditor} type="url" />
+          <Field label="Booking URL"      value={clinic.bookingUrl}     onChange={isEditor ? set("bookingUrl")     : undefined} icon={BookOpen}  readOnly={!isEditor} type="url" />
+          <Field label="Timezone"         value={clinic.timezone}       onChange={isEditor ? set("timezone")       : undefined} icon={Clock}     readOnly={!isEditor} />
+          <Field label="Front Desk Email" value={clinic.frontDeskEmail} onChange={isEditor ? set("frontDeskEmail") : undefined} icon={Mail}      readOnly={!isEditor} type="email" />
+        </div>
+
+        {isEditor && (
+          <div className="px-5 pb-5">
+            <button onClick={save}
+              className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition-colors"
+              style={{ backgroundColor: saved ? TEAL : GOLD, color: "#0A0A0D" }}>
+              {saved ? <CheckCircle2 size={15} /> : <Save size={15} />}
+              {saved ? "Saved!" : "Save changes"}
             </button>
           </div>
-          <div className="mt-5 h-2 overflow-hidden rounded-full" style={{ backgroundColor: "#25252D" }}>
-            <div className="h-full rounded-full transition-all" style={{ width: `${health}%`, backgroundColor: health >= 70 ? TEAL : GOLD }} />
+        )}
+      </section>
+
+      {/* ── User Management (admin only) ── */}
+      {isAdmin && (
+        <section className="rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${GOLD}15`, color: GOLD }}>
+              <Users size={17} />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold" style={{ color: TEXT }}>User Management</h2>
+              <p className="text-xs" style={{ color: MUTED }}>Control who can access this dashboard</p>
+            </div>
           </div>
-          {error && <p className="mt-3 text-sm" style={{ color: "#F87171" }}>{error}</p>}
-        </div>
 
-        <div className="rounded-2xl p-5" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: DIM }}>App URL</p>
-          <p className="mt-2 truncate text-sm font-semibold" style={{ color: TEXT }}>{status?.appUrl ?? "http://localhost:3000"}</p>
-          <p className="mt-1 text-xs" style={{ color: MUTED }}>{status?.checkedAt ? new Date(status.checkedAt).toLocaleString() : "Waiting for check"}</p>
-        </div>
-
-        <div className="rounded-2xl p-5" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: DIM }}>Security</p>
-          <p className="mt-2 text-sm font-semibold" style={{ color: TEXT }}>{status?.errors ? `${status.errors} issue${status.errors === 1 ? "" : "s"}` : "No API errors"}</p>
-          <p className="mt-1 text-xs" style={{ color: MUTED }}>Debug routes should stay private in production.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <div className="space-y-6 xl:col-span-3">
-          <Panel title="Integrations" icon={KeyRound}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {(status?.integrations ?? []).map((item) => {
-                const Icon = integrationIcons[item.id] ?? KeyRound;
-                const color = statusColor(item.status);
-                return (
-                  <div key={item.id} className="rounded-2xl p-4" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${color}14`, color }}>
-                          <Icon size={18} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold" style={{ color: TEXT }}>{item.name}</p>
-                          <p className="mt-0.5 truncate text-xs" style={{ color: MUTED }}>{item.detail}</p>
-                        </div>
-                      </div>
-                      <StatusPill status={item.status} />
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {item.configured.slice(0, 3).map((key) => (
-                        <span key={key} className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: TEAL, backgroundColor: `${TEAL}12` }}>{key}</span>
-                      ))}
-                      {item.missing.slice(0, 3).map((key) => (
-                        <span key={key} className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.1)" }}>{key}</span>
-                      ))}
-                    </div>
-                    {item.actionHref && (
-                      <a href={item.actionHref} className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold" style={{ color: GOLD }}>
-                        Connect <ExternalLink size={12} />
-                      </a>
-                    )}
-                  </div>
-                );
-              })}
-              {!status && (
-                <div className="col-span-full flex items-center gap-2 py-10 text-sm" style={{ color: MUTED }}>
-                  <Loader2 size={16} className="animate-spin" /> Loading integration status
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+            {[
+              { role: "Admin",  desc: "Full access — settings, users, all data",  color: GOLD },
+              { role: "Editor", desc: "Can update leads and manage content",        color: TEAL },
+              { role: "Viewer", desc: "Read-only access to all dashboard pages",    color: MUTED },
+            ].map(r => (
+              <div key={r.role} className="rounded-xl p-3"
+                style={{ backgroundColor: CARD2, border: `1px solid ${r.color}18` }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: r.color }} />
+                  <span className="text-xs font-bold" style={{ color: r.color }}>{r.role}</span>
                 </div>
-              )}
-            </div>
-          </Panel>
-
-          <Panel title="Clinic Profile" icon={Building2}>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {canEditSettings ? (
-                <>
-                  <Field label="Clinic Name" value={profile.clinicName} onChange={(value) => setProfile((prev) => ({ ...prev, clinicName: value }))} />
-                  <Field label="Phone" value={profile.phone} onChange={(value) => setProfile((prev) => ({ ...prev, phone: value }))} />
-                  <Field label="Website" value={profile.website} onChange={(value) => setProfile((prev) => ({ ...prev, website: value }))} />
-                  <Field label="Booking URL" value={profile.bookingUrl} onChange={(value) => setProfile((prev) => ({ ...prev, bookingUrl: value }))} />
-                  <Field label="Timezone" value={profile.timezone} onChange={(value) => setProfile((prev) => ({ ...prev, timezone: value }))} />
-                  <Field label="Front Desk Email" value={profile.frontDeskEmail} onChange={(value) => setProfile((prev) => ({ ...prev, frontDeskEmail: value }))} />
-                </>
-              ) : (
-                <>
-                  <ReadOnlyField label="Clinic Name" value={profile.clinicName} />
-                  <ReadOnlyField label="Phone" value={profile.phone} />
-                  <ReadOnlyField label="Website" value={profile.website} />
-                  <ReadOnlyField label="Booking URL" value={profile.bookingUrl} />
-                  <ReadOnlyField label="Timezone" value={profile.timezone} />
-                  <ReadOnlyField label="Front Desk Email" value={profile.frontDeskEmail} />
-                </>
-              )}
-            </div>
-          </Panel>
-        </div>
-
-        <div className="space-y-6 xl:col-span-2">
-          {role === "admin" && (
-            <Panel title="Account Access" icon={Users}>
-              <div className="rounded-2xl p-4" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${GOLD}12`, color: GOLD }}>
-                    <UserCog size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold" style={{ color: TEXT }}>Dashboard users</p>
-                    <p className="mt-1 text-xs leading-5" style={{ color: MUTED }}>
-                      Add users with an email and password, set Admin, Editor, or Viewer access, deactivate accounts, and reset passwords.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  href="/settings/users"
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
-                  style={{ backgroundColor: GOLD, color: "#0A0A0D" }}
-                >
-                  <Users size={15} />
-                  Manage users
-                </Link>
+                <p className="text-[11px] leading-4" style={{ color: MUTED }}>{r.desc}</p>
               </div>
-            </Panel>
-          )}
+            ))}
+          </div>
 
-          <Panel title="Automations" icon={SlidersHorizontal}>
-            <div className="space-y-3">
-              {automationLabels.map((item) => (
-                <div key={item.key} className="flex items-center justify-between gap-4 rounded-xl p-3" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                  <div>
-                    <p className="text-sm font-bold" style={{ color: TEXT }}>{item.label}</p>
-                    <p className="mt-0.5 text-xs" style={{ color: MUTED }}>{item.detail}</p>
-                  </div>
-                  <Toggle
-                    checked={automations[item.key]}
-                    disabled={!canEditSettings}
-                    onChange={(next) => {
-                      if (!canEditSettings) return;
-                      setAutomations((prev) => ({ ...prev, [item.key]: next }));
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </Panel>
+          <Link href="/settings/users"
+            className="flex items-center justify-center gap-2 w-full rounded-xl py-2.5 text-sm font-bold"
+            style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
+            <Users size={15} />
+            Manage Users
+          </Link>
+        </section>
+      )}
 
-          {canEditSettings && (
-            <button
-              onClick={saveAll}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold"
-              style={{ backgroundColor: saved ? TEAL : GOLD, color: "#0A0A0D" }}
-            >
-              {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
-              {saved ? "Saved" : "Save settings"}
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
