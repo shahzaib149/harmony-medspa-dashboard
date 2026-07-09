@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, ChevronDown, Loader2, Plus, RefreshCw,
-  Save, Search, ShieldAlert, UserCog, X,
+  Save, Search, ShieldAlert, UserCog, X, User,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Profile, Role } from "@/lib/auth/permissions";
@@ -50,18 +50,7 @@ function dateLabel(v: string | null) {
   return isNaN(d.getTime()) ? v : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/* ── Role pill / select ── */
-function RolePill({ role }: { role: Role }) {
-  const color = ROLE_COLOR[role] ?? MUTED;
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold capitalize"
-      style={{ color, backgroundColor: `${color}15`, border: `1px solid ${color}30` }}>
-      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-      {role}
-    </span>
-  );
-}
-
+/* ── Role select (dropdown) ── */
 function RoleSelect({ value, disabled, onChange }: {
   value: Role; disabled?: boolean; onChange: (r: Role) => void;
 }) {
@@ -87,15 +76,15 @@ function Toggle({ checked, disabled, onChange }: {
 }) {
   return (
     <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
-      className="relative h-6 w-11 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50"
+      className="relative h-5 w-10 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50"
       style={{ backgroundColor: checked ? TEAL : "#2A2A32" }} aria-pressed={checked}>
-      <span className="absolute top-1 h-4 w-4 rounded-full bg-white transition-transform"
-        style={{ left: checked ? 23 : 4 }} />
+      <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+        style={{ left: checked ? 22 : 2 }} />
     </button>
   );
 }
 
-/* ── Form field ── */
+/* ── Drawer form field ── */
 function Field({ label, value, type = "text", disabled, onChange }: {
   label: string; value: string; type?: string; disabled?: boolean;
   onChange: (v: string) => void;
@@ -111,7 +100,7 @@ function Field({ label, value, type = "text", disabled, onChange }: {
   );
 }
 
-/* ── Add / Edit drawer ── */
+/* ══════════════════════ STAFF DRAWER ══════════════════════ */
 function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onSave }: {
   mode: DrawerMode; form: StaffForm; saving: boolean; error: string | null;
   isSelf: boolean; onChange: (p: Partial<StaffForm>) => void;
@@ -123,7 +112,6 @@ function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onS
       <aside className="absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l"
         style={{ backgroundColor: "#09090D", borderColor: BORDER, boxShadow: "-24px 0 80px rgba(0,0,0,0.5)" }}>
 
-        {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b p-5 flex-shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.1em] mb-1" style={{ color: GOLD }}>
@@ -143,7 +131,6 @@ function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onS
           <Field label="Full Name" value={form.full_name} onChange={v => onChange({ full_name: v })} />
           <Field label="Email" value={form.email} type="email" disabled={mode === "edit"} onChange={v => onChange({ email: v })} />
 
-          {/* Role */}
           <label className="block">
             <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Role</span>
             <select value={form.role} disabled={isSelf}
@@ -156,7 +143,6 @@ function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onS
             </select>
           </label>
 
-          {/* Active toggle (edit only) */}
           {mode === "edit" && (
             <div className="flex items-center justify-between rounded-xl border p-4"
               style={{ backgroundColor: PANEL, borderColor: BORDER }}>
@@ -168,7 +154,6 @@ function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onS
             </div>
           )}
 
-          {/* Password */}
           <div className="rounded-xl border p-4" style={{ backgroundColor: PANEL, borderColor: BORDER }}>
             <p className="text-[10px] font-bold uppercase tracking-[0.09em] mb-3" style={{ color: GOLD }}>
               {mode === "create" ? "Set Password" : "Reset Password"}
@@ -202,19 +187,31 @@ function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onS
   );
 }
 
-/* ═══════════════════════════════ MAIN ═══════════════════════════════ */
+/* ══════════════════════════ MAIN ══════════════════════════ */
 export default function SettingsClient() {
-  const { role, user, isLoading } = useAuth();
-  const [staff, setStaff]         = useState<Profile[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const { role, user, profile, isLoading } = useAuth();
+
+  /* Staff state (admin only) */
+  const [staff, setStaff]           = useState<Profile[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState<string | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
-  const [form, setForm]           = useState<StaffForm>(emptyForm);
-  const [query, setQuery]         = useState("");
+  const [form, setForm]             = useState<StaffForm>(emptyForm);
+  const [query, setQuery]           = useState("");
+
+  /* Profile edit state */
+  const [nameEdit, setNameEdit]     = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError]   = useState<string | null>(null);
+  const [nameSaved, setNameSaved]   = useState(false);
+
+  useEffect(() => {
+    setNameEdit(profile?.full_name ?? "");
+  }, [profile?.full_name]);
 
   const load = useCallback(async () => {
-    if (role !== "admin") return;
+    if (role !== "admin") { setLoading(false); return; }
     setLoading(true); setError(null);
     try {
       const res  = await fetch("/api/auth/users", { cache: "no-store" });
@@ -278,171 +275,261 @@ export default function SettingsClient() {
     setStaff(cur => cur.map(s => s.id === data.user!.id ? data.user! : s));
   }
 
-  /* ── Access denied ── */
+  async function saveName() {
+    if (!nameEdit.trim() || nameEdit.trim() === profile?.full_name) return;
+    setNameSaving(true); setNameError(null); setNameSaved(false);
+    try {
+      const res  = await fetch("/api/auth/users", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: user?.id, full_name: nameEdit.trim() }),
+      });
+      const data = await res.json() as { user?: Profile; error?: string };
+      if (!res.ok || !data.user) throw new Error(data.error ?? "Could not save");
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 2500);
+    } catch (e) { setNameError(e instanceof Error ? e.message : String(e)); }
+    finally { setNameSaving(false); }
+  }
+
   if (isLoading) return (
     <div className="flex items-center gap-3 rounded-2xl border p-8" style={{ backgroundColor: CARD, borderColor: BORDER, color: MUTED }}>
       <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} /> Loading…
     </div>
   );
 
-  if (role !== "admin") return (
-    <div className="flex items-start gap-3 rounded-2xl border p-6"
-      style={{ backgroundColor: CARD, borderColor: "rgba(248,113,113,0.25)" }}>
-      <ShieldAlert size={20} style={{ color: RED }} />
-      <div>
-        <p className="text-sm font-bold mb-1" style={{ color: RED }}>Access denied</p>
-        <p className="text-sm" style={{ color: MUTED }}>Only admins can manage staff accounts.</p>
-      </div>
-    </div>
-  );
+  const myRole  = profile?.role ?? role ?? "viewer";
+  const myName  = profile?.full_name ?? "";
+  const myEmail = user?.email ?? "";
+  const isAdmin = myRole === "admin";
 
-  const active   = staff.filter(s => s.is_active).length;
-  const admins   = staff.filter(s => s.role === "admin").length;
+  const active = staff.filter(s => s.is_active).length;
+  const admins = staff.filter(s => s.role === "admin").length;
 
   return (
-    <div className="space-y-5">
+    <div className="flex gap-6 items-start flex-col lg:flex-row">
 
-      {/* ── Toolbar ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: MUTED }} />
-          <input value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Search staff by name, email or role…"
-            className="h-10 w-full rounded-xl border pl-9 pr-3 text-sm outline-none"
-            style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }} />
-        </div>
+      {/* ══════════ LEFT — My Profile ══════════ */}
+      <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
 
-        <button onClick={load} disabled={loading}
-          className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold"
-          style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}>
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          Refresh
-        </button>
-
-        <button onClick={openCreate}
-          className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold"
-          style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
-          <Plus size={14} /> Add Staff
-        </button>
-      </div>
-
-      {/* ── Summary pills ── */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { label: `${staff.length} total`,  color: MUTED  },
-          { label: `${active} active`,        color: TEAL   },
-          { label: `${admins} admin${admins !== 1 ? "s" : ""}`, color: GOLD },
-        ].map(p => (
-          <span key={p.label} className="rounded-full border px-3 py-1 text-[11px] font-semibold"
-            style={{ color: p.color, backgroundColor: `${p.color}10`, borderColor: `${p.color}25` }}>
-            {p.label}
+        {/* Avatar card */}
+        <div className="rounded-2xl border p-6 text-center" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl text-2xl font-extrabold"
+            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1.5px solid rgba(201,168,76,0.22)" }}>
+            {initials(myName || myEmail)}
+          </div>
+          <p className="text-base font-extrabold mb-1" style={{ color: TEXT }}>{myName || "—"}</p>
+          <p className="text-[11px] mb-3 break-all" style={{ color: MUTED }}>{myEmail}</p>
+          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize"
+            style={{ color: ROLE_COLOR[myRole as Role] ?? MUTED,
+                     backgroundColor: `${ROLE_COLOR[myRole as Role] ?? MUTED}14`,
+                     border: `1px solid ${ROLE_COLOR[myRole as Role] ?? MUTED}30` }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ROLE_COLOR[myRole as Role] ?? MUTED }} />
+            {myRole}
           </span>
-        ))}
+        </div>
+
+        {/* Edit profile */}
+        <div className="rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <div className="flex items-center gap-2 mb-4">
+            <User size={13} style={{ color: GOLD }} />
+            <p className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: GOLD }}>My Profile</p>
+          </div>
+
+          <div className="space-y-3 mb-4">
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Display Name</span>
+              <input value={nameEdit} onChange={e => setNameEdit(e.target.value)}
+                className="h-10 w-full rounded-xl border px-3 text-sm outline-none"
+                style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Email</span>
+              <input value={myEmail} disabled
+                className="h-10 w-full rounded-xl border px-3 text-sm opacity-50 cursor-not-allowed"
+                style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
+            </label>
+          </div>
+
+          {nameError && (
+            <p className="mb-3 text-xs flex items-center gap-1" style={{ color: RED }}>
+              <AlertCircle size={12} /> {nameError}
+            </p>
+          )}
+
+          <button onClick={saveName} disabled={nameSaving || nameEdit.trim() === (profile?.full_name ?? "")}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold disabled:opacity-50"
+            style={{ backgroundColor: nameSaved ? TEAL : GOLD, color: "#0A0A0D" }}>
+            {nameSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {nameSaved ? "Saved!" : "Save Changes"}
+          </button>
+        </div>
+
+        {/* Account info */}
+        <div className="rounded-2xl border p-5 space-y-3" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <p className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Account Info</p>
+          {[
+            { label: "Last sign in",     value: dateLabel(profile?.last_sign_in_at ?? null) },
+            { label: "Account created",  value: dateLabel(profile?.created_at ?? null) },
+            { label: "Access level",     value: myRole.charAt(0).toUpperCase() + myRole.slice(1) },
+          ].map(row => (
+            <div key={row.label} className="flex items-center justify-between gap-4">
+              <span className="text-xs" style={{ color: MUTED }}>{row.label}</span>
+              <span className="text-xs font-semibold text-right" style={{ color: TEXT }}>{row.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* ── Error ── */}
-      {error && !drawerMode && (
-        <div className="flex items-center gap-2 rounded-xl border p-3 text-sm"
-          style={{ color: RED, backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}>
-          <AlertCircle size={15} /> {error}
-        </div>
-      )}
+      {/* ══════════ RIGHT — Staff Management ══════════ */}
+      <div className="flex-1 min-w-0 space-y-4">
 
-      {/* ── Staff table ── */}
-      <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: CARD, borderColor: BORDER }}>
-        {loading ? (
-          <div className="flex items-center justify-center gap-3 py-20" style={{ color: MUTED }}>
-            <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} /> Loading staff…
+        {/* Section header */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.09em] mb-0.5" style={{ color: GOLD }}>Staff Management</p>
+            <p className="text-[11px]" style={{ color: MUTED }}>Control who can access this dashboard</p>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <button onClick={load} disabled={loading}
+                className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold"
+                style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}>
+                {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                Refresh
+              </button>
+              <button onClick={openCreate}
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold"
+                style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
+                <Plus size={14} /> Add Staff
+              </button>
+            </div>
+          )}
+        </div>
+
+        {!isAdmin ? (
+          <div className="flex items-start gap-3 rounded-2xl border p-6"
+            style={{ backgroundColor: CARD, borderColor: "rgba(248,113,113,0.2)" }}>
+            <ShieldAlert size={18} style={{ color: RED }} />
+            <div>
+              <p className="text-sm font-bold mb-1" style={{ color: RED }}>Admin access required</p>
+              <p className="text-sm" style={{ color: MUTED }}>Only admins can view and manage staff accounts.</p>
+            </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] border-separate border-spacing-0">
-              <thead>
-                <tr style={{ backgroundColor: "#0B0B10" }}>
-                  {["Staff Member", "Role", "Status", "Last Sign In", "Added", ""].map(h => (
-                    <th key={h} className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
-                      style={{ color: DIM, borderColor: BORDER_SOFT }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(p => {
-                  const isSelf = p.id === user?.id;
-                  return (
-                    <tr key={p.id} onClick={() => openEdit(p)}
-                      className="cursor-pointer transition-colors"
-                      style={{ backgroundColor: "transparent" }}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = "#161620"}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
+          <>
+            {/* Search + summary pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: MUTED }} />
+                <input value={query} onChange={e => setQuery(e.target.value)}
+                  placeholder="Search by name, email or role…"
+                  className="h-9 w-full rounded-xl border pl-8 pr-3 text-xs outline-none"
+                  style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
+              </div>
+              {[
+                { label: `${staff.length} total`, color: MUTED },
+                { label: `${active} active`,      color: TEAL  },
+                { label: `${admins} admin${admins !== 1 ? "s" : ""}`, color: GOLD },
+              ].map(p => (
+                <span key={p.label} className="rounded-full border px-2.5 py-1 text-[10px] font-semibold"
+                  style={{ color: p.color, backgroundColor: `${p.color}10`, borderColor: `${p.color}25` }}>
+                  {p.label}
+                </span>
+              ))}
+            </div>
 
-                      {/* Name */}
-                      <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-extrabold flex-shrink-0"
-                            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.18)" }}>
-                            {initials(p.full_name || p.email || "")}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold truncate" style={{ color: TEXT }}>{p.full_name || "—"}</p>
-                            <p className="text-[11px] truncate" style={{ color: MUTED }}>{p.email}</p>
-                            {isSelf && <p className="text-[10px] font-bold" style={{ color: TEAL }}>You</p>}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Role */}
-                      <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
-                        onClick={e => e.stopPropagation()}>
-                        <RoleSelect value={p.role} disabled={isSelf}
-                          onChange={r => void quickUpdate(p, { role: r })} />
-                      </td>
-
-                      {/* Active toggle */}
-                      <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
-                        onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-2">
-                          <Toggle checked={p.is_active} disabled={isSelf}
-                            onChange={v => void quickUpdate(p, { is_active: v })} />
-                          <span className="text-xs font-semibold"
-                            style={{ color: p.is_active ? TEAL : RED }}>
-                            {p.is_active ? "Active" : "Inactive"}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Last sign in */}
-                      <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>
-                        {dateLabel(p.last_sign_in_at)}
-                      </td>
-
-                      {/* Created */}
-                      <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: DIM }}>
-                        {dateLabel(p.created_at)}
-                      </td>
-
-                      {/* Edit button */}
-                      <td className="border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }}>
-                        <button className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold"
-                          style={{ color: GOLD, borderColor: "rgba(201,168,76,0.2)", backgroundColor: "rgba(201,168,76,0.05)" }}>
-                          <UserCog size={12} /> Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {filtered.length === 0 && !loading && (
-              <div className="py-16 text-center text-sm" style={{ color: MUTED }}>
-                {query ? "No staff match this search." : "No staff members yet. Add one to get started."}
+            {error && !drawerMode && (
+              <div className="flex items-center gap-2 rounded-xl border p-3 text-sm"
+                style={{ color: RED, backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}>
+                <AlertCircle size={14} /> {error}
               </div>
             )}
-          </div>
+
+            {/* Staff table */}
+            <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+              {loading ? (
+                <div className="flex items-center justify-center gap-3 py-16" style={{ color: MUTED }}>
+                  <Loader2 size={16} className="animate-spin" style={{ color: GOLD }} /> Loading staff…
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[540px] border-separate border-spacing-0">
+                    <thead>
+                      <tr style={{ backgroundColor: "#0B0B10" }}>
+                        {["Staff Member", "Role", "Status", "Last Sign In", ""].map(h => (
+                          <th key={h} className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
+                            style={{ color: DIM, borderColor: BORDER_SOFT }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(p => {
+                        const isSelf = p.id === user?.id;
+                        return (
+                          <tr key={p.id} onClick={() => openEdit(p)}
+                            className="cursor-pointer transition-colors"
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = "#161620"}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
+
+                            <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-extrabold flex-shrink-0"
+                                  style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.18)" }}>
+                                  {initials(p.full_name || p.email || "")}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold truncate" style={{ color: TEXT }}>{p.full_name || "—"}</p>
+                                  <p className="text-[11px] truncate" style={{ color: MUTED }}>{p.email}</p>
+                                  {isSelf && <p className="text-[10px] font-bold" style={{ color: TEAL }}>You</p>}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
+                              onClick={e => e.stopPropagation()}>
+                              <RoleSelect value={p.role} disabled={isSelf}
+                                onChange={r => void quickUpdate(p, { role: r })} />
+                            </td>
+
+                            <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
+                              onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center gap-2">
+                                <Toggle checked={p.is_active} disabled={isSelf}
+                                  onChange={v => void quickUpdate(p, { is_active: v })} />
+                                <span className="text-xs font-semibold" style={{ color: p.is_active ? TEAL : RED }}>
+                                  {p.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>
+                              {dateLabel(p.last_sign_in_at)}
+                            </td>
+
+                            <td className="border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }}>
+                              <button className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold"
+                                style={{ color: GOLD, borderColor: "rgba(201,168,76,0.2)", backgroundColor: "rgba(201,168,76,0.05)" }}>
+                                <UserCog size={11} /> Edit
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {filtered.length === 0 && (
+                    <div className="py-14 text-center text-sm" style={{ color: MUTED }}>
+                      {query ? "No staff match this search." : "No staff yet. Click Add Staff to get started."}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
-      {/* ── Drawer ── */}
+      {/* ══════════ DRAWER ══════════ */}
       {drawerMode && (
         <StaffDrawer
           mode={drawerMode} form={form} saving={saving} error={error}
