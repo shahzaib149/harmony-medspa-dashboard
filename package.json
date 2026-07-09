@@ -2,6 +2,7 @@
   "name": "harmony-medspa-dashboard",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@12.0.0",
   "scripts": {
     "dev": "next dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
