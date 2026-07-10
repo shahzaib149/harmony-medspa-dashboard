@@ -2,427 +2,543 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
-  Bot,
-  Building2,
-  CheckCircle2,
-  Database,
-  ExternalLink,
-  KeyRound,
-  Loader2,
-  Mail,
-  RefreshCw,
-  Save,
-  ShieldCheck,
-  SlidersHorizontal,
-  UserCog,
-  Users,
-  XCircle,
+  AlertCircle, ChevronDown, Loader2, Plus, RefreshCw,
+  Save, Search, ShieldAlert, UserCog, X, User,
 } from "lucide-react";
-import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import type { Profile, Role } from "@/lib/auth/permissions";
 
-type IntegrationStatus = {
-  id: string;
-  name: string;
-  status: "connected" | "partial" | "missing" | "error";
-  detail: string;
-  required: string[];
-  configured: string[];
-  missing: string[];
-  checkedAt: string;
-  actionHref?: string;
+const GOLD        = "#C9A84C";
+const PANEL       = "#0D0D12";
+const CARD        = "#111117";
+const TEXT        = "#F0ECE4";
+const MUTED       = "#7A7A8A";
+const DIM         = "#5A5A6A";
+const BORDER      = "rgba(201,168,76,0.12)";
+const BORDER_SOFT = "rgba(255,255,255,0.06)";
+const TEAL        = "#2DD4BF";
+const RED         = "#F87171";
+
+type DrawerMode = "create" | "edit";
+type StaffForm  = {
+  id?:             string;
+  full_name:       string;
+  email:           string;
+  role:            Role;
+  is_active:       boolean;
+  password:        string;
+  confirmPassword: string;
 };
 
-type StatusResponse = {
-  checkedAt: string;
-  connected: number;
-  total: number;
-  errors: number;
-  environment: string;
-  appUrl: string;
-  integrations: IntegrationStatus[];
+const emptyForm: StaffForm = {
+  full_name: "", email: "", role: "viewer",
+  is_active: true, password: "", confirmPassword: "",
 };
 
-type ClinicProfile = {
-  clinicName: string;
-  phone: string;
-  website: string;
-  bookingUrl: string;
-  timezone: string;
-  frontDeskEmail: string;
+const ROLE_COLOR: Record<Role, string> = {
+  admin:  GOLD,
+  editor: TEAL,
+  viewer: MUTED,
 };
 
-type AutomationKey = "speedToLead" | "pendingAds" | "aiSuggestions" | "reviewDrafts" | "leadWebhook";
-
-const GOLD = "#C9A84C";
-const CARD = "#111117";
-const CARD2 = "#0D0D12";
-const BORDER = "rgba(201,168,76,0.12)";
-const TEXT = "#F0ECE4";
-const MUTED = "#7A7A8A";
-const DIM = "#5A5A6A";
-const TEAL = "#2DD4BF";
-
-const PROFILE_KEY = "harmony_settings_profile_v1";
-const AUTOMATION_KEY = "harmony_settings_automations_v1";
-
-const defaultProfile: ClinicProfile = {
-  clinicName: "Harmony MedSpa",
-  phone: "(941) 306-3696",
-  website: "https://www.harmonymedspafl.com/",
-  bookingUrl: "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
-  timezone: "America/New_York",
-  frontDeskEmail: "frontdesk@harmonymedspa.com",
-};
-
-const defaultAutomations: Record<AutomationKey, boolean> = {
-  speedToLead: true,
-  pendingAds: true,
-  aiSuggestions: true,
-  reviewDrafts: false,
-  leadWebhook: true,
-};
-
-const automationLabels: Array<{ key: AutomationKey; label: string; detail: string }> = [
-  { key: "speedToLead", label: "Speed-to-lead follow up", detail: "Lead form to staff and patient response flow" },
-  { key: "pendingAds", label: "Pending ad approval", detail: "Show Make.com generated ads for approval" },
-  { key: "aiSuggestions", label: "AI ad suggestions", detail: "Generate ad copy from Google Ads and website data" },
-  { key: "reviewDrafts", label: "Review reply drafts", detail: "Draft responses for Google Business Profile reviews" },
-  { key: "leadWebhook", label: "Lead capture webhook", detail: "Send public lead form submissions to automation" },
-];
-
-const integrationIcons: Record<string, React.ElementType> = {
-  airtable: Database,
-  "google-ads": SlidersHorizontal,
-  "google-business": Building2,
-  anthropic: Bot,
-  supabase: ShieldCheck,
-  "lead-form": Mail,
-};
-
-function readStored<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : fallback;
-  } catch {
-    return fallback;
-  }
+function initials(name: string) {
+  return name.split(" ").filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase() || "?";
+}
+function dateLabel(v: string | null) {
+  if (!v) return "Never";
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? v : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function writeStored<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function statusColor(status: IntegrationStatus["status"]) {
-  if (status === "connected") return TEAL;
-  if (status === "partial") return GOLD;
-  if (status === "error") return "#F87171";
-  return DIM;
-}
-
-function StatusPill({ status }: { status: IntegrationStatus["status"] }) {
-  const color = statusColor(status);
-  const Icon = status === "connected" ? CheckCircle2 : status === "error" ? XCircle : AlertTriangle;
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-      style={{ color, backgroundColor: `${color}15` }}>
-      <Icon size={12} />
-      {status}
-    </span>
-  );
-}
-
-function Panel({ title, icon: Icon, children, action }: {
-  title: string;
-  icon: React.ElementType;
-  children: React.ReactNode;
-  action?: React.ReactNode;
+/* ── Role select (dropdown) ── */
+function RoleSelect({ value, disabled, onChange }: {
+  value: Role; disabled?: boolean; onChange: (r: Role) => void;
 }) {
   return (
-    <section className="rounded-2xl" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-      <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: `${GOLD}15`, color: GOLD }}>
-            <Icon size={18} />
-          </div>
-          <h2 className="text-sm font-bold" style={{ color: TEXT }}>{title}</h2>
-        </div>
-        {action}
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
-  );
-}
-
-function Toggle({ checked, disabled = false, onChange }: { checked: boolean; disabled?: boolean; onChange: (next: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className="relative h-6 w-11 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-      style={{ backgroundColor: checked ? GOLD : "#2A2A32" }}
-      aria-pressed={checked}
-    >
-      <span
-        className="absolute top-1 h-4 w-4 rounded-full bg-white transition-transform"
-        style={{ left: checked ? 23 : 4 }}
-      />
-    </button>
-  );
-}
-
-function Field({ label, value, onChange }: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: DIM }}>{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-        style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: TEXT }}
-      />
+    <label className="relative">
+      <select value={value} disabled={disabled}
+        onChange={e => onChange(e.target.value as Role)}
+        className="appearance-none rounded-full border pl-2.5 pr-6 py-1 text-[11px] font-bold capitalize disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ color: ROLE_COLOR[value], backgroundColor: `${ROLE_COLOR[value]}12`, borderColor: `${ROLE_COLOR[value]}30` }}>
+        <option value="admin">admin</option>
+        <option value="editor">editor</option>
+        <option value="viewer">viewer</option>
+      </select>
+      <ChevronDown size={10} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2"
+        style={{ color: ROLE_COLOR[value] }} />
     </label>
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+/* ── Active toggle ── */
+function Toggle({ checked, disabled, onChange }: {
+  checked: boolean; disabled?: boolean; onChange: (v: boolean) => void;
+}) {
   return (
-    <div className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: DIM }}>{label}</span>
-      <div
-        className="min-h-11 w-full rounded-xl px-3 py-2.5 text-sm"
-        style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}`, color: value ? TEXT : MUTED }}
-      >
-        {value || "-"}
-      </div>
+    <button type="button" disabled={disabled} onClick={() => onChange(!checked)}
+      className="relative h-5 w-10 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50"
+      style={{ backgroundColor: checked ? TEAL : "#2A2A32" }} aria-pressed={checked}>
+      <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+        style={{ left: checked ? 22 : 2 }} />
+    </button>
+  );
+}
+
+/* ── Drawer form field ── */
+function Field({ label, value, type = "text", disabled, onChange }: {
+  label: string; value: string; type?: string; disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>{label}</span>
+      <input type={type} value={value} disabled={disabled}
+        onChange={e => onChange(e.target.value)}
+        className="h-11 w-full rounded-xl border px-3 text-sm outline-none disabled:opacity-50"
+        style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
+    </label>
+  );
+}
+
+/* ══════════════════════ STAFF DRAWER ══════════════════════ */
+function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onSave }: {
+  mode: DrawerMode; form: StaffForm; saving: boolean; error: string | null;
+  isSelf: boolean; onChange: (p: Partial<StaffForm>) => void;
+  onClose: () => void; onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70]">
+      <button className="absolute inset-0 bg-black/55" onClick={onClose} aria-label="Close" />
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l"
+        style={{ backgroundColor: "#09090D", borderColor: BORDER, boxShadow: "-24px 0 80px rgba(0,0,0,0.5)" }}>
+
+        <div className="flex items-start justify-between gap-4 border-b p-5 flex-shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.1em] mb-1" style={{ color: GOLD }}>
+              {mode === "create" ? "Add Staff Member" : "Edit Staff Member"}
+            </p>
+            <h2 className="text-lg font-extrabold" style={{ color: TEXT }}>
+              {mode === "create" ? "Create dashboard access" : form.full_name || form.email}
+            </h2>
+          </div>
+          <button onClick={onClose} className="rounded-xl border p-2"
+            style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <Field label="Full Name" value={form.full_name} onChange={v => onChange({ full_name: v })} />
+          <Field label="Email" value={form.email} type="email" disabled={mode === "edit"} onChange={v => onChange({ email: v })} />
+
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Role</span>
+            <select value={form.role} disabled={isSelf}
+              onChange={e => onChange({ role: e.target.value as Role })}
+              className="h-11 w-full rounded-xl border px-3 text-sm outline-none disabled:opacity-50"
+              style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }}>
+              <option value="admin">Admin — full access</option>
+              <option value="editor">Editor — can update leads and content</option>
+              <option value="viewer">Viewer — read only</option>
+            </select>
+          </label>
+
+          {mode === "edit" && (
+            <div className="flex items-center justify-between rounded-xl border p-4"
+              style={{ backgroundColor: PANEL, borderColor: BORDER }}>
+              <div>
+                <p className="text-sm font-bold mb-0.5" style={{ color: TEXT }}>Active account</p>
+                <p className="text-xs" style={{ color: MUTED }}>Inactive staff cannot log in.</p>
+              </div>
+              <Toggle checked={form.is_active} disabled={isSelf} onChange={v => onChange({ is_active: v })} />
+            </div>
+          )}
+
+          <div className="rounded-xl border p-4" style={{ backgroundColor: PANEL, borderColor: BORDER }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.09em] mb-3" style={{ color: GOLD }}>
+              {mode === "create" ? "Set Password" : "Reset Password"}
+            </p>
+            <div className="space-y-3">
+              <Field label={mode === "create" ? "Password" : "New Password"} type="password"
+                value={form.password} onChange={v => onChange({ password: v })} />
+              <Field label="Confirm Password" type="password"
+                value={form.confirmPassword} onChange={v => onChange({ confirmPassword: v })} />
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-xl border p-3 text-sm"
+              style={{ color: RED, backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}>
+              <AlertCircle size={15} className="flex-shrink-0 mt-0.5" /> {error}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t p-5 flex-shrink-0" style={{ borderColor: BORDER }}>
+          <button onClick={onSave} disabled={saving}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold disabled:opacity-60"
+            style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+            {saving ? "Saving…" : mode === "create" ? "Add Staff Member" : "Save Changes"}
+          </button>
+        </div>
+      </aside>
     </div>
   );
 }
 
+/* ══════════════════════════ MAIN ══════════════════════════ */
 export default function SettingsClient() {
-  const { role } = useAuth();
-  const canEditSettings = role === "admin";
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<ClinicProfile>(defaultProfile);
-  const [automations, setAutomations] = useState<Record<AutomationKey, boolean>>(defaultAutomations);
-  const [saved, setSaved] = useState(false);
+  const { role, user, profile, isLoading } = useAuth();
 
-  const loadStatus = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/settings/status", { cache: "no-store" });
-      const data = await res.json() as StatusResponse & { error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? `Status check failed (${res.status})`);
-      setStatus(data);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /* Staff state (admin only) */
+  const [staff, setStaff]           = useState<Profile[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
+  const [form, setForm]             = useState<StaffForm>(emptyForm);
+  const [query, setQuery]           = useState("");
+
+  /* Profile edit state */
+  const [nameEdit, setNameEdit]     = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError]   = useState<string | null>(null);
+  const [nameSaved, setNameSaved]   = useState(false);
 
   useEffect(() => {
-    setProfile(readStored(PROFILE_KEY, defaultProfile));
-    setAutomations(readStored(AUTOMATION_KEY, defaultAutomations));
-    queueMicrotask(() => { void loadStatus(); });
-  }, [loadStatus]);
+    setNameEdit(profile?.full_name ?? "");
+  }, [profile?.full_name]);
 
-  const health = useMemo(() => {
-    if (!status) return 0;
-    return Math.round((status.connected / status.total) * 100);
-  }, [status]);
+  const load = useCallback(async () => {
+    if (role !== "admin") { setLoading(false); return; }
+    setLoading(true); setError(null);
+    try {
+      const res  = await fetch("/api/auth/users", { cache: "no-store" });
+      const data = await res.json() as { users?: Profile[]; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Could not load staff");
+      setStaff(data.users ?? []);
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
+  }, [role]);
 
-  function saveAll() {
-    if (!canEditSettings) return;
-    writeStored(PROFILE_KEY, profile);
-    writeStored(AUTOMATION_KEY, automations);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+  useEffect(() => { void load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return staff;
+    return staff.filter(s => [s.full_name, s.email, s.role].some(v => (v ?? "").toLowerCase().includes(q)));
+  }, [query, staff]);
+
+  function openCreate() { setForm(emptyForm); setDrawerMode("create"); setError(null); }
+  function openEdit(p: Profile) {
+    setForm({ id: p.id, full_name: p.full_name ?? "", email: p.email ?? "", role: p.role,
+              is_active: p.is_active, password: "", confirmPassword: "" });
+    setDrawerMode("edit"); setError(null);
   }
 
+  async function saveStaff() {
+    setSaving(true); setError(null);
+    try {
+      if (drawerMode === "create" && form.password.length < 8) throw new Error("Password must be at least 8 characters");
+      if (form.password || form.confirmPassword) {
+        if (form.password.length < 8)              throw new Error("Password must be at least 8 characters");
+        if (form.password !== form.confirmPassword) throw new Error("Passwords do not match");
+      }
+      const payload = drawerMode === "create"
+        ? { email: form.email, password: form.password, full_name: form.full_name, role: form.role }
+        : { id: form.id, full_name: form.full_name, role: form.role, is_active: form.is_active, password: form.password || undefined };
+
+      const res  = await fetch("/api/auth/users", {
+        method: drawerMode === "create" ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json() as { user?: Profile; error?: string };
+      if (!res.ok || data.error || !data.user) throw new Error(data.error ?? "Could not save");
+      setStaff(cur => drawerMode === "create"
+        ? [data.user!, ...cur]
+        : cur.map(s => s.id === data.user!.id ? data.user! : s));
+      setDrawerMode(null);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setSaving(false); }
+  }
+
+  async function quickUpdate(p: Profile, patch: Partial<Pick<Profile, "role" | "is_active">>) {
+    if (p.id === user?.id && (patch.role || patch.is_active === false)) return;
+    const res  = await fetch("/api/auth/users", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: p.id, ...patch }),
+    });
+    const data = await res.json() as { user?: Profile; error?: string };
+    if (!res.ok || !data.user) { setError(data.error ?? "Could not update"); return; }
+    setStaff(cur => cur.map(s => s.id === data.user!.id ? data.user! : s));
+  }
+
+  async function saveName() {
+    if (!nameEdit.trim() || nameEdit.trim() === profile?.full_name) return;
+    setNameSaving(true); setNameError(null); setNameSaved(false);
+    try {
+      const res  = await fetch("/api/auth/users", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: user?.id, full_name: nameEdit.trim() }),
+      });
+      const data = await res.json() as { user?: Profile; error?: string };
+      if (!res.ok || !data.user) throw new Error(data.error ?? "Could not save");
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 2500);
+    } catch (e) { setNameError(e instanceof Error ? e.message : String(e)); }
+    finally { setNameSaving(false); }
+  }
+
+  if (isLoading) return (
+    <div className="flex items-center gap-3 rounded-2xl border p-8" style={{ backgroundColor: CARD, borderColor: BORDER, color: MUTED }}>
+      <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} /> Loading…
+    </div>
+  );
+
+  const myRole  = profile?.role ?? role ?? "viewer";
+  const myName  = profile?.full_name ?? "";
+  const myEmail = user?.email ?? "";
+  const isAdmin = myRole === "admin";
+
+  const active = staff.filter(s => s.is_active).length;
+  const admins = staff.filter(s => s.role === "admin").length;
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className="rounded-2xl p-5 xl:col-span-2" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: GOLD }}>System Health</p>
-              <h1 className="mt-1 text-2xl font-bold" style={{ color: TEXT }}>
-                {status ? `${status.connected}/${status.total} connected` : "Checking connections"}
-              </h1>
-              <p className="mt-1 text-sm" style={{ color: MUTED }}>
-                {status ? `Environment: ${status.environment}` : "Running server-side checks"}
-              </p>
+    <div className="flex gap-6 items-start flex-col lg:flex-row">
+
+      {/* ══════════ LEFT — My Profile ══════════ */}
+      <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
+
+        {/* Avatar card */}
+        <div className="rounded-2xl border p-6 text-center" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl text-2xl font-extrabold"
+            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1.5px solid rgba(201,168,76,0.22)" }}>
+            {initials(myName || myEmail)}
+          </div>
+          <p className="text-base font-extrabold mb-1" style={{ color: TEXT }}>{myName || "—"}</p>
+          <p className="text-[11px] mb-3 break-all" style={{ color: MUTED }}>{myEmail}</p>
+          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize"
+            style={{ color: ROLE_COLOR[myRole as Role] ?? MUTED,
+                     backgroundColor: `${ROLE_COLOR[myRole as Role] ?? MUTED}14`,
+                     border: `1px solid ${ROLE_COLOR[myRole as Role] ?? MUTED}30` }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ROLE_COLOR[myRole as Role] ?? MUTED }} />
+            {myRole}
+          </span>
+        </div>
+
+        {/* Edit profile */}
+        <div className="rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <div className="flex items-center gap-2 mb-4">
+            <User size={13} style={{ color: GOLD }} />
+            <p className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: GOLD }}>My Profile</p>
+          </div>
+
+          <div className="space-y-3 mb-4">
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Display Name</span>
+              <input value={nameEdit} onChange={e => setNameEdit(e.target.value)}
+                className="h-10 w-full rounded-xl border px-3 text-sm outline-none"
+                style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Email</span>
+              <input value={myEmail} disabled
+                className="h-10 w-full rounded-xl border px-3 text-sm opacity-50 cursor-not-allowed"
+                style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
+            </label>
+          </div>
+
+          {nameError && (
+            <p className="mb-3 text-xs flex items-center gap-1" style={{ color: RED }}>
+              <AlertCircle size={12} /> {nameError}
+            </p>
+          )}
+
+          <button onClick={saveName} disabled={nameSaving || nameEdit.trim() === (profile?.full_name ?? "")}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold disabled:opacity-50"
+            style={{ backgroundColor: nameSaved ? TEAL : GOLD, color: "#0A0A0D" }}>
+            {nameSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {nameSaved ? "Saved!" : "Save Changes"}
+          </button>
+        </div>
+
+        {/* Account info */}
+        <div className="rounded-2xl border p-5 space-y-3" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+          <p className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Account Info</p>
+          {[
+            { label: "Last sign in",     value: dateLabel(profile?.last_sign_in_at ?? null) },
+            { label: "Account created",  value: dateLabel(profile?.created_at ?? null) },
+            { label: "Access level",     value: myRole.charAt(0).toUpperCase() + myRole.slice(1) },
+          ].map(row => (
+            <div key={row.label} className="flex items-center justify-between gap-4">
+              <span className="text-xs" style={{ color: MUTED }}>{row.label}</span>
+              <span className="text-xs font-semibold text-right" style={{ color: TEXT }}>{row.value}</span>
             </div>
-            <button
-              onClick={loadStatus}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold"
-              style={{ border: `1px solid ${BORDER}`, color: loading ? DIM : GOLD }}
-            >
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Refresh
-            </button>
-          </div>
-          <div className="mt-5 h-2 overflow-hidden rounded-full" style={{ backgroundColor: "#25252D" }}>
-            <div className="h-full rounded-full transition-all" style={{ width: `${health}%`, backgroundColor: health >= 70 ? TEAL : GOLD }} />
-          </div>
-          {error && <p className="mt-3 text-sm" style={{ color: "#F87171" }}>{error}</p>}
-        </div>
-
-        <div className="rounded-2xl p-5" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: DIM }}>App URL</p>
-          <p className="mt-2 truncate text-sm font-semibold" style={{ color: TEXT }}>{status?.appUrl ?? "http://localhost:3000"}</p>
-          <p className="mt-1 text-xs" style={{ color: MUTED }}>{status?.checkedAt ? new Date(status.checkedAt).toLocaleString() : "Waiting for check"}</p>
-        </div>
-
-        <div className="rounded-2xl p-5" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-          <p className="text-xs font-bold uppercase tracking-widest" style={{ color: DIM }}>Security</p>
-          <p className="mt-2 text-sm font-semibold" style={{ color: TEXT }}>{status?.errors ? `${status.errors} issue${status.errors === 1 ? "" : "s"}` : "No API errors"}</p>
-          <p className="mt-1 text-xs" style={{ color: MUTED }}>Debug routes should stay private in production.</p>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <div className="space-y-6 xl:col-span-3">
-          <Panel title="Integrations" icon={KeyRound}>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {(status?.integrations ?? []).map((item) => {
-                const Icon = integrationIcons[item.id] ?? KeyRound;
-                const color = statusColor(item.status);
-                return (
-                  <div key={item.id} className="rounded-2xl p-4" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${color}14`, color }}>
-                          <Icon size={18} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold" style={{ color: TEXT }}>{item.name}</p>
-                          <p className="mt-0.5 truncate text-xs" style={{ color: MUTED }}>{item.detail}</p>
-                        </div>
-                      </div>
-                      <StatusPill status={item.status} />
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {item.configured.slice(0, 3).map((key) => (
-                        <span key={key} className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: TEAL, backgroundColor: `${TEAL}12` }}>{key}</span>
-                      ))}
-                      {item.missing.slice(0, 3).map((key) => (
-                        <span key={key} className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.1)" }}>{key}</span>
-                      ))}
-                    </div>
-                    {item.actionHref && (
-                      <a href={item.actionHref} className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold" style={{ color: GOLD }}>
-                        Connect <ExternalLink size={12} />
-                      </a>
-                    )}
-                  </div>
-                );
-              })}
-              {!status && (
-                <div className="col-span-full flex items-center gap-2 py-10 text-sm" style={{ color: MUTED }}>
-                  <Loader2 size={16} className="animate-spin" /> Loading integration status
-                </div>
-              )}
-            </div>
-          </Panel>
+      {/* ══════════ RIGHT — Staff Management ══════════ */}
+      <div className="flex-1 min-w-0 space-y-4">
 
-          <Panel title="Clinic Profile" icon={Building2}>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {canEditSettings ? (
-                <>
-                  <Field label="Clinic Name" value={profile.clinicName} onChange={(value) => setProfile((prev) => ({ ...prev, clinicName: value }))} />
-                  <Field label="Phone" value={profile.phone} onChange={(value) => setProfile((prev) => ({ ...prev, phone: value }))} />
-                  <Field label="Website" value={profile.website} onChange={(value) => setProfile((prev) => ({ ...prev, website: value }))} />
-                  <Field label="Booking URL" value={profile.bookingUrl} onChange={(value) => setProfile((prev) => ({ ...prev, bookingUrl: value }))} />
-                  <Field label="Timezone" value={profile.timezone} onChange={(value) => setProfile((prev) => ({ ...prev, timezone: value }))} />
-                  <Field label="Front Desk Email" value={profile.frontDeskEmail} onChange={(value) => setProfile((prev) => ({ ...prev, frontDeskEmail: value }))} />
-                </>
-              ) : (
-                <>
-                  <ReadOnlyField label="Clinic Name" value={profile.clinicName} />
-                  <ReadOnlyField label="Phone" value={profile.phone} />
-                  <ReadOnlyField label="Website" value={profile.website} />
-                  <ReadOnlyField label="Booking URL" value={profile.bookingUrl} />
-                  <ReadOnlyField label="Timezone" value={profile.timezone} />
-                  <ReadOnlyField label="Front Desk Email" value={profile.frontDeskEmail} />
-                </>
-              )}
+        {/* Section header */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.09em] mb-0.5" style={{ color: GOLD }}>Staff Management</p>
+            <p className="text-[11px]" style={{ color: MUTED }}>Control who can access this dashboard</p>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <button onClick={load} disabled={loading}
+                className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold"
+                style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}>
+                {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                Refresh
+              </button>
+              <button onClick={openCreate}
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold"
+                style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
+                <Plus size={14} /> Add Staff
+              </button>
             </div>
-          </Panel>
+          )}
         </div>
 
-        <div className="space-y-6 xl:col-span-2">
-          {role === "admin" && (
-            <Panel title="Account Access" icon={Users}>
-              <div className="rounded-2xl p-4" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${GOLD}12`, color: GOLD }}>
-                    <UserCog size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold" style={{ color: TEXT }}>Dashboard users</p>
-                    <p className="mt-1 text-xs leading-5" style={{ color: MUTED }}>
-                      Add users with an email and password, set Admin, Editor, or Viewer access, deactivate accounts, and reset passwords.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  href="/settings/users"
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
-                  style={{ backgroundColor: GOLD, color: "#0A0A0D" }}
-                >
-                  <Users size={15} />
-                  Manage users
-                </Link>
+        {!isAdmin ? (
+          <div className="flex items-start gap-3 rounded-2xl border p-6"
+            style={{ backgroundColor: CARD, borderColor: "rgba(248,113,113,0.2)" }}>
+            <ShieldAlert size={18} style={{ color: RED }} />
+            <div>
+              <p className="text-sm font-bold mb-1" style={{ color: RED }}>Admin access required</p>
+              <p className="text-sm" style={{ color: MUTED }}>Only admins can view and manage staff accounts.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Search + summary pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: MUTED }} />
+                <input value={query} onChange={e => setQuery(e.target.value)}
+                  placeholder="Search by name, email or role…"
+                  className="h-9 w-full rounded-xl border pl-8 pr-3 text-xs outline-none"
+                  style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
               </div>
-            </Panel>
-          )}
-
-          <Panel title="Automations" icon={SlidersHorizontal}>
-            <div className="space-y-3">
-              {automationLabels.map((item) => (
-                <div key={item.key} className="flex items-center justify-between gap-4 rounded-xl p-3" style={{ backgroundColor: CARD2, border: `1px solid ${BORDER}` }}>
-                  <div>
-                    <p className="text-sm font-bold" style={{ color: TEXT }}>{item.label}</p>
-                    <p className="mt-0.5 text-xs" style={{ color: MUTED }}>{item.detail}</p>
-                  </div>
-                  <Toggle
-                    checked={automations[item.key]}
-                    disabled={!canEditSettings}
-                    onChange={(next) => {
-                      if (!canEditSettings) return;
-                      setAutomations((prev) => ({ ...prev, [item.key]: next }));
-                    }}
-                  />
-                </div>
+              {[
+                { label: `${staff.length} total`, color: MUTED },
+                { label: `${active} active`,      color: TEAL  },
+                { label: `${admins} admin${admins !== 1 ? "s" : ""}`, color: GOLD },
+              ].map(p => (
+                <span key={p.label} className="rounded-full border px-2.5 py-1 text-[10px] font-semibold"
+                  style={{ color: p.color, backgroundColor: `${p.color}10`, borderColor: `${p.color}25` }}>
+                  {p.label}
+                </span>
               ))}
             </div>
-          </Panel>
 
-          {canEditSettings && (
-            <button
-              onClick={saveAll}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold"
-              style={{ backgroundColor: saved ? TEAL : GOLD, color: "#0A0A0D" }}
-            >
-              {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
-              {saved ? "Saved" : "Save settings"}
-            </button>
-          )}
-        </div>
+            {error && !drawerMode && (
+              <div className="flex items-center gap-2 rounded-xl border p-3 text-sm"
+                style={{ color: RED, backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}>
+                <AlertCircle size={14} /> {error}
+              </div>
+            )}
+
+            {/* Staff table */}
+            <div className="rounded-2xl border overflow-hidden" style={{ backgroundColor: CARD, borderColor: BORDER }}>
+              {loading ? (
+                <div className="flex items-center justify-center gap-3 py-16" style={{ color: MUTED }}>
+                  <Loader2 size={16} className="animate-spin" style={{ color: GOLD }} /> Loading staff…
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[540px] border-separate border-spacing-0">
+                    <thead>
+                      <tr style={{ backgroundColor: "#0B0B10" }}>
+                        {["Staff Member", "Role", "Status", "Last Sign In", ""].map(h => (
+                          <th key={h} className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
+                            style={{ color: DIM, borderColor: BORDER_SOFT }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(p => {
+                        const isSelf = p.id === user?.id;
+                        return (
+                          <tr key={p.id} onClick={() => openEdit(p)}
+                            className="cursor-pointer transition-colors"
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = "#161620"}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
+
+                            <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-extrabold flex-shrink-0"
+                                  style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.18)" }}>
+                                  {initials(p.full_name || p.email || "")}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold truncate" style={{ color: TEXT }}>{p.full_name || "—"}</p>
+                                  <p className="text-[11px] truncate" style={{ color: MUTED }}>{p.email}</p>
+                                  {isSelf && <p className="text-[10px] font-bold" style={{ color: TEAL }}>You</p>}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
+                              onClick={e => e.stopPropagation()}>
+                              <RoleSelect value={p.role} disabled={isSelf}
+                                onChange={r => void quickUpdate(p, { role: r })} />
+                            </td>
+
+                            <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
+                              onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center gap-2">
+                                <Toggle checked={p.is_active} disabled={isSelf}
+                                  onChange={v => void quickUpdate(p, { is_active: v })} />
+                                <span className="text-xs font-semibold" style={{ color: p.is_active ? TEAL : RED }}>
+                                  {p.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>
+                              {dateLabel(p.last_sign_in_at)}
+                            </td>
+
+                            <td className="border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }}>
+                              <button className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold"
+                                style={{ color: GOLD, borderColor: "rgba(201,168,76,0.2)", backgroundColor: "rgba(201,168,76,0.05)" }}>
+                                <UserCog size={11} /> Edit
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {filtered.length === 0 && (
+                    <div className="py-14 text-center text-sm" style={{ color: MUTED }}>
+                      {query ? "No staff match this search." : "No staff yet. Click Add Staff to get started."}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
+
+      {/* ══════════ DRAWER ══════════ */}
+      {drawerMode && (
+        <StaffDrawer
+          mode={drawerMode} form={form} saving={saving} error={error}
+          isSelf={form.id === user?.id}
+          onChange={p => setForm(c => ({ ...c, ...p }))}
+          onClose={() => setDrawerMode(null)}
+          onSave={saveStaff}
+        />
+      )}
     </div>
   );
 }

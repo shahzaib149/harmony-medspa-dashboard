@@ -5,7 +5,7 @@ export default function SettingsPage() {
   return (
     <DashboardLayout
       title="Settings"
-      subtitle="Connections, access, clinic profile, and automation controls"
+      subtitle="Manage staff accounts and dashboard access"
     >
       <SettingsClient />
     </DashboardLayout>
