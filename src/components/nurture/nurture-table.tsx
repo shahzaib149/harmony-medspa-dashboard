@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, ChevronDown, Clock3, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 import { NURTURE_STEPS, type NurtureEnrollment, type NurtureFunnelStep, type NurtureStats as Stats } from "@/lib/types/nurture";
 import NurtureStats from "./nurture-stats";
 import NurtureFunnel from "./nurture-funnel";
@@ -38,6 +39,37 @@ function LoadingSkeleton() {
   return <div className="overflow-hidden rounded-2xl border" style={{ backgroundColor: CARD, borderColor: BORDER }}><div className="space-y-px">{Array.from({ length: 7 }).map((_, row) => <div key={row} className="grid grid-cols-5 gap-4 border-b px-4 py-4" style={{ borderColor: SOFT }}>{Array.from({ length: 5 }).map((__, col) => <div key={col} className="h-4 animate-pulse rounded bg-white/[.055]" style={{ width: col === 0 ? "80%" : "65%" }} />)}</div>)}</div></div>;
 }
 
+function NurtureRefreshBar({ latest, loading, onRefresh }: { latest: NurtureEnrollment | null; loading: boolean; onRefresh: () => void }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border px-4 py-3" style={{ background: `linear-gradient(135deg, rgba(201,168,76,.12), rgba(45,212,191,.045) 45%, rgba(255,255,255,.018)), ${PANEL}`, borderColor: "rgba(201,168,76,.22)", boxShadow: "0 18px 60px rgba(0,0,0,.22)" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="relative flex h-3 w-3 flex-shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40" style={{ backgroundColor: "#2DD4BF" }} />
+            <span className="relative inline-flex h-3 w-3 rounded-full" style={{ backgroundColor: "#2DD4BF" }} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[.1em]" style={{ color: GOLD }}>Last nurture update</p>
+            <p className="truncate text-sm font-bold" style={{ color: TEXT }}>
+              {latest ? `${latest.leadName} - ${latest.currentStep || latest.status}` : "Waiting for the first nurture sequence"}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ color: MUTED, backgroundColor: "rgba(0,0,0,.18)" }}>
+            <Clock3 size={13} />
+            {latest?.nextSendAt ? `Next ${formatDate(latest.nextSendAt)}` : "No activity"}
+          </div>
+          <button type="button" onClick={onRefresh} disabled={loading} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35" style={{ backgroundColor: "rgba(201,168,76,.06)", borderColor: BORDER, color: GOLD }}>
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function NurtureTable() {
   const [enrollments, setEnrollments] = useState<NurtureEnrollment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +92,12 @@ export default function NurtureTable() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+  }, [load]);
 
   const visible = useMemo(() => enrollments.filter((item) => {
     const haystack = `${item.leadName} ${item.leadPhone} ${item.leadEmail}`.toLowerCase();
@@ -84,7 +122,10 @@ export default function NurtureTable() {
     return { step: name.replace("Day ", "D"), entered: reached.length, booked: reached.filter((item) => item.currentStep === name && item.stopReason === "Booked").length, stopped: reached.filter((item) => item.currentStep === name && item.status === "Stopped" && item.stopReason !== "Booked").length, stillActive: reached.filter((item) => item.status === "Active").length };
   }), [enrollments]);
 
+  const latestEnrollment = enrollments[0] ?? null;
+
   return <div className="space-y-5">
+    <NurtureRefreshBar latest={latestEnrollment} loading={loading} onRefresh={() => void load()} />
     <NurtureStats stats={stats} />
     <NurtureFunnel data={funnel} />
     <section className="rounded-2xl border p-3" style={{ background: `linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.01)),${PANEL}`, borderColor: BORDER }}>

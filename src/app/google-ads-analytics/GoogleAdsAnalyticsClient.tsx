@@ -9,6 +9,7 @@ import CreativesTab from "./components/CreativesTab";
 import KeywordsTab from "./components/KeywordsTab";
 import AISuggestionsTab from "./components/AISuggestionsTab";
 import PendingAdsPanel from "@/app/dashboard/PendingAdsPanel";
+import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 
 export type Campaign = {
   id: string; accountName: string; campaignId: string; campaignName: string;
@@ -117,6 +118,12 @@ function AnalyticsInner() {
   }, [days]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  useEffect(() => {
+    const refresh = () => void fetchAll();
+    window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+  }, [fetchAll]);
 
   const setTab = (t: TabId) => {
     const p = new URLSearchParams(searchParams.toString());

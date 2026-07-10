@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { Lead } from "@/app/api/airtable/leads/route";
 import { useAuth } from "@/contexts/AuthContext";
+import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 import { createClient } from "@/lib/supabase/client";
 
 const GOLD = "#C9A84C";
@@ -504,6 +505,12 @@ export default function LeadsClient() {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
+  }, [load]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
   }, [load]);
 
   const duplicateKeys = useMemo(() => {

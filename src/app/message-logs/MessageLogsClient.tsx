@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, CalendarDays, ChevronDown, Clock3, Copy,
+  AlertCircle, ChevronDown, Clock3, Copy,
   ExternalLink, Mail, MessageSquare, RefreshCw, Search, X,
 } from "lucide-react";
+import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const GOLD        = "#C9A84C";
@@ -350,6 +351,12 @@ export default function MessageLogsClient() {
   }, [channelFilter, dateRange, search, statusFilter]);
 
   useEffect(() => { const t = setTimeout(() => void load(), 200); return () => clearTimeout(t); }, [load]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+  }, [load]);
 
   const stats = useMemo(() => {
     const sent    = logs.filter(l => l.deliveryStatus === "Sent").length;

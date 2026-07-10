@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { GitBranch, LayoutDashboard, LogOut, MessageSquare, Settings, TrendingUp, UserCircle, Users, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRole } from "@/lib/auth/permissions";
+import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 
 const navItems = [
   { href: "/dashboard",             label: "Overview",   icon: LayoutDashboard },
@@ -23,8 +24,18 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onClose = () => {} }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { profile, role, signOut } = useAuth();
   const displayName = profile?.full_name || profile?.email || "Signed in";
+
+  function handleNavigation(href: string) {
+    onClose();
+    const isCurrentPage = pathname === href || pathname.startsWith(href + "/");
+    if (isCurrentPage) {
+      window.dispatchEvent(new CustomEvent(DASHBOARD_REFRESH_EVENT));
+      router.refresh();
+    }
+  }
 
   return (
     <aside
@@ -41,7 +52,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
     >
       {/* Brand */}
       <div className="px-6 py-6 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}>
-        <Link href="/dashboard" className="block" onClick={onClose}>
+        <Link href="/dashboard" className="block" prefetch={false} onClick={() => handleNavigation("/dashboard")}>
           <p style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, fontStyle: "italic", color: "#C9A84C", lineHeight: 1, letterSpacing: "0.5px" }}>
             Harmony
           </p>
@@ -71,7 +82,8 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
             <Link
               key={href}
               href={href}
-              onClick={onClose}
+              prefetch={false}
+              onClick={() => handleNavigation(href)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
               style={{
                 backgroundColor: active ? "rgba(201,168,76,0.1)" : "transparent",
