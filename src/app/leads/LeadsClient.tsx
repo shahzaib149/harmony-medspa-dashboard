@@ -204,7 +204,7 @@ function StatCard({ label, value, meta, color = GOLD }: { label: string; value: 
   );
 }
 
-function LeadTicker({ lead }: { lead: Lead | null }) {
+function LeadTicker({ lead, loading, onRefresh }: { lead: Lead | null; loading: boolean; onRefresh: () => void }) {
   return (
     <div
       className="overflow-hidden rounded-2xl border px-4 py-3"
@@ -229,9 +229,21 @@ function LeadTicker({ lead }: { lead: Lead | null }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ color: MUTED, backgroundColor: "rgba(0,0,0,0.18)" }}>
-          <Clock3 size={13} />
-          {lead ? timeAgo(lead.createdAt) : "No activity"}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ color: MUTED, backgroundColor: "rgba(0,0,0,0.18)" }}>
+            <Clock3 size={13} />
+            {lead ? timeAgo(lead.createdAt) : "No activity"}
+          </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
+            style={{ backgroundColor: "rgba(201,168,76,0.06)", borderColor: BORDER, color: GOLD }}
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
         </div>
       </div>
     </div>
@@ -587,7 +599,7 @@ export default function LeadsClient() {
 
   return (
     <div className="space-y-5">
-      <LeadTicker lead={latestLead} />
+      <LeadTicker lead={latestLead} loading={loading} onRefresh={() => void load()} />
 
       {deleteError && (
         <div className="flex items-start justify-between gap-3 rounded-2xl border p-4" style={{ borderColor: "rgba(248,113,113,0.25)", backgroundColor: "rgba(248,113,113,0.08)" }}>

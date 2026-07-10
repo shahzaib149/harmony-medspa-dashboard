@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, ChevronDown, Loader2, Plus, RefreshCw,
-  Save, Search, ShieldAlert, UserCog, X, User,
+  Save, Search, ShieldAlert, Trash2, UserCog, X, User,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Profile, Role } from "@/lib/auth/permissions";
@@ -133,10 +133,11 @@ function Field({ label, value, type = "text", disabled, onChange }: {
 }
 
 /* ══════════════════════ STAFF DRAWER ══════════════════════ */
-function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onSave }: {
+function StaffDrawer({ mode, form, saving, deleting, error, isSelf, onChange, onClose, onSave, onDelete }: {
   mode: DrawerMode; form: StaffForm; saving: boolean; error: string | null;
+  deleting: boolean;
   isSelf: boolean; onChange: (p: Partial<StaffForm>) => void;
-  onClose: () => void; onSave: () => void;
+  onClose: () => void; onSave: () => void; onDelete: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-[70]">
@@ -204,10 +205,23 @@ function StaffDrawer({ mode, form, saving, error, isSelf, onChange, onClose, onS
               <AlertCircle size={15} className="flex-shrink-0 mt-0.5" /> {error}
             </div>
           )}
+
+          {mode === "edit" && !isSelf && (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting || saving}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-bold outline-none transition hover:brightness-110 active:translate-y-px disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-red-300/30"
+              style={{ color: RED, backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.24)" }}
+            >
+              {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+              {deleting ? "Deleting..." : "Delete User"}
+            </button>
+          )}
         </div>
 
         <div className="border-t p-5 flex-shrink-0" style={{ borderColor: BORDER }}>
-          <button onClick={onSave} disabled={saving}
+          <button onClick={onSave} disabled={saving || deleting}
             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold disabled:opacity-60"
             style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
@@ -227,6 +241,7 @@ export default function SettingsClient() {
   const [staff, setStaff]           = useState<Profile[]>([]);
   const [loading, setLoading]       = useState(true);
   const [saving, setSaving]         = useState(false);
+  const [deleting, setDeleting]     = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode | null>(null);
   const [form, setForm]             = useState<StaffForm>(emptyForm);
@@ -294,6 +309,26 @@ export default function SettingsClient() {
       setDrawerMode(null);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setSaving(false); }
+  }
+
+  async function deleteStaffMember(id?: string) {
+    if (!id || id === user?.id) return;
+    setDeleting(true); setError(null);
+    try {
+      const res = await fetch("/api/auth/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Could not delete user");
+      setStaff(cur => cur.filter(s => s.id !== id));
+      setDrawerMode(cur => form.id === id ? null : cur);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function quickUpdate(p: Profile, patch: Partial<Pick<Profile, "role" | "is_active">>) {
@@ -542,11 +577,29 @@ export default function SettingsClient() {
                               {dateLabel(p.last_sign_in_at)}
                             </td>
 
-                            <td className="border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }}>
-                              <button className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold"
-                                style={{ color: GOLD, borderColor: "rgba(201,168,76,0.2)", backgroundColor: "rgba(201,168,76,0.05)" }}>
-                                <UserCog size={11} /> Edit
-                              </button>
+                            <td className="border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }}
+                              onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-2">
+                                {!isSelf && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteStaffMember(p.id)}
+                                    disabled={deleting}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-red-300/30"
+                                    style={{ color: RED, borderColor: "rgba(248,113,113,0.22)", backgroundColor: "rgba(248,113,113,0.07)" }}
+                                  >
+                                    <Trash2 size={11} /> Delete
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(p)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
+                                  style={{ color: GOLD, borderColor: "rgba(201,168,76,0.2)", backgroundColor: "rgba(201,168,76,0.05)" }}
+                                >
+                                  <UserCog size={11} /> Edit
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -568,11 +621,12 @@ export default function SettingsClient() {
       {/* ══════════ DRAWER ══════════ */}
       {drawerMode && (
         <StaffDrawer
-          mode={drawerMode} form={form} saving={saving} error={error}
+          mode={drawerMode} form={form} saving={saving} deleting={deleting} error={error}
           isSelf={form.id === user?.id}
           onChange={p => setForm(c => ({ ...c, ...p }))}
           onClose={() => setDrawerMode(null)}
           onSave={saveStaff}
+          onDelete={() => void deleteStaffMember(form.id)}
         />
       )}
       </div>

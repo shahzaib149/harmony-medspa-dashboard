@@ -146,20 +146,26 @@ export async function DELETE(request: Request) {
     const { user: actor } = await requireRole(request, "admin");
     const { id } = await request.json() as { id?: string };
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
-    if (id === actor.id) return Response.json({ error: "You cannot deactivate yourself" }, { status: 400 });
+    if (id === actor.id) return Response.json({ error: "You cannot delete yourself" }, { status: 400 });
 
     const service = createServiceClient();
-    const { data: profile, error } = await service
+    const { data: profile, error: profileError } = await service
       .from("profiles")
-      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .select("id,email,full_name,role")
       .eq("id", id)
-      .select("id,email,full_name,role,is_active,last_sign_in_at,created_at,updated_at")
-      .single<Profile>();
+      .maybeSingle<Pick<Profile, "id" | "email" | "full_name" | "role">>();
 
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (profileError) return Response.json({ error: profileError.message }, { status: 500 });
 
-    await writeAudit(actor.id, "user.deactivated", id);
-    return Response.json({ user: profile });
+    await writeAudit(actor.id, "user.deleted", id, {
+      email: profile?.email ?? null,
+      role: profile?.role ?? null,
+    });
+
+    const { error: deleteError } = await service.auth.admin.deleteUser(id);
+    if (deleteError) return Response.json({ error: deleteError.message }, { status: 500 });
+
+    return Response.json({ deleted: true, id });
   } catch (error) {
     return authErrorResponse(error);
   }
