@@ -42,12 +42,44 @@ const ROLE_COLOR: Record<Role, string> = {
 };
 
 function initials(name: string) {
-  return name.split(" ").filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase() || "?";
+  return name.split(" ").filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase();
 }
 function dateLabel(v: string | null) {
   if (!v) return "Never";
   const d = new Date(v);
   return isNaN(d.getTime()) ? v : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function roleLabel(role: string) {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function RoleBadge({ role }: { role: Role }) {
+  const color = ROLE_COLOR[role] ?? MUTED;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize"
+      style={{ color, backgroundColor: `${color}12`, border: `1px solid ${color}28` }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+      {role}
+    </span>
+  );
+}
+
+function SettingsCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <section
+      className={`rounded-2xl border ${className}`}
+      style={{
+        background: `linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), ${CARD}`,
+        borderColor: BORDER,
+        boxShadow: "0 18px 50px rgba(0,0,0,0.18)",
+      }}
+    >
+      {children}
+    </section>
+  );
 }
 
 /* ── Role select (dropdown) ── */
@@ -304,48 +336,46 @@ export default function SettingsClient() {
 
   const active = staff.filter(s => s.is_active).length;
   const admins = staff.filter(s => s.role === "admin").length;
+  const avatarInitials = initials(myName || myEmail);
 
   return (
-    <div className="flex gap-6 items-start flex-col lg:flex-row">
+    <div className="mx-auto w-full max-w-[1220px] px-0 sm:px-1 lg:px-0">
+      <div className="grid items-start gap-5 md:gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
 
       {/* ══════════ LEFT — My Profile ══════════ */}
-      <div className="w-full lg:w-72 flex-shrink-0 space-y-4">
+      <div className="w-full space-y-4">
 
         {/* Avatar card */}
-        <div className="rounded-2xl border p-6 text-center" style={{ backgroundColor: CARD, borderColor: BORDER }}>
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl text-2xl font-extrabold"
-            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1.5px solid rgba(201,168,76,0.22)" }}>
-            {initials(myName || myEmail)}
+        <SettingsCard className="px-6 py-5 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl text-xl font-extrabold shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+            style={{ backgroundColor: "rgba(201,168,76,0.10)", color: GOLD, border: "1px solid rgba(201,168,76,0.24)" }}>
+            {avatarInitials ? avatarInitials : <User size={24} aria-hidden="true" />}
           </div>
           <p className="text-base font-extrabold mb-1" style={{ color: TEXT }}>{myName || "—"}</p>
-          <p className="text-[11px] mb-3 break-all" style={{ color: MUTED }}>{myEmail}</p>
-          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize"
-            style={{ color: ROLE_COLOR[myRole as Role] ?? MUTED,
-                     backgroundColor: `${ROLE_COLOR[myRole as Role] ?? MUTED}14`,
-                     border: `1px solid ${ROLE_COLOR[myRole as Role] ?? MUTED}30` }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ROLE_COLOR[myRole as Role] ?? MUTED }} />
-            {myRole}
-          </span>
-        </div>
+          <p className="mx-auto mb-3 max-w-full truncate text-xs" style={{ color: MUTED }}>{myEmail}</p>
+          <RoleBadge role={myRole as Role} />
+        </SettingsCard>
 
         {/* Edit profile */}
-        <div className="rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: BORDER }}>
-          <div className="flex items-center gap-2 mb-4">
-            <User size={13} style={{ color: GOLD }} />
-            <p className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: GOLD }}>My Profile</p>
+        <SettingsCard className="p-5 sm:p-6">
+          <div className="mb-5 flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.10)" }}>
+              <User size={15} />
+            </span>
+            <p className="text-xs font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>My Profile</p>
           </div>
 
-          <div className="space-y-3 mb-4">
+          <div className="mb-5 space-y-4">
             <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Display Name</span>
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: DIM }}>Display Name</span>
               <input value={nameEdit} onChange={e => setNameEdit(e.target.value)}
-                className="h-10 w-full rounded-xl border px-3 text-sm outline-none"
+                className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40 disabled:cursor-not-allowed disabled:opacity-55"
                 style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Email</span>
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: DIM }}>Email</span>
               <input value={myEmail} disabled
-                className="h-10 w-full rounded-xl border px-3 text-sm opacity-50 cursor-not-allowed"
+                className="h-11 w-full cursor-not-allowed rounded-xl border px-3 text-sm opacity-55 outline-none"
                 style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }} />
             </label>
           </div>
@@ -357,49 +387,53 @@ export default function SettingsClient() {
           )}
 
           <button onClick={saveName} disabled={nameSaving || nameEdit.trim() === (profile?.full_name ?? "")}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold disabled:opacity-50"
-            style={{ backgroundColor: nameSaved ? TEAL : GOLD, color: "#0A0A0D" }}>
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold outline-none transition hover:brightness-105 active:translate-y-px disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/45"
+            style={{ backgroundColor: nameSaved ? TEAL : GOLD, color: "#0A0A0D", boxShadow: "0 12px 28px rgba(201,168,76,0.14)" }}>
             {nameSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {nameSaved ? "Saved!" : "Save Changes"}
           </button>
-        </div>
+        </SettingsCard>
 
         {/* Account info */}
-        <div className="rounded-2xl border p-5 space-y-3" style={{ backgroundColor: CARD, borderColor: BORDER }}>
-          <p className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM }}>Account Info</p>
+        <SettingsCard className="p-5 sm:p-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.1em]" style={{ color: DIM }}>Account Info</p>
           {[
             { label: "Last sign in",     value: dateLabel(profile?.last_sign_in_at ?? null) },
             { label: "Account created",  value: dateLabel(profile?.created_at ?? null) },
-            { label: "Access level",     value: myRole.charAt(0).toUpperCase() + myRole.slice(1) },
+            { label: "Access level",     value: roleLabel(myRole) },
           ].map(row => (
-            <div key={row.label} className="flex items-center justify-between gap-4">
-              <span className="text-xs" style={{ color: MUTED }}>{row.label}</span>
-              <span className="text-xs font-semibold text-right" style={{ color: TEXT }}>{row.value}</span>
+            <div key={row.label} className="flex items-center justify-between gap-4 border-t py-3 first:border-t-0" style={{ borderColor: BORDER_SOFT }}>
+              <span className="text-xs font-medium" style={{ color: MUTED }}>{row.label}</span>
+              {row.label === "Access level" ? (
+                <RoleBadge role={myRole as Role} />
+              ) : (
+                <span className="text-right text-sm font-semibold" style={{ color: TEXT }}>{row.value}</span>
+              )}
             </div>
           ))}
-        </div>
+        </SettingsCard>
       </div>
 
       {/* ══════════ RIGHT — Staff Management ══════════ */}
-      <div className="flex-1 min-w-0 space-y-4">
+      <div className="min-w-0 space-y-4">
 
         {/* Section header */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 px-0 pt-1">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.09em] mb-0.5" style={{ color: GOLD }}>Staff Management</p>
-            <p className="text-[11px]" style={{ color: MUTED }}>Control who can access this dashboard</p>
+            <p className="mb-1 text-xs font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>Staff Management</p>
+            <p className="text-sm" style={{ color: MUTED }}>Control who can access this dashboard</p>
           </div>
           {isAdmin && (
             <div className="flex items-center gap-2">
               <button onClick={load} disabled={loading}
-                className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold"
+                className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
                 style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}>
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 Refresh
               </button>
               <button onClick={openCreate}
-                className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold"
-                style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold outline-none transition hover:brightness-105 active:translate-y-px focus-visible:ring-2 focus-visible:ring-[#C9A84C]/45"
+                style={{ backgroundColor: GOLD, color: "#0A0A0D", boxShadow: "0 12px 28px rgba(201,168,76,0.14)" }}>
                 <Plus size={14} /> Add Staff
               </button>
             </div>
@@ -407,12 +441,14 @@ export default function SettingsClient() {
         </div>
 
         {!isAdmin ? (
-          <div className="flex items-start gap-3 rounded-2xl border p-6"
-            style={{ backgroundColor: CARD, borderColor: "rgba(248,113,113,0.2)" }}>
-            <ShieldAlert size={18} style={{ color: RED }} />
+          <div className="flex max-w-[620px] items-start gap-4 rounded-2xl border p-5"
+            style={{ background: "linear-gradient(180deg, rgba(248,113,113,0.055), rgba(255,255,255,0.012)), #111117", borderColor: "rgba(248,113,113,0.24)" }}>
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ color: RED, backgroundColor: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.18)" }}>
+              <ShieldAlert size={17} />
+            </span>
             <div>
-              <p className="text-sm font-bold mb-1" style={{ color: RED }}>Admin access required</p>
-              <p className="text-sm" style={{ color: MUTED }}>Only admins can view and manage staff accounts.</p>
+              <p className="mb-1 text-sm font-bold" style={{ color: "#FCA5A5" }}>Admin access required</p>
+              <p className="text-sm leading-5" style={{ color: MUTED }}>Only admins can view and manage staff accounts.</p>
             </div>
           </div>
         ) : (
@@ -539,6 +575,7 @@ export default function SettingsClient() {
           onSave={saveStaff}
         />
       )}
+      </div>
     </div>
   );
 }

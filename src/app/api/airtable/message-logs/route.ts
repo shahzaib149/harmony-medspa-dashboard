@@ -1,10 +1,9 @@
-import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const MESSAGE_LOG_TABLE = "Message Log";
 const LEADS_TABLE = "Leads";
-const BASE_ID = process.env.AIRTABLE_LEADS_BASE_ID ?? "appNL010pW9LUpgST";
-const API_KEY = process.env.AIRTABLE_API_KEY!;
+const BASE_ID = AIRTABLE_LEADS_BASE_ID;
 
 type AirtableRecord = {
   id: string;
@@ -81,7 +80,7 @@ async function fetchAirtableRecords(tableName: string, params: URLSearchParams):
 
     const response = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(tableName)}?${pageParams}`,
-      { headers: { Authorization: `Bearer ${API_KEY}` }, next: { revalidate: 30 } }
+      { headers: { Authorization: `Bearer ${getAirtableApiKey()}` }, next: { revalidate: 30 } }
     );
 
     if (!response.ok) {
@@ -156,13 +155,9 @@ function matchesSearch(log: MessageLog, query: string) {
 }
 
 export async function GET(request: Request) {
-  try {
-    await requireRole(request, "viewer");
-  } catch (error) {
-    return authErrorResponse(error);
+  if (!isAirtableConfigured()) {
+    return Response.json({ messageLogs: [], count: 0, configured: false });
   }
-
-  if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
   const { searchParams } = new URL(request.url);
   const channelFilter = searchParams.get("channel") ?? "All";

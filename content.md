@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-Harmony MedSpa Dashboard is a private growth and operations dashboard for Harmony MedSpa. It brings together lead management, Google Ads performance, Airtable-backed marketing data, AI ad support, pending ad approvals, and integration health checks into one internal web app.
+Harmony MedSpa Dashboard is a private growth and operations dashboard for Harmony MedSpa. It brings together lead management, Google Ads performance, Airtable-backed marketing data, message delivery logs, no-book nurture tracking, AI ad support, pending ad approvals, and integration health checks into one internal web app.
 
 The goal of the project is to help the clinic and marketing team understand what is happening across their growth systems without jumping between Airtable, Google Ads, Google Business Profile, Make.com, Supabase, and separate lead forms.
 
@@ -11,6 +11,8 @@ In simple terms, this app is a command center for:
 - Tracking medspa leads.
 - Reviewing Google Ads performance.
 - Managing incoming lead form submissions.
+- Reviewing email and SMS automation logs.
+- Tracking the 14-day no-book nurture sequence.
 - Checking whether external integrations are connected.
 - Reviewing AI-generated ad ideas.
 - Approving pending ads created by automation.
@@ -25,6 +27,8 @@ The main business problems it is designed to solve are:
 - Staff need to see new leads quickly.
 - Marketing needs to know which Google Ads campaigns, ad groups, creatives, and keywords are performing.
 - The business needs visibility into whether lead automation is working.
+- Staff need visibility into message delivery outcomes from Make.com automations.
+- No-book leads need a clear nurture sequence view so the team can see who is active, stopped, completed, or overdue.
 - The clinic needs a simple settings area to confirm API keys and integrations are healthy.
 - Generated ads and AI suggestions need a place to be reviewed before being used.
 - Future growth workflows need a foundation, including no-book nurture, dormant patient reactivation, rebooking reminders, and referral tracking.
@@ -136,6 +140,61 @@ Lead statuses include:
 
 Lead data comes from the Airtable `Leads` table through `/api/airtable/leads`.
 
+If Airtable is not configured in local development, the read-only `GET` endpoint returns an empty lead list instead of crashing the page. Status updates and deletes still require real Airtable configuration and the proper authenticated role.
+
+### `/message-logs`
+
+The Message Logs page is a live Airtable-backed view of email and SMS delivery activity from Make.com automations.
+
+It shows:
+
+- Total message count.
+- Delivery rate.
+- Failed and pending counts.
+- Delivery breakdown.
+- Email vs SMS channel split.
+- Search by recipient, message, or Mandrill ID.
+- Channel, status, and date filters.
+- Message detail slide-over.
+- Linked lead summaries.
+- Mandrill message IDs.
+- Failure reasons when captured.
+
+Message log data comes from the Airtable `Message Log` table through `/api/airtable/message-logs`. The route also resolves linked records from the Airtable `Leads` table so the UI can show recipient names, email addresses, phone numbers, and lead status.
+
+This is a read-only dashboard surface. It can load without an active Supabase browser session, while mutation routes elsewhere remain protected.
+
+### `/nurture`
+
+The No-Book Nurture page tracks the "System 2: 14-Day No-Book Nurture Sequence" workflow for leads who submitted interest but have not booked.
+
+It shows:
+
+- Active sequences.
+- Completed sequences.
+- Stopped sequences.
+- Conversion rate.
+- Average days to book.
+- A step-level nurture funnel.
+- Search by lead name, phone, or email.
+- Status and sequence step filters.
+- Sort controls.
+- Desktop table and mobile cards.
+- Enrollment detail panel.
+- Message timeline per enrollment.
+
+Nurture enrollment data comes from the Airtable `Nurture Enrollments` table through `/api/airtable/nurture`. The route resolves linked `Leads` records for lead name, phone, email, source, status, treatment interest, reply status, and booking date. The detail panel loads related `Message Log` records through `/api/airtable/nurture/[id]/messages`.
+
+The supported nurture steps are:
+
+- Day 1 SMS.
+- Day 3 Email.
+- Day 5 SMS.
+- Day 8 Email.
+- Day 12 SMS.
+
+If Airtable is not configured in local development, the read-only nurture endpoints return empty lists instead of showing red missing-key errors.
+
 ### `/lead`
 
 This is the public lead capture form. It is designed for ad traffic or website traffic.
@@ -207,14 +266,46 @@ The route maps Airtable fields into frontend-friendly objects and calculates gro
 
 `/api/airtable/leads`
 
-Fetches and updates live leads from the Airtable `Leads` table.
+Fetches, updates, and deletes live leads from the Airtable `Leads` table.
 
 Supported methods:
 
 - `GET` fetches leads.
 - `PATCH` updates a lead status.
+- `DELETE` deletes a lead.
 
 This route uses `AIRTABLE_LEADS_BASE_ID`, falling back to the known Leads base if the env var is missing.
+
+`GET` returns an empty lead list when Airtable is not configured locally, so the page can still render. `PATCH` and `DELETE` require Airtable configuration and an authenticated role.
+
+`/api/airtable/message-logs`
+
+Fetches email and SMS delivery records from the Airtable `Message Log` table and resolves linked lead information from the `Leads` table.
+
+Supported filters include:
+
+- `channel`
+- `status`
+- `dateRange`
+- `search`
+
+This route is read-only and returns an empty list when Airtable is not configured locally.
+
+`/api/airtable/nurture`
+
+Fetches 14-day nurture sequence enrollments from the Airtable `Nurture Enrollments` table and resolves linked lead information from the `Leads` table.
+
+Supported filters include:
+
+- `status`
+- `step`
+- `search`
+
+This route is read-only and returns an empty list when Airtable is not configured locally.
+
+`/api/airtable/nurture/[id]/messages`
+
+Fetches the message timeline for one nurture enrollment by resolving the linked lead and reading matching `Message Log` records for the `14-Day Nurture` sequence.
 
 `/api/airtable/pending-ads`
 
@@ -293,6 +384,8 @@ Airtable is currently the most important live data source in the app.
 It stores:
 
 - Leads.
+- Message logs.
+- Nurture enrollments.
 - Google Ads campaign analytics.
 - Google Ads ad group analytics.
 - Google Ads creative analytics.
@@ -302,7 +395,7 @@ It stores:
 
 There are separate Airtable bases in use:
 
-- `AIRTABLE_LEADS_BASE_ID` is used for the Leads table.
+- `AIRTABLE_LEADS_BASE_ID` is used for Leads, Message Log, and Nurture Enrollments.
 - `AIRTABLE_BASE_ID` is used for Google Ads analytics and pending ads.
 
 This separation matters because a single Airtable API key may have access to one base but not another. A `403` from Airtable usually means the key does not have access to the base/table being requested, not necessarily that the key format is wrong.
@@ -407,6 +500,8 @@ NEXT_PUBLIC_MAKE_WEBHOOK_URL=
 NEXT_PUBLIC_PATIENTNOW_BOOKING_URL=
 ```
 
+Environment files must use a Next.js-recognized filename such as `.env.local`. A downloaded file named `env.download` will not be loaded by Next.js until it is copied or renamed to `.env.local`.
+
 ## Local Development
 
 Install dependencies:
@@ -494,6 +589,8 @@ The sidebar currently links to:
 - Overview
 - Google Ads
 - Leads
+- Message Logs
+- No-Book Nurture
 - Settings
 
 Google Business Profile is present in code but hidden from navigation until API access is granted.
@@ -516,6 +613,8 @@ The visual direction uses:
 5. The internal `/leads` page reads live records from Airtable.
 6. Staff can view, filter, and update lead statuses.
 7. Email/SMS status fields show whether follow-up automation has run.
+8. `/message-logs` shows the underlying email and SMS delivery records.
+9. `/nurture` tracks no-book leads through the 14-day conversion sequence.
 
 ## How Google Ads Reporting Works
 
@@ -540,12 +639,16 @@ For Google Ads and Google Business Profile, it checks whether the required OAuth
 ## Current Known Notes
 
 - Airtable is the active source for leads and Google Ads analytics.
+- Airtable is also the active source for message logs and the no-book nurture dashboard.
 - Supabase schema exists, but not every active page currently reads from Supabase.
+- Read-only Airtable dashboard routes degrade to empty lists when Airtable is missing in local development.
+- Write actions such as lead status updates and deletes still require real Airtable configuration and authenticated permissions.
 - Settings profile/staff/automation values are currently stored in browser localStorage.
 - Google Business Profile code exists, but the nav item is hidden until API access is ready.
 - Some dashboard overview data still comes from mock data.
+- Local env changes require restarting `next dev` before server-side routes see new values.
 - The project is using Next.js `16.2.9`; follow the local Next docs under `node_modules/next/dist/docs/` before changing Next-specific conventions.
-- Do not commit `.env.local` or real API secrets.
+- Do not commit `.env.local`, `env.download`, or real API secrets.
 
 ## Future Feature Areas
 
@@ -554,7 +657,6 @@ For Google Ads and Google Business Profile, it checks whether the required OAuth
 Planned or partially scaffolded areas include:
 
 - Dormant patient reactivation.
-- No-book nurture sequence.
 - Rebooking engine.
 - Referral engine.
 - More Supabase-backed operational data.

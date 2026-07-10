@@ -10,6 +10,7 @@ export const config = {
     "/login",
     "/dashboard/:path*",
     "/leads/:path*",
+    "/nurture/:path*",
     "/message-logs/:path*",
     "/google-ads-analytics/:path*",
     "/settings/:path*",

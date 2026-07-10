@@ -1,8 +1,8 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
 
 const TABLE_NAME = "Leads";
-const BASE_ID    = process.env.AIRTABLE_LEADS_BASE_ID ?? "appNL010pW9LUpgST";
-const API_KEY    = process.env.AIRTABLE_API_KEY!;
+const BASE_ID    = AIRTABLE_LEADS_BASE_ID;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,7 +45,7 @@ async function fetchLeadRecords(params: URLSearchParams) {
 
     const res = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}?${pageParams}`,
-      { headers: { Authorization: `Bearer ${API_KEY}` }, cache: "no-store" }
+      { headers: { Authorization: `Bearer ${getAirtableApiKey()}` }, cache: "no-store" }
     );
 
     if (!res.ok) {
@@ -67,7 +67,12 @@ async function fetchLeadRecords(params: URLSearchParams) {
 }
 
 export async function GET(request: Request) {
-  if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+  if (!isAirtableConfigured()) {
+    return Response.json(
+      { leads: [], count: 0, configured: false },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status"); // "New" | "Contacted" | "Booked" | "Not Interested" | null = all
@@ -120,7 +125,7 @@ export async function PATCH(request: Request) {
     return authErrorResponse(error);
   }
 
-  if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+  if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
   const { id, status } = await request.json() as { id: string; status: string };
   if (!id || !status) return Response.json({ error: "id and status required" }, { status: 400 });
@@ -129,7 +134,7 @@ export async function PATCH(request: Request) {
     `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${id}`,
     {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json" },
       body: JSON.stringify({ fields: { Status: status } }),
     }
   );
@@ -148,7 +153,7 @@ export async function DELETE(request: Request) {
     return authErrorResponse(error);
   }
 
-  if (!API_KEY) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+  if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
   const { id } = await request.json() as { id: string };
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
@@ -157,7 +162,7 @@ export async function DELETE(request: Request) {
     `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${id}`,
     {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${API_KEY}` },
+      headers: { Authorization: `Bearer ${getAirtableApiKey()}` },
     }
   );
 

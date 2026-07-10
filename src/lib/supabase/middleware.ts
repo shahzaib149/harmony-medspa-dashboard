@@ -1,8 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isRole, type Profile } from "@/lib/auth/permissions";
+import { getSupabasePublicConfig, isSupabaseConfigured } from "@/lib/supabase/config";
 
-const protectedRoutePattern = /^\/(dashboard|leads|message-logs|google-ads-analytics|settings|google-business)(\/.*)?$/;
+const protectedRoutePattern = /^\/(dashboard|leads|nurture|message-logs|google-ads-analytics|settings|google-business)(\/.*)?$/;
 
 function hasSupabaseAuthCookie(request: NextRequest) {
   return request.cookies.getAll().some((cookie) => (
@@ -17,9 +18,14 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  // Local/demo mode: render without auth until real Supabase credentials exist.
+  if (!isSupabaseConfigured()) return response;
+
+  const { url, anonKey } = getSupabasePublicConfig();
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {

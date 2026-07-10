@@ -6,10 +6,12 @@ import type { User } from "@supabase/supabase-js";
 import { AuthContext } from "@/contexts/AuthContext";
 import { can as canRole, isRole, type Profile, type Role } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const authConfigured = isSupabaseConfigured();
   const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -43,6 +45,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router, supabase]);
 
   useEffect(() => {
+    if (!authConfigured) {
+      setUser(null);
+      setProfile(null);
+      setIsLoading(false);
+      return;
+    }
+
     if (pathname === "/login" || pathname === "/lead" || pathname.startsWith("/lead/")) {
       setUser(null);
       setProfile(null);
@@ -64,15 +73,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       listener.subscription.unsubscribe();
     };
-  }, [loadProfile, pathname, supabase]);
+  }, [authConfigured, loadProfile, pathname, supabase]);
 
   const signOut = useCallback(async () => {
+    if (!authConfigured) return;
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     router.replace("/login");
     router.refresh();
-  }, [router, supabase]);
+  }, [authConfigured, router, supabase]);
 
   const role: Role | null = isRole(profile?.role) ? profile.role : null;
 

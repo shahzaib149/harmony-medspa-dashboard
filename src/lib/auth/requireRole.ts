@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
+import { getSupabasePublicConfig, isSupabaseConfigured } from "@/lib/supabase/config";
 import { createServiceClient } from "@/lib/supabase/server";
 import { hasMinimumRole, isRole, type Profile, type Role } from "@/lib/auth/permissions";
 
@@ -21,6 +22,8 @@ function parseCookieHeader(header: string | null) {
 }
 
 async function getUserFromBearerToken(request: Request) {
+  if (!isSupabaseConfigured()) return null;
+
   const authorization = request.headers.get("authorization");
   if (!authorization?.toLowerCase().startsWith("bearer ")) return null;
 
@@ -44,14 +47,19 @@ export async function requireRole(
   request: Request,
   minimumRole: Role
 ): Promise<{ user: User; profile: Profile }> {
+  if (!isSupabaseConfigured()) {
+    throw new AuthError(401, "Authentication required");
+  }
+
   const bearerUser = await getUserFromBearerToken(request);
   if (bearerUser) {
     return requireProfileForUser(bearerUser, minimumRole);
   }
 
+  const { url, anonKey } = getSupabasePublicConfig();
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, LogOut, MessageSquare, Settings, TrendingUp, UserCircle, Users, X } from "lucide-react";
+import { GitBranch, LayoutDashboard, LogOut, MessageSquare, Settings, TrendingUp, UserCircle, Users, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRole } from "@/lib/auth/permissions";
 
@@ -10,6 +10,7 @@ const navItems = [
   { href: "/dashboard",             label: "Overview",   icon: LayoutDashboard },
   { href: "/google-ads-analytics",  label: "Google Ads", icon: TrendingUp },
   { href: "/leads",                 label: "Leads",      icon: Users },
+  { href: "/nurture",               label: "Nurture",    icon: GitBranch },
   { href: "/message-logs",          label: "Message Logs", icon: MessageSquare },
   { href: "/settings",              label: "Settings",   icon: Settings },
   // Google Business — hidden until GBP API access is granted. See docs/google-business-profile.md
