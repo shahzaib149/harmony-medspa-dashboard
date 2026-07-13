@@ -1,27 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarDays,
+  Check,
   ChevronDown,
   Clock3,
   Copy,
+  Download,
   Mail,
+  Loader2,
   MessageSquare,
   MoreHorizontal,
   Phone,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import type { Lead } from "@/app/api/airtable/leads/route";
 import { useAuth } from "@/contexts/AuthContext";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import { createClient } from "@/lib/supabase/client";
 
 const GOLD = "#C9A84C";
@@ -205,7 +211,7 @@ function StatCard({ label, value, meta, color = GOLD }: { label: string; value: 
   );
 }
 
-function LeadTicker({ lead, loading, onRefresh }: { lead: Lead | null; loading: boolean; onRefresh: () => void }) {
+function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onExport, canAdd }: { lead: Lead | null; loading: boolean; importing: boolean; onRefresh: () => void; onAdd: () => void; onImport: () => void; onExport: () => void; canAdd: boolean }) {
   return (
     <div
       className="overflow-hidden rounded-2xl border px-4 py-3"
@@ -235,6 +241,25 @@ function LeadTicker({ lead, loading, onRefresh }: { lead: Lead | null; loading: 
             <Clock3 size={13} />
             {lead ? timeAgo(lead.createdAt) : "No activity"}
           </div>
+          <button type="button" onClick={onExport} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:brightness-110" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>
+            <Download size={13} /> Export CSV
+          </button>
+          {canAdd && (
+            <button type="button" onClick={onImport} disabled={importing} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: "rgba(201,168,76,.06)", borderColor: BORDER, color: GOLD }}>
+              {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {importing ? "Importing..." : "Import CSV"}
+            </button>
+          )}
+          {canAdd && (
+            <button
+              type="button"
+              onClick={onAdd}
+              className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-extrabold outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40"
+              style={{ color: "#09090D", background: "linear-gradient(135deg, #E0C36B, #C9A84C)", borderColor: "#D7B95B", boxShadow: "0 8px 24px rgba(201,168,76,0.18)" }}
+            >
+              <Plus size={14} />
+              Add Lead
+            </button>
+          )}
           <button
             type="button"
             onClick={onRefresh}
@@ -467,13 +492,111 @@ function LeadSlideOver({
   );
 }
 
+type LeadForm = { name: string; phone: string; email: string; message: string };
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], value = "", quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') { value += '"'; index += 1; }
+      else quoted = !quoted;
+    } else if (character === "," && !quoted) {
+      row.push(value); value = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(value); value = "";
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+    } else value += character;
+  }
+  row.push(value);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  return rows;
+}
+
+function csvCell(value: unknown) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function AddLeadModal({ open, saving, error, onClose, onSubmit }: {
+  open: boolean;
+  saving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (form: LeadForm) => Promise<void>;
+}) {
+  const [form, setForm] = useState<LeadForm>({ name: "", phone: "", email: "", message: "" });
+  const [errors, setErrors] = useState<Partial<Record<keyof LeadForm, string>>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose, open, saving]);
+
+  useEffect(() => {
+    if (open) {
+      setForm({ name: "", phone: "", email: "", message: "" });
+      setErrors({});
+    }
+  }, [open]);
+
+  if (!open) return null;
+  const fieldStyle = { backgroundColor: "rgba(255,255,255,0.035)", borderColor: BORDER_SOFT, color: TEXT };
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const next: Partial<Record<keyof LeadForm, string>> = {};
+    if (!form.name.trim()) next.name = "Full name is required.";
+    if (!form.phone.trim()) next.phone = "Phone number is required.";
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = "Enter a valid email address.";
+    setErrors(next);
+    if (Object.keys(next).length) return;
+    await onSubmit(form);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="add-lead-title">
+      <button type="button" className="absolute inset-0 bg-black/75 backdrop-blur-sm" aria-label="Close add lead modal" onClick={() => !saving && onClose()} />
+      <div className="relative w-full max-w-[590px] overflow-hidden rounded-3xl border" style={{ background: "linear-gradient(145deg, rgba(201,168,76,.08), transparent 34%), #0D0D12", borderColor: "rgba(201,168,76,.25)", boxShadow: "0 35px 110px rgba(0,0,0,.7)" }}>
+        <div className="flex items-start justify-between border-b px-6 py-5" style={{ borderColor: BORDER }}>
+          <div><p className="text-[10px] font-bold uppercase tracking-[.13em]" style={{ color: GOLD }}>New opportunity</p><h2 id="add-lead-title" className="mt-1 text-xl font-extrabold" style={{ color: TEXT }}>Add Lead</h2><p className="mt-1 text-xs" style={{ color: MUTED }}>Create a new lead directly in Airtable.</p></div>
+          <button type="button" onClick={onClose} disabled={saving} className="rounded-xl border p-2 disabled:opacity-40" style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }} aria-label="Close"><X size={16} /></button>
+        </div>
+        <form onSubmit={submit} noValidate className="space-y-4 p-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {([{ key: "name", label: "Full Name *", type: "text", placeholder: "e.g. Olivia Bennett", autoFocus: true }, { key: "phone", label: "Phone Number *", type: "tel", placeholder: "e.g. (555) 123-4567" }, { key: "email", label: "Email Address", type: "email", placeholder: "olivia@example.com" }] as const).map((item) => (
+              <label key={item.key} className={item.key === "email" ? "sm:col-span-2" : ""}><span className="mb-1.5 block text-xs font-bold" style={{ color: TEXT }}>{item.label}</span><input autoFocus={"autoFocus" in item} type={item.type} value={form[item.key]} onChange={(e) => { setForm({ ...form, [item.key]: e.target.value }); setErrors({ ...errors, [item.key]: undefined }); }} placeholder={item.placeholder} className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10" style={{ ...fieldStyle, borderColor: errors[item.key] ? "rgba(248,113,113,.55)" : BORDER_SOFT }} />{errors[item.key] && <span className="mt-1 block text-xs text-[#F87171]">{errors[item.key]}</span>}</label>
+            ))}
+          </div>
+          <label><span className="mb-1.5 block text-xs font-bold" style={{ color: TEXT }}>Message / Notes</span><textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} placeholder="Add context, treatment interest, or follow-up notes..." className="w-full resize-none rounded-xl border px-3 py-3 text-sm outline-none focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10" style={fieldStyle} /></label>
+          {error && <div className="flex items-start gap-2 rounded-xl border p-3 text-sm text-[#F87171]" style={{ backgroundColor: "rgba(248,113,113,.08)", borderColor: "rgba(248,113,113,.25)" }}><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</div>}
+          <div className="flex justify-end gap-3 border-t pt-5" style={{ borderColor: BORDER }}><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-40" style={{ color: MUTED, borderColor: BORDER_SOFT }}>Cancel</button><button type="submit" disabled={saving} className="flex min-w-[126px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-extrabold disabled:cursor-not-allowed disabled:opacity-60" style={{ color: "#08080B", background: "linear-gradient(135deg, #E0C36B, #C9A84C)" }}>{saving ? <><Loader2 size={16} className="animate-spin" />Saving...</> : <><Plus size={16} />Add Lead</>}</button></div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function LeadsClient() {
   const { can } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const canUpdateLeads = can("update:leads");
   const canDeleteLeads = can("delete:leads");
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedLeads = useMemo(() => getCachedData<{ leads?: Lead[] }>(DATA_CACHE_KEYS.leads), []);
+  const [leads, setLeads] = useState<Lead[]>(() => cachedLeads?.leads ?? []);
+  const [loading, setLoading] = useState(() => !cachedLeads);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -484,15 +607,23 @@ export default function LeadsClient() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [savingLead, setSavingLead] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [updatingReplied, setUpdatingReplied] = useState<Set<string>>(new Set());
+  const [importingLeads, setImportingLeads] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/airtable/leads?status=all", { cache: "no-store" });
       const data = await res.json() as { leads?: Lead[]; error?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? "Could not load leads");
       setLeads(data.leads ?? []);
+      setCachedData(DATA_CACHE_KEYS.leads, data);
     } catch (event) {
       setError(String(event));
     } finally {
@@ -502,10 +633,10 @@ export default function LeadsClient() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load();
+      void load(!cachedLeads);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [cachedLeads, load]);
 
   useEffect(() => {
     const refresh = () => void load();
@@ -585,6 +716,97 @@ export default function LeadsClient() {
     updateStatus(lead.id, status);
   }
 
+  function showToast(tone: "success" | "error", message: string) {
+    setToast({ tone, message });
+    window.setTimeout(() => setToast(null), 4000);
+  }
+
+  async function addLead(form: LeadForm) {
+    setSavingLead(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/airtable/leads", {
+        method: "POST", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify(form),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error ?? "Could not create lead");
+      setAddModalOpen(false);
+      showToast("success", "Lead added successfully.");
+      await load();
+    } catch (event) {
+      setAddError(event instanceof Error ? event.message : "Could not create lead");
+    } finally {
+      setSavingLead(false);
+    }
+  }
+
+  function exportCsv() {
+    const headers = ["Name", "Phone", "Email", "Message", "Source", "Status", "Replied", "Lead Created At"];
+    const rows = leads.map((lead) => [lead.name, lead.phone, lead.email, lead.message, lead.source, lead.status, lead.replied ? "Yes" : "No", lead.createdAt]);
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `harmony-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    showToast("success", `${leads.length} leads exported.`);
+  }
+
+  async function importCsv(file: File) {
+    setImportingLeads(true);
+    try {
+      const rows = parseCsv(await file.text());
+      if (rows.length < 2) throw new Error("CSV must include a header row and at least one lead.");
+      const headers = rows[0].map((header) => header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]/g, ""));
+      const column = (...names: string[]) => headers.findIndex((header) => names.includes(header));
+      const nameIndex = column("name", "fullname", "leadname");
+      const phoneIndex = column("phone", "phonenumber", "mobile");
+      const emailIndex = column("email", "emailaddress");
+      const messageIndex = column("message", "notes", "messagenotes");
+      if (nameIndex < 0 || phoneIndex < 0) throw new Error("CSV headers must include Name and Phone columns.");
+      const imported = rows.slice(1).map((row) => ({
+        name: row[nameIndex]?.trim() ?? "",
+        phone: row[phoneIndex]?.trim() ?? "",
+        email: emailIndex >= 0 ? row[emailIndex]?.trim() ?? "" : "",
+        message: messageIndex >= 0 ? row[messageIndex]?.trim() ?? "" : "",
+      }));
+      const response = await fetch("/api/airtable/leads", {
+        method: "POST", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify({ leads: imported }),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; created?: number };
+      if (!response.ok || data.error) throw new Error(data.error ?? "Could not import leads");
+      showToast("success", `${data.created ?? imported.length} leads imported successfully.`);
+      await load();
+    } catch (event) {
+      showToast("error", event instanceof Error ? event.message : "Could not import CSV.");
+    } finally {
+      setImportingLeads(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  async function changeReplied(lead: Lead, replied: boolean) {
+    if (!canUpdateLeads || updatingReplied.has(lead.id)) return;
+    setLeads((current) => current.map((item) => item.id === lead.id ? { ...item, replied } : item));
+    setSelectedLead((current) => current?.id === lead.id ? { ...current, replied } : current);
+    setUpdatingReplied((current) => new Set(current).add(lead.id));
+    try {
+      const res = await fetch("/api/airtable/leads", {
+        method: "PATCH", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify({ id: lead.id, replied }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error ?? "Could not update replied status");
+    } catch (event) {
+      setLeads((current) => current.map((item) => item.id === lead.id ? { ...item, replied: lead.replied } : item));
+      setSelectedLead((current) => current?.id === lead.id ? { ...current, replied: lead.replied } : current);
+      showToast("error", event instanceof Error ? event.message : "Could not update replied status");
+    } finally {
+      setUpdatingReplied((current) => { const next = new Set(current); next.delete(lead.id); return next; });
+    }
+  }
+
   async function deleteLead(lead: Lead) {
     if (!canDeleteLeads) return;
     setOpenMenuId(null);
@@ -606,7 +828,10 @@ export default function LeadsClient() {
 
   return (
     <div className="space-y-5">
-      <LeadTicker lead={latestLead} loading={loading} onRefresh={() => void load()} />
+      <input ref={importInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCsv(file); }} />
+      <LeadTicker lead={latestLead} loading={loading} importing={importingLeads} onRefresh={() => void load()} onAdd={() => { setAddError(null); setAddModalOpen(true); }} onImport={() => importInputRef.current?.click()} onExport={exportCsv} canAdd={canUpdateLeads} />
+
+      {toast && <div role="status" className="fixed right-5 top-5 z-[110] flex max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold" style={{ color: toast.tone === "success" ? "#86EFAC" : "#FCA5A5", backgroundColor: toast.tone === "success" ? "#0D2117" : "#281012", borderColor: toast.tone === "success" ? "rgba(34,197,94,.35)" : "rgba(248,113,113,.35)", boxShadow: "0 18px 60px rgba(0,0,0,.45)" }}>{toast.tone === "success" ? <Check size={17} /> : <AlertCircle size={17} />}{toast.message}<button type="button" onClick={() => setToast(null)} className="ml-2 opacity-70"><X size={14} /></button></div>}
 
       {deleteError && (
         <div className="flex items-start justify-between gap-3 rounded-2xl border p-4" style={{ borderColor: "rgba(248,113,113,0.25)", backgroundColor: "rgba(248,113,113,0.08)" }}>
@@ -727,6 +952,7 @@ export default function LeadsClient() {
                       { key: "email-address", label: "Email" },
                       { key: "source", label: "Source" },
                       { key: "status", label: "Status" },
+                      { key: "replied", label: "Replied" },
                       { key: "sms", label: "SMS" },
                       { key: "email-delivery", label: "Email" },
                       { key: "created-at", label: "Created At" },
@@ -787,6 +1013,11 @@ export default function LeadsClient() {
                           ) : (
                             <StatusPill status={lead.status} />
                           )}
+                        </td>
+                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
+                          <button type="button" role="switch" aria-checked={lead.replied} aria-label={`Mark ${lead.name || "lead"} as ${lead.replied ? "not replied" : "replied"}`} disabled={!canUpdateLeads || updatingReplied.has(lead.id)} onClick={() => void changeReplied(lead, !lead.replied)} className="relative inline-flex h-6 w-10 items-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: lead.replied ? "rgba(45,212,191,.22)" : "rgba(255,255,255,.05)", borderColor: lead.replied ? "rgba(45,212,191,.45)" : BORDER_SOFT }}>
+                            {updatingReplied.has(lead.id) ? <Loader2 size={13} className="m-auto animate-spin" style={{ color: GOLD }} /> : <span className={`h-4 w-4 rounded-full transition-transform ${lead.replied ? "translate-x-[19px]" : "translate-x-[3px]"}`} style={{ backgroundColor: lead.replied ? TEAL : MUTED }} />}
+                          </button>
                         </td>
                         <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><DeliveryPill label="SMS" value={lead.smsSentStatus} /></td>
                         <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><DeliveryPill label="Email" value={lead.emailSentStatus} /></td>
@@ -870,6 +1101,7 @@ export default function LeadsClient() {
                     {duplicate && <StatusPill status="Duplicate" />}
                     <DeliveryPill label="SMS" value={lead.smsSentStatus} />
                     <DeliveryPill label="Email" value={lead.emailSentStatus} />
+                    <button type="button" role="switch" aria-checked={lead.replied} disabled={!canUpdateLeads || updatingReplied.has(lead.id)} onClick={(event) => { event.stopPropagation(); void changeReplied(lead, !lead.replied); }} className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-bold disabled:opacity-60" style={{ color: lead.replied ? TEAL : MUTED, borderColor: lead.replied ? "rgba(45,212,191,.35)" : BORDER_SOFT, backgroundColor: lead.replied ? "rgba(45,212,191,.1)" : "rgba(255,255,255,.03)" }}>{updatingReplied.has(lead.id) ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}Replied: {lead.replied ? "Yes" : "No"}</button>
                   </div>
                   {canDeleteLeads && (
                     <button
@@ -902,6 +1134,7 @@ export default function LeadsClient() {
         onDelete={(lead) => void deleteLead(lead)}
         getAuthHeaders={getAuthHeaders}
       />
+      <AddLeadModal open={addModalOpen} saving={savingLead} error={addError} onClose={() => { if (!savingLead) setAddModalOpen(false); }} onSubmit={addLead} />
     </div>
   );
 }

@@ -8,9 +8,13 @@ export interface MessageLog {
   recipientLeadEmail: string | null;
   recipientLeadPhone: string | null;
   recipientLeadStatus: string | null;
+  isOrphaned: boolean;
   channel: MessageChannel;
+  sequence: string | null;
+  sequenceStep: string | null;
   messageBody: string;
   deliveryStatus: DeliveryStatus;
+  rawDeliveryStatus: string | null;
   sentAt: string | null;
   mandrillMessageId: string | null;
   errorReason: string | null;

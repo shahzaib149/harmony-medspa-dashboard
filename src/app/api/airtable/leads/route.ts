@@ -23,6 +23,7 @@ export interface Lead {
   createdAt: string;
   emailSentStatus: string;
   smsSentStatus: string;
+  replied: boolean;
 }
 
 function str(fields: Record<string, unknown>, ...keys: string[]): string {
@@ -109,6 +110,7 @@ export async function GET(request: Request) {
     createdAt:       str(r.fields, "Lead Created At") || r.createdTime,
     emailSentStatus: str(r.fields, "Email Sent Status"),
     smsSentStatus:   str(r.fields, "SMS Sent Status"),
+    replied:         r.fields.Replied === true,
   }));
 
   return Response.json(
@@ -117,7 +119,81 @@ export async function GET(request: Request) {
   );
 }
 
-// PATCH — update a lead's status
+type NewLeadInput = { name?: unknown; phone?: unknown; email?: unknown; message?: unknown };
+
+function validateNewLead(input: NewLeadInput, row?: number) {
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  const phone = typeof input.phone === "string" ? input.phone.trim() : "";
+  const email = typeof input.email === "string" ? input.email.trim() : "";
+  const message = typeof input.message === "string" ? input.message.trim() : "";
+  const prefix = row ? `Row ${row}: ` : "";
+  if (!name || !phone) throw new Error(`${prefix}Name and phone are required`);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`${prefix}Enter a valid email address`);
+  return { name, phone, email, message };
+}
+
+function newLeadFields(input: ReturnType<typeof validateNewLead>) {
+  const fields: Record<string, unknown> = {
+    Name: input.name, Phone: input.phone, Source: "Manual Entry", Status: "New",
+    "Lead Created At": new Date().toISOString(), "Duplicate Flag": false,
+    "Last Contacted At": null, "Email Sent Status": null, "SMS Sent Status": null,
+    Notes: input.message, Message: input.message, Replied: false,
+  };
+  if (input.email) fields.Email = input.email;
+  return fields;
+}
+
+// POST — create one manually entered lead or a CSV import batch
+export async function POST(request: Request) {
+  try {
+    await requireRole(request, "editor");
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+  if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+
+  const body = await request.json().catch(() => null) as (NewLeadInput & { leads?: NewLeadInput[] }) | null;
+  if (!body) return Response.json({ error: "Invalid request body" }, { status: 400 });
+
+  if (Array.isArray(body.leads)) {
+    if (body.leads.length === 0) return Response.json({ error: "CSV contains no leads" }, { status: 400 });
+    if (body.leads.length > 500) return Response.json({ error: "Import is limited to 500 leads at a time" }, { status: 400 });
+    let validated: ReturnType<typeof validateNewLead>[];
+    try {
+      validated = body.leads.map((lead, index) => validateNewLead(lead, index + 2));
+    } catch (error) {
+      return Response.json({ error: error instanceof Error ? error.message : "Invalid CSV lead" }, { status: 400 });
+    }
+
+    let created = 0;
+    for (let index = 0; index < validated.length; index += 10) {
+      const records = validated.slice(index, index + 10).map((lead) => ({ fields: newLeadFields(lead) }));
+      const response = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ records }),
+      });
+      const data = await response.json().catch(() => ({})) as { records?: AirtableRecord[]; error?: { message?: string } };
+      if (!response.ok) return Response.json({ error: data.error?.message ?? `Airtable ${response.status}`, created }, { status: 500 });
+      created += data.records?.length ?? records.length;
+    }
+    return Response.json({ success: true, created }, { status: 201 });
+  }
+
+  let validated: ReturnType<typeof validateNewLead>;
+  try { validated = validateNewLead(body); }
+  catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Invalid lead" }, { status: 400 }); }
+  const res = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: newLeadFields(validated) }),
+  });
+  const data = await res.json().catch(() => ({})) as AirtableRecord & { error?: { message?: string } };
+  if (!res.ok) return Response.json({ error: data.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
+  return Response.json({ success: true, id: data.id }, { status: 201 });
+}
+
+// Update a lead's status and/or replied flag.
 export async function PATCH(request: Request) {
   try {
     await requireRole(request, "editor");
@@ -127,15 +203,19 @@ export async function PATCH(request: Request) {
 
   if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
-  const { id, status } = await request.json() as { id: string; status: string };
-  if (!id || !status) return Response.json({ error: "id and status required" }, { status: 400 });
+  const { id, status, replied } = await request.json() as { id?: string; status?: unknown; replied?: unknown };
+  if (!id) return Response.json({ error: "id required" }, { status: 400 });
+  const fields: Record<string, unknown> = {};
+  if (typeof status === "string" && status.trim()) fields.Status = status.trim();
+  if (typeof replied === "boolean") fields.Replied = replied;
+  if (Object.keys(fields).length === 0) return Response.json({ error: "status or replied required" }, { status: 400 });
 
   const res = await fetch(
     `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${id}`,
     {
       method: "PATCH",
       headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ fields: { Status: status } }),
+      body: JSON.stringify({ fields }),
     }
   );
 

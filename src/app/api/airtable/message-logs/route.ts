@@ -5,6 +5,9 @@ const MESSAGE_LOG_TABLE = "Message Log";
 const LEADS_TABLE = "Leads";
 const BASE_ID = AIRTABLE_LEADS_BASE_ID;
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type AirtableRecord = {
   id: string;
   createdTime: string;
@@ -45,6 +48,20 @@ function deliveryStatus(value: string): DeliveryStatus {
   if (["sent", "delivered", "success", "successful", "ok"].includes(normalized)) return "Sent";
   if (["failed", "fail", "error", "rejected", "bounced", "undelivered", "invalid"].includes(normalized)) return "Failed";
   return "Unknown";
+}
+
+function isoTimestamp(value: string, fallback: string): string {
+  const primary = Date.parse(value);
+  if (Number.isFinite(primary)) return new Date(primary).toISOString();
+  const secondary = Date.parse(fallback);
+  return Number.isFinite(secondary) ? new Date(secondary).toISOString() : new Date(0).toISOString();
+}
+
+function timestamp(log: Pick<MessageLog, "sentAt" | "createdTime">) {
+  const sent = Date.parse(log.sentAt ?? "");
+  if (Number.isFinite(sent)) return sent;
+  const created = Date.parse(log.createdTime);
+  return Number.isFinite(created) ? created : 0;
 }
 
 function linkedLeadId(value: unknown): string | null {
@@ -147,6 +164,8 @@ function matchesSearch(log: MessageLog, query: string) {
     log.recipientLeadName,
     log.recipientLeadEmail,
     log.recipientLeadPhone,
+    log.sequence,
+    log.sequenceStep,
     log.messageBody,
     log.mandrillMessageId,
     log.errorReason,
@@ -156,7 +175,7 @@ function matchesSearch(log: MessageLog, query: string) {
 
 export async function GET(request: Request) {
   if (!isAirtableConfigured()) {
-    return Response.json({ messageLogs: [], count: 0, configured: false });
+    return Response.json({ messageLogs: [], count: 0, configured: false }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   }
 
   const { searchParams } = new URL(request.url);
@@ -164,12 +183,15 @@ export async function GET(request: Request) {
   const statusFilter = searchParams.get("status") ?? "All";
   const dateRange = searchParams.get("dateRange") ?? "all";
   const search = (searchParams.get("search") ?? "").trim().toLowerCase();
+  const includeOrphaned = searchParams.get("includeOrphaned") === "true";
 
   try {
     const params = new URLSearchParams({
       "sort[0][field]": "Sent At",
       "sort[0][direction]": "desc",
     });
+    ["Mandrill Message ID", "Recipient Lead", "Message Body", "Channel", "Delivery Status", "Sent At", "Error Reason", "Sequence", "Sequence Step"]
+      .forEach((field) => params.append("fields[]", field));
     const records = await fetchAirtableRecords(MESSAGE_LOG_TABLE, params);
     const leadIds = records.map((record) => linkedLeadId(record.fields["Recipient Lead"])).filter((id): id is string => Boolean(id));
     const leadMap = await fetchLeadSummaries(leadIds);
@@ -177,34 +199,45 @@ export async function GET(request: Request) {
     const messageLogs = records.map<MessageLog>((record) => {
       const recipientLeadId = linkedLeadId(record.fields["Recipient Lead"]);
       const lead = recipientLeadId ? leadMap.get(recipientLeadId) : null;
+      const isOrphaned = !recipientLeadId || !lead;
+      const rawDeliveryStatus = strAny(record.fields, "Delivery Status", "Status", "Mandrill Status");
 
       return {
         id: record.id,
         recipientLeadId,
-        recipientLeadName: lead?.name ?? (recipientLeadId ? "Linked lead" : null),
-        recipientLeadEmail: lead?.email ?? null,
-        recipientLeadPhone: lead?.phone ?? null,
-        recipientLeadStatus: lead?.status ?? null,
+        recipientLeadName: isOrphaned ? "Deleted lead" : lead?.name || "Unnamed lead",
+        recipientLeadEmail: isOrphaned ? null : lead?.email ?? null,
+        recipientLeadPhone: isOrphaned ? null : lead?.phone ?? null,
+        recipientLeadStatus: isOrphaned ? null : lead?.status ?? null,
+        isOrphaned,
         channel: channel(strAny(record.fields, "Channel", "Message Channel", "Type")),
+        sequence: strAny(record.fields, "Sequence", "Sequence Name", "Nurture Sequence") || null,
+        sequenceStep: strAny(record.fields, "Sequence Step", "Step") || null,
         messageBody: strAny(record.fields, "Message Body", "Body", "Message", "Content"),
-        deliveryStatus: deliveryStatus(strAny(record.fields, "Delivery Status", "Status", "Mandrill Status")),
-        sentAt: strAny(record.fields, "Sent At", "Sent Date", "Created At") || record.createdTime,
+        deliveryStatus: deliveryStatus(rawDeliveryStatus),
+        rawDeliveryStatus: rawDeliveryStatus || null,
+        sentAt: isoTimestamp(strAny(record.fields, "Sent At", "Sent Date", "Created At"), record.createdTime),
         mandrillMessageId: strAny(record.fields, "Mandrill Message ID", "Mandrill ID", "Message ID") || null,
         errorReason: strAny(record.fields, "Error Reason", "Error", "Failure Reason") || null,
-        createdTime: record.createdTime,
+        createdTime: isoTimestamp(record.createdTime, ""),
       };
     }).filter((log) => {
+      if (!includeOrphaned && log.isOrphaned) return false;
       const channelMatches = channelFilter === "All" || log.channel === channelFilter;
       const statusMatches = statusFilter === "All" || log.deliveryStatus === statusFilter;
       return channelMatches && statusMatches && withinDateRange(log.sentAt, dateRange) && matchesSearch(log, search);
+    }).sort((a, b) => {
+      const difference = timestamp(b) - timestamp(a);
+      if (difference !== 0) return difference;
+      return Date.parse(b.createdTime) - Date.parse(a.createdTime);
     });
 
-    return Response.json({ messageLogs, count: messageLogs.length });
+    return Response.json({ messageLogs, count: messageLogs.length }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
-    console.error("Message Log Airtable fetch failed", error);
+    console.error("Message Log Airtable fetch failed", { message: error instanceof Error ? error.message : String(error) });
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not load message logs" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   }
 }

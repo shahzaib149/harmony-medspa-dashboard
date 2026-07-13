@@ -52,7 +52,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
     >
       {/* Brand */}
       <div className="px-6 py-6 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}>
-        <Link href="/dashboard" className="block" prefetch={false} onClick={() => handleNavigation("/dashboard")}>
+        <Link href="/dashboard" className="block" prefetch onClick={() => handleNavigation("/dashboard")}>
           <p style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, fontStyle: "italic", color: "#C9A84C", lineHeight: 1, letterSpacing: "0.5px" }}>
             Harmony
           </p>
@@ -82,7 +82,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
             <Link
               key={href}
               href={href}
-              prefetch={false}
+              prefetch
               onClick={() => handleNavigation(href)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
               style={{

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, ChevronDown, Clock3, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import { NURTURE_STEPS, type NurtureEnrollment, type NurtureFunnelStep, type NurtureStats as Stats } from "@/lib/types/nurture";
 import NurtureStats from "./nurture-stats";
 import NurtureFunnel from "./nurture-funnel";
@@ -71,8 +72,9 @@ function NurtureRefreshBar({ latest, loading, onRefresh }: { latest: NurtureEnro
 }
 
 export default function NurtureTable() {
-  const [enrollments, setEnrollments] = useState<NurtureEnrollment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedNurture = useMemo(() => getCachedData<{ enrollments?: NurtureEnrollment[] }>(DATA_CACHE_KEYS.nurture), []);
+  const [enrollments, setEnrollments] = useState<NurtureEnrollment[]>(() => cachedNurture?.enrollments ?? []);
+  const [loading, setLoading] = useState(() => !cachedNurture);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("all");
   const [step, setStep] = useState("all");
@@ -80,18 +82,19 @@ export default function NurtureTable() {
   const [sort, setSort] = useState<Sort>("next");
   const [selected, setSelected] = useState<NurtureEnrollment | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true); setError("");
     try {
       const response = await fetch("/api/airtable/nurture", { cache: "no-store" });
       const data = await response.json() as { enrollments?: NurtureEnrollment[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Could not load nurture enrollments");
       setEnrollments(data.enrollments ?? []);
+      setCachedData(DATA_CACHE_KEYS.nurture, data);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not load nurture enrollments"); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(!cachedNurture); }, [cachedNurture, load]);
 
   useEffect(() => {
     const refresh = () => void load();

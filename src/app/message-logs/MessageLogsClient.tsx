@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, ChevronDown, Clock3, Copy,
+  AlertCircle, ChevronDown, Clock3,
   ExternalLink, Mail, MessageSquare, RefreshCw, Search, X,
 } from "lucide-react";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const GOLD        = "#C9A84C";
@@ -55,10 +56,6 @@ function initials(name: string | null) {
   return (name ?? "?").split(" ").filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase() || "?";
 }
 function pct(a: number, b: number) { return b ? Math.round((a / b) * 100) : 0; }
-function truncId(id: string | null) {
-  if (!id) return "—";
-  return id.length > 14 ? `${id.slice(0, 7)}…${id.slice(-5)}` : id;
-}
 function recipientLabel(log: MessageLog) {
   return log.recipientLeadName || "Unknown";
 }
@@ -201,9 +198,8 @@ function FilterSelect({ label, value, onChange, options }: {
 }
 
 /* ── Slide-over detail panel ── */
-function DetailPanel({ log, copiedId, onCopy, onClose }: {
-  log: MessageLog | null; copiedId: string | null;
-  onCopy: (v: string) => void; onClose: () => void;
+function DetailPanel({ log, onClose }: {
+  log: MessageLog | null; onClose: () => void;
 }) {
   if (!log) return null;
   const c = STATUS_CFG[log.deliveryStatus];
@@ -246,6 +242,7 @@ function DetailPanel({ log, copiedId, onCopy, onClose }: {
               { label: "Recipient",  value: recipientLabel(log) },
               { label: "Contact",    value: contactLine(log)    },
               { label: "Sent At",    value: fullDate(log.sentAt) },
+              { label: "Sequence",   value: log.sequence || "—" },
               { label: "Lead Status",value: log.recipientLeadStatus || "—" },
             ].map(f => (
               <div key={f.label} className="rounded-xl border p-3" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
@@ -253,23 +250,6 @@ function DetailPanel({ log, copiedId, onCopy, onClose }: {
                 <p className="text-sm font-semibold break-words" style={{ color: TEXT }}>{f.value}</p>
               </div>
             ))}
-          </div>
-
-          {/* Mandrill ID */}
-          <div className="rounded-xl border p-3 flex items-center justify-between gap-3" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-            <div className="min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-[0.09em] mb-1" style={{ color: DIM }}>Mandrill ID</p>
-              <p className="text-xs font-mono" style={{ color: log.mandrillMessageId ? TEXT : MUTED }}>
-                {log.mandrillMessageId || "Not captured"}
-              </p>
-            </div>
-            {log.mandrillMessageId && (
-              <button onClick={() => onCopy(log.mandrillMessageId ?? "")}
-                className="rounded-lg border p-2 flex-shrink-0"
-                style={{ borderColor: BORDER_SOFT, color: copiedId === log.mandrillMessageId ? TEAL : MUTED, backgroundColor: "rgba(255,255,255,0.025)" }}>
-                <Copy size={13} />
-              </button>
-            )}
           </div>
 
           {/* Message body */}
@@ -293,7 +273,7 @@ function DetailPanel({ log, copiedId, onCopy, onClose }: {
             <p className="text-[9px] font-bold uppercase tracking-[0.09em] mb-4" style={{ color: GOLD }}>Automation Timeline</p>
             {[
               { label: "Lead record created",     value: fullDate(log.createdTime),                                  color: GOLD  },
-              { label: "Message dispatched",       value: log.mandrillMessageId ? `ID: ${truncId(log.mandrillMessageId)}` : "No ID captured", color: log.channel === "SMS" ? TEAL : GOLD },
+              { label: "Message dispatched",       value: log.sequence || `${log.channel} automation`, color: log.channel === "SMS" ? TEAL : GOLD },
               { label: "Delivery status",          value: log.deliveryStatus,                                         color: c.color },
             ].map((e, i, arr) => (
               <div key={e.label} className="flex gap-3">
@@ -328,29 +308,34 @@ function DetailPanel({ log, copiedId, onCopy, onClose }: {
 
 /* ═══════════════════════════════════════ MAIN ═══════════════════════════════════════ */
 export default function MessageLogsClient() {
-  const [logs, setLogs]             = useState<MessageLog[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const cachedLogs = useMemo(() => getCachedData<{ messageLogs?: MessageLog[] }>(DATA_CACHE_KEYS.messageLogs), []);
+  const [logs, setLogs]             = useState<MessageLog[]>(() => cachedLogs?.messageLogs ?? []);
+  const [loading, setLoading]       = useState(() => !cachedLogs);
   const [error, setError]           = useState<string | null>(null);
   const [search, setSearch]         = useState("");
   const [channelFilter, setChannel] = useState<ChannelFilter>("All");
   const [statusFilter, setStatus]   = useState<StatusFilter>("All");
   const [dateRange, setDateRange]   = useState<DateRangeFilter>("all");
   const [selected, setSelected]     = useState<MessageLog | null>(null);
-  const [copiedId, setCopiedId]     = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true); setError(null);
     try {
       const p = new URLSearchParams({ channel: channelFilter, status: statusFilter, dateRange, search });
-      const res = await fetch(`/api/airtable/message-logs?${p}`, { credentials: "same-origin" });
+      const res = await fetch(`/api/airtable/message-logs?${p}`, { credentials: "same-origin", cache: "no-store" });
       const data = await res.json() as { messageLogs?: MessageLog[]; error?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? "Failed to load");
       setLogs(data.messageLogs ?? []);
+      if (channelFilter === "All" && statusFilter === "All" && dateRange === "all" && !search) setCachedData(DATA_CACHE_KEYS.messageLogs, data);
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
   }, [channelFilter, dateRange, search, statusFilter]);
 
-  useEffect(() => { const t = setTimeout(() => void load(), 200); return () => clearTimeout(t); }, [load]);
+  useEffect(() => {
+    const isCachedDefault = Boolean(cachedLogs) && channelFilter === "All" && statusFilter === "All" && dateRange === "all" && !search;
+    const t = setTimeout(() => void load(!isCachedDefault), 200);
+    return () => clearTimeout(t);
+  }, [cachedLogs, channelFilter, dateRange, load, search, statusFilter]);
 
   useEffect(() => {
     const refresh = () => void load();
@@ -369,12 +354,6 @@ export default function MessageLogsClient() {
   }, [logs]);
 
   const latest = logs[0] ?? null;
-
-  async function copy(value: string) {
-    await navigator.clipboard?.writeText(value);
-    setCopiedId(value);
-    setTimeout(() => setCopiedId(c => c === value ? null : c), 1600);
-  }
 
   return (
     <div className="space-y-5">
@@ -432,7 +411,7 @@ export default function MessageLogsClient() {
         <div className="relative flex-1 min-w-[200px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: MUTED }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search recipient, message, Mandrill ID…"
+            placeholder="Search recipient, sequence, message, or Mandrill ID…"
             className="h-9 w-full rounded-xl border pl-9 pr-3 text-xs"
             style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }} />
         </div>
@@ -495,7 +474,7 @@ export default function MessageLogsClient() {
               <table className="w-full min-w-[900px] border-separate border-spacing-0">
                 <thead className="sticky top-0 z-10">
                   <tr style={{ backgroundColor: "#0B0B10" }}>
-                    {["Recipient", "Channel", "Message Preview", "Status", "Sent", "Mandrill ID", ""].map(h => (
+                    {["Recipient", "Channel", "Sequence", "Message Preview", "Status", "Sent", ""].map(h => (
                       <th key={h} className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
                         style={{ color: DIM, borderColor: BORDER_SOFT }}>
                         {h}
@@ -525,6 +504,9 @@ export default function MessageLogsClient() {
                       <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
                         <ChannelPill channel={log.channel} />
                       </td>
+                      <td className="border-b px-4 py-3 text-xs font-semibold" style={{ borderColor: BORDER_SOFT, color: log.sequence ? TEXT : DIM }}>
+                        {log.sequence || "—"}
+                      </td>
                       <td className="border-b px-4 py-3 max-w-[260px]" style={{ borderColor: BORDER_SOFT }}>
                         <p className="text-xs leading-5 line-clamp-2" style={{ color: MUTED }}>{previewBody(log.messageBody)}</p>
                       </td>
@@ -534,21 +516,6 @@ export default function MessageLogsClient() {
                       <td className="border-b px-4 py-3 text-xs whitespace-nowrap" title={fullDate(log.sentAt)}
                         style={{ borderColor: BORDER_SOFT, color: MUTED }}>
                         {timeAgo(log.sentAt)}
-                      </td>
-                      <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}
-                        onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono" style={{ color: log.mandrillMessageId ? TEXT : MUTED }}>
-                            {truncId(log.mandrillMessageId)}
-                          </span>
-                          {log.mandrillMessageId && (
-                            <button onClick={() => void copy(log.mandrillMessageId ?? "")}
-                              className="rounded-lg border p-1.5"
-                              style={{ borderColor: BORDER_SOFT, color: copiedId === log.mandrillMessageId ? TEAL : DIM, backgroundColor: "rgba(255,255,255,0.02)" }}>
-                              <Copy size={11} />
-                            </button>
-                          )}
-                        </div>
                       </td>
                       <td className="border-b px-3 py-3" style={{ borderColor: BORDER_SOFT }}>
                         {log.recipientLeadId && (
@@ -590,6 +557,7 @@ export default function MessageLogsClient() {
                 <p className="text-xs leading-5 line-clamp-2 mb-3" style={{ color: MUTED }}>{previewBody(log.messageBody)}</p>
                 <div className="flex items-center gap-2">
                   <ChannelPill channel={log.channel} />
+                  {log.sequence && <span className="max-w-[150px] truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ color: GOLD, borderColor: BORDER, backgroundColor: "rgba(201,168,76,.06)" }}>{log.sequence}</span>}
                   <span className="text-[11px]" style={{ color: DIM }}>{timeAgo(log.sentAt)}</span>
                 </div>
               </div>
@@ -598,7 +566,7 @@ export default function MessageLogsClient() {
         </>
       )}
 
-      <DetailPanel log={selected} copiedId={copiedId} onCopy={v => void copy(v)} onClose={() => setSelected(null)} />
+      <DetailPanel log={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

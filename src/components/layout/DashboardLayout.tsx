@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
+import { DATA_CACHE_KEYS, preloadDashboardData } from "@/lib/dashboard-data-cache";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -13,6 +14,13 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children, title, subtitle, actions }: DashboardLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    void preloadDashboardData(DATA_CACHE_KEYS.leads, "/api/airtable/leads?status=all");
+    void preloadDashboardData(DATA_CACHE_KEYS.messageLogs, "/api/airtable/message-logs?channel=All&status=All&dateRange=all&search=");
+    void preloadDashboardData(DATA_CACHE_KEYS.nurture, "/api/airtable/nurture");
+    void preloadDashboardData(DATA_CACHE_KEYS.staff, "/api/auth/users");
+  }, []);
 
   return (
     <div className="flex h-full min-h-screen" style={{ backgroundColor: "#0A0A0D" }}>

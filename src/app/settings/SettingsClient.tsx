@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, ChevronDown, Loader2, Plus, RefreshCw,
+  AlertCircle, Check, ChevronDown, Eye, EyeOff, Loader2, LockKeyhole, Plus, RefreshCw,
   Save, Search, ShieldAlert, Trash2, UserCog, X, User,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Profile, Role } from "@/lib/auth/permissions";
+import { createClient } from "@/lib/supabase/client";
+import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 
 const GOLD        = "#C9A84C";
 const PANEL       = "#0D0D12";
@@ -236,10 +238,12 @@ function StaffDrawer({ mode, form, saving, deleting, error, isSelf, onChange, on
 /* ══════════════════════════ MAIN ══════════════════════════ */
 export default function SettingsClient() {
   const { role, user, profile, isLoading } = useAuth();
+  const supabase = useMemo(() => createClient(), []);
+  const cachedStaff = useMemo(() => getCachedData<{ users?: Profile[] }>(DATA_CACHE_KEYS.staff), []);
 
   /* Staff state (admin only) */
-  const [staff, setStaff]           = useState<Profile[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [staff, setStaff]           = useState<Profile[]>(() => cachedStaff?.users ?? []);
+  const [loading, setLoading]       = useState(() => !cachedStaff);
   const [saving, setSaving]         = useState(false);
   const [deleting, setDeleting]     = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -253,23 +257,33 @@ export default function SettingsClient() {
   const [nameError, setNameError]   = useState<string | null>(null);
   const [nameSaved, setNameSaved]   = useState(false);
 
+  /* Password change state */
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+
   useEffect(() => {
     setNameEdit(profile?.full_name ?? "");
   }, [profile?.full_name]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading = true) => {
     if (role !== "admin") { setLoading(false); return; }
-    setLoading(true); setError(null);
+    if (showLoading) setLoading(true); setError(null);
     try {
       const res  = await fetch("/api/auth/users", { cache: "no-store" });
       const data = await res.json() as { users?: Profile[]; error?: string };
       if (!res.ok || data.error) throw new Error(data.error ?? "Could not load staff");
       setStaff(data.users ?? []);
+      setCachedData(DATA_CACHE_KEYS.staff, data);
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
   }, [role]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(!cachedStaff); }, [cachedStaff, load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -358,6 +372,31 @@ export default function SettingsClient() {
     finally { setNameSaving(false); }
   }
 
+  async function changePassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordError(null); setPasswordSaved(false);
+    if (!currentPassword) { setPasswordError("Enter your current password."); return; }
+    if (newPassword.length < 8) { setPasswordError("New password must be at least 8 characters."); return; }
+    if (newPassword !== confirmNewPassword) { setPasswordError("New passwords do not match."); return; }
+    if (newPassword === currentPassword) { setPasswordError("New password must be different from your current password."); return; }
+    if (!user?.email) { setPasswordError("Your account email is unavailable."); return; }
+
+    setPasswordSaving(true);
+    try {
+      const { error: verifyError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword });
+      if (verifyError) throw new Error("Current password is incorrect.");
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+      setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
+      setPasswordSaved(true);
+      window.setTimeout(() => setPasswordSaved(false), 3000);
+    } catch (event) {
+      setPasswordError(event instanceof Error ? event.message : "Could not change password.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
   if (isLoading) return (
     <div className="flex items-center gap-3 rounded-2xl border p-8" style={{ backgroundColor: CARD, borderColor: BORDER, color: MUTED }}>
       <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} /> Loading…
@@ -374,7 +413,7 @@ export default function SettingsClient() {
   const avatarInitials = initials(myName || myEmail);
 
   return (
-    <div className="mx-auto w-full max-w-[1220px] px-0 sm:px-1 lg:px-0">
+    <div className="w-full px-0">
       <div className="grid items-start gap-5 md:gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
 
       {/* ══════════ LEFT — My Profile ══════════ */}
@@ -429,6 +468,56 @@ export default function SettingsClient() {
           </button>
         </SettingsCard>
 
+        {/* Change password */}
+        <SettingsCard className="p-5 sm:p-6">
+          <div className="mb-5 flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.10)" }}>
+              <LockKeyhole size={15} />
+            </span>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>Change Password</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>Update the password for your account.</p>
+            </div>
+          </div>
+
+          <form onSubmit={changePassword} className="space-y-4">
+            {[
+              { label: "Current Password", value: currentPassword, setValue: setCurrentPassword, autoComplete: "current-password" },
+              { label: "New Password", value: newPassword, setValue: setNewPassword, autoComplete: "new-password" },
+              { label: "Confirm New Password", value: confirmNewPassword, setValue: setConfirmNewPassword, autoComplete: "new-password" },
+            ].map(field => (
+              <label key={field.label} className="block">
+                <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: DIM }}>{field.label}</span>
+                <span className="relative block">
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={field.value}
+                    onChange={event => { field.setValue(event.target.value); setPasswordError(null); setPasswordSaved(false); }}
+                    autoComplete={field.autoComplete}
+                    disabled={passwordSaving}
+                    className="h-11 w-full rounded-xl border px-3 pr-10 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40 disabled:opacity-55"
+                    style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }}
+                  />
+                  <button type="button" onClick={() => setShowPasswords(value => !value)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} aria-label={showPasswords ? "Hide passwords" : "Show passwords"}>
+                    {showPasswords ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </span>
+              </label>
+            ))}
+
+            <p className="text-[11px] leading-5" style={{ color: MUTED }}>Use at least 8 characters. Your new password must differ from your current password.</p>
+            {passwordError && <p role="alert" className="flex items-start gap-1.5 text-xs" style={{ color: RED }}><AlertCircle size={13} className="mt-0.5 shrink-0" />{passwordError}</p>}
+            {passwordSaved && <p role="status" className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: TEAL }}><Check size={13} />Password changed successfully.</p>}
+
+            <button type="submit" disabled={passwordSaving || !currentPassword || !newPassword || !confirmNewPassword}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-bold outline-none transition hover:brightness-110 active:translate-y-px disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40"
+              style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.08)", borderColor: "rgba(201,168,76,0.24)" }}>
+              {passwordSaving ? <Loader2 size={14} className="animate-spin" /> : <LockKeyhole size={14} />}
+              {passwordSaving ? "Changing Password..." : "Change Password"}
+            </button>
+          </form>
+        </SettingsCard>
+
         {/* Account info */}
         <SettingsCard className="p-5 sm:p-6">
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.1em]" style={{ color: DIM }}>Account Info</p>
@@ -460,7 +549,7 @@ export default function SettingsClient() {
           </div>
           {isAdmin && (
             <div className="flex items-center gap-2">
-              <button onClick={load} disabled={loading}
+              <button onClick={() => void load()} disabled={loading}
                 className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
                 style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}>
                 {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
