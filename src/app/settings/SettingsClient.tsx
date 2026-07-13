@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, Check, ChevronDown, Eye, EyeOff, Loader2, LockKeyhole, Plus, RefreshCw,
   Save, Search, ShieldAlert, Trash2, UserCog, X, User,
@@ -8,7 +8,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import type { Profile, Role } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/client";
-import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
+import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
 
 const GOLD        = "#C9A84C";
 const PANEL       = "#0D0D12";
@@ -239,7 +239,8 @@ function StaffDrawer({ mode, form, saving, deleting, error, isSelf, onChange, on
 export default function SettingsClient() {
   const { role, user, profile, isLoading } = useAuth();
   const supabase = useMemo(() => createClient(), []);
-  const cachedStaff = useMemo(() => getCachedData<{ users?: Profile[] }>(DATA_CACHE_KEYS.staff), []);
+  const cachedStaff = useDashboardCachedData<{ users?: Profile[] }>(DATA_CACHE_KEYS.staff);
+  const hadCachedStaffOnMount = useRef(Boolean(cachedStaff));
 
   /* Staff state (admin only) */
   const [staff, setStaff]           = useState<Profile[]>(() => cachedStaff?.users ?? []);
@@ -267,6 +268,10 @@ export default function SettingsClient() {
   const [passwordSaved, setPasswordSaved] = useState(false);
 
   useEffect(() => {
+    if (cachedStaff?.users) { setStaff(cachedStaff.users); setLoading(false); }
+  }, [cachedStaff]);
+
+  useEffect(() => {
     setNameEdit(profile?.full_name ?? "");
   }, [profile?.full_name]);
 
@@ -283,7 +288,7 @@ export default function SettingsClient() {
     finally { setLoading(false); }
   }, [role]);
 
-  useEffect(() => { void load(!cachedStaff); }, [cachedStaff, load]);
+  useEffect(() => { void load(!hadCachedStaffOnMount.current); }, [load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

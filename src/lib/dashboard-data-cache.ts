@@ -1,17 +1,62 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+
 type CacheEntry = { data: unknown; savedAt: number };
 
 const cache = new Map<string, CacheEntry>();
 const pending = new Map<string, Promise<unknown>>();
+const listeners = new Set<() => void>();
 const MAX_AGE = 2 * 60 * 1000;
+const STORAGE_PREFIX = "harmony-dashboard:v1:";
 
 export function getCachedData<T>(key: string): T | null {
-  const entry = cache.get(key);
+  let entry = cache.get(key);
+  if (!entry && typeof window !== "undefined") {
+    try {
+      const stored = window.sessionStorage.getItem(`${STORAGE_PREFIX}${key}`);
+      if (stored) {
+        entry = JSON.parse(stored) as CacheEntry;
+        cache.set(key, entry);
+      }
+    } catch { /* Storage can be unavailable in privacy-restricted browsers. */ }
+  }
   if (!entry || Date.now() - entry.savedAt > MAX_AGE) return null;
   return entry.data as T;
 }
 
 export function setCachedData(key: string, data: unknown) {
-  cache.set(key, { data, savedAt: Date.now() });
+  const entry = { data, savedAt: Date.now() };
+  cache.set(key, entry);
+  if (typeof window !== "undefined") {
+    try { window.sessionStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(entry)); }
+    catch { /* The in-memory cache remains available. */ }
+  }
+  listeners.forEach((listener) => listener());
+}
+
+export function clearDashboardDataCache() {
+  cache.clear(); pending.clear();
+  if (typeof window !== "undefined") {
+    for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith(STORAGE_PREFIX)) window.sessionStorage.removeItem(key);
+    }
+  }
+  listeners.forEach((listener) => listener());
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function useDashboardCachedData<T>(key: string): T | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => getCachedData<T>(key),
+    () => null,
+  );
 }
 
 export function preloadDashboardData(key: string, url: string) {
@@ -33,4 +78,8 @@ export const DATA_CACHE_KEYS = {
   messageLogs: "message-logs:default",
   nurture: "nurture:all",
   staff: "staff:all",
+  campaigns: "ads:campaigns:30",
+  adGroups: "ads:ad-groups:30",
+  creatives: "ads:creatives:30",
+  keywords: "ads:keywords:30",
 } as const;

@@ -27,7 +27,7 @@ import {
 import type { Lead } from "@/app/api/airtable/leads/route";
 import { useAuth } from "@/contexts/AuthContext";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
-import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
+import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
 import { createClient } from "@/lib/supabase/client";
 
 const GOLD = "#C9A84C";
@@ -594,7 +594,8 @@ export default function LeadsClient() {
   const supabase = useMemo(() => createClient(), []);
   const canUpdateLeads = can("update:leads");
   const canDeleteLeads = can("delete:leads");
-  const cachedLeads = useMemo(() => getCachedData<{ leads?: Lead[] }>(DATA_CACHE_KEYS.leads), []);
+  const cachedLeads = useDashboardCachedData<{ leads?: Lead[] }>(DATA_CACHE_KEYS.leads);
+  const hadCachedLeadsOnMount = useRef(Boolean(cachedLeads));
   const [leads, setLeads] = useState<Lead[]>(() => cachedLeads?.leads ?? []);
   const [loading, setLoading] = useState(() => !cachedLeads);
   const [error, setError] = useState<string | null>(null);
@@ -615,6 +616,10 @@ export default function LeadsClient() {
   const [importingLeads, setImportingLeads] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (cachedLeads?.leads) { setLeads(cachedLeads.leads); setLoading(false); }
+  }, [cachedLeads]);
+
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     setError(null);
@@ -633,10 +638,10 @@ export default function LeadsClient() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load(!cachedLeads);
+      void load(!hadCachedLeadsOnMount.current);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [cachedLeads, load]);
+  }, [load]);
 
   useEffect(() => {
     const refresh = () => void load();

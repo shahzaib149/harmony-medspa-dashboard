@@ -97,7 +97,7 @@ async function fetchAirtableRecords(tableName: string, params: URLSearchParams):
 
     const response = await fetch(
       `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(tableName)}?${pageParams}`,
-      { headers: { Authorization: `Bearer ${getAirtableApiKey()}` }, next: { revalidate: 30 } }
+      { headers: { Authorization: `Bearer ${getAirtableApiKey()}` }, cache: "no-store" }
     );
 
     if (!response.ok) {

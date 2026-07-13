@@ -22,7 +22,7 @@ interface ChartDonutProps {
 
 export default function ChartDonut({ data, height = 240 }: ChartDonutProps) {
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ResponsiveContainer width="100%" height={height} minWidth={0}>
       <PieChart>
         <Pie
           data={data}

@@ -105,7 +105,7 @@ export default function CampaignsTab({ campaigns }: { campaigns: Campaign[] }) {
         <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5">
           <h3 className="text-sm font-semibold text-[#1A1A2E] mb-4">Top Campaigns by Spend</h3>
           <div style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={top10} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
                 <XAxis type="number" tickFormatter={v => fmt$(Number(v), true)}
                   tick={{ fill: "#9CA3AF", fontSize: 11 }} axisLine={false} tickLine={false} />

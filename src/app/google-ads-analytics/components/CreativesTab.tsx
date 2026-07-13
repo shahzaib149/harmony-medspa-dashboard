@@ -97,7 +97,7 @@ export default function CreativesTab({ creatives }: { creatives: Creative[] }) {
         <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5">
           <h3 className="text-sm font-semibold text-[#1A1A2E] mb-4">Ad Type Breakdown by Spend</h3>
           <div style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie data={pieData} dataKey="value" innerRadius={70} outerRadius={110} paddingAngle={2}>
                   {pieData.map((_, i) => (
@@ -133,7 +133,7 @@ export default function CreativesTab({ creatives }: { creatives: Creative[] }) {
         <div className="bg-white rounded-2xl border border-[#E5E7EB] p-5">
           <h3 className="text-sm font-semibold text-[#1A1A2E] mb-4">Top Ads by Clicks</h3>
           <div style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={top8} margin={{ bottom: 60, left: 0, right: 10, top: 0 }}>
                 <XAxis dataKey="name" tick={{ fill: "#9CA3AF", fontSize: 10, angle: -25, textAnchor: "end" }}
                   axisLine={false} tickLine={false} />

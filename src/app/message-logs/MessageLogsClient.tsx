@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, ChevronDown, Clock3,
   ExternalLink, Mail, MessageSquare, RefreshCw, Search, X,
 } from "lucide-react";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
-import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
+import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const GOLD        = "#C9A84C";
@@ -308,7 +308,8 @@ function DetailPanel({ log, onClose }: {
 
 /* ═══════════════════════════════════════ MAIN ═══════════════════════════════════════ */
 export default function MessageLogsClient() {
-  const cachedLogs = useMemo(() => getCachedData<{ messageLogs?: MessageLog[] }>(DATA_CACHE_KEYS.messageLogs), []);
+  const cachedLogs = useDashboardCachedData<{ messageLogs?: MessageLog[] }>(DATA_CACHE_KEYS.messageLogs);
+  const hadCachedLogsOnMount = useRef(Boolean(cachedLogs));
   const [logs, setLogs]             = useState<MessageLog[]>(() => cachedLogs?.messageLogs ?? []);
   const [loading, setLoading]       = useState(() => !cachedLogs);
   const [error, setError]           = useState<string | null>(null);
@@ -317,6 +318,10 @@ export default function MessageLogsClient() {
   const [statusFilter, setStatus]   = useState<StatusFilter>("All");
   const [dateRange, setDateRange]   = useState<DateRangeFilter>("all");
   const [selected, setSelected]     = useState<MessageLog | null>(null);
+
+  useEffect(() => {
+    if (cachedLogs?.messageLogs) { setLogs(cachedLogs.messageLogs); setLoading(false); }
+  }, [cachedLogs]);
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true); setError(null);
@@ -332,10 +337,10 @@ export default function MessageLogsClient() {
   }, [channelFilter, dateRange, search, statusFilter]);
 
   useEffect(() => {
-    const isCachedDefault = Boolean(cachedLogs) && channelFilter === "All" && statusFilter === "All" && dateRange === "all" && !search;
+    const isCachedDefault = hadCachedLogsOnMount.current && channelFilter === "All" && statusFilter === "All" && dateRange === "all" && !search;
     const t = setTimeout(() => void load(!isCachedDefault), 200);
     return () => clearTimeout(t);
-  }, [cachedLogs, channelFilter, dateRange, load, search, statusFilter]);
+  }, [channelFilter, dateRange, load, search, statusFilter]);
 
   useEffect(() => {
     const refresh = () => void load();

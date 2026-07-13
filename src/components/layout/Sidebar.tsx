@@ -6,6 +6,7 @@ import { GitBranch, LayoutDashboard, LogOut, MessageSquare, Settings, TrendingUp
 import { useAuth } from "@/contexts/AuthContext";
 import { formatRole } from "@/lib/auth/permissions";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import { DATA_CACHE_KEYS, preloadDashboardData } from "@/lib/dashboard-data-cache";
 
 const navItems = [
   { href: "/dashboard",             label: "Overview",   icon: LayoutDashboard },
@@ -34,6 +35,21 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
     if (isCurrentPage) {
       window.dispatchEvent(new CustomEvent(DASHBOARD_REFRESH_EVENT));
       router.refresh();
+    }
+  }
+
+  function warmPage(href: string) {
+    if (href === "/leads") void preloadDashboardData(DATA_CACHE_KEYS.leads, "/api/airtable/leads?status=all");
+    if (href === "/nurture") void preloadDashboardData(DATA_CACHE_KEYS.nurture, "/api/airtable/nurture");
+    if (href === "/message-logs") void preloadDashboardData(DATA_CACHE_KEYS.messageLogs, "/api/airtable/message-logs?channel=All&status=All&dateRange=all&search=");
+    if (href === "/settings" && role === "admin") void preloadDashboardData(DATA_CACHE_KEYS.staff, "/api/auth/users");
+    if (href === "/google-ads-analytics") {
+      void Promise.all([
+        preloadDashboardData(DATA_CACHE_KEYS.campaigns, "/api/airtable?table=campaigns&days=30"),
+        preloadDashboardData(DATA_CACHE_KEYS.adGroups, "/api/airtable?table=ad-groups&days=30"),
+        preloadDashboardData(DATA_CACHE_KEYS.creatives, "/api/airtable?table=creatives&days=30"),
+        preloadDashboardData(DATA_CACHE_KEYS.keywords, "/api/airtable?table=keywords&days=30"),
+      ]);
     }
   }
 
@@ -83,6 +99,8 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }: Side
               key={href}
               href={href}
               prefetch
+              onMouseEnter={() => warmPage(href)}
+              onFocus={() => warmPage(href)}
               onClick={() => handleNavigation(href)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
               style={{

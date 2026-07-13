@@ -7,6 +7,7 @@ import { AuthContext } from "@/contexts/AuthContext";
 import { can as canRole, isRole, type Profile, type Role } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { clearDashboardDataCache } from "@/lib/dashboard-data-cache";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     if (!authConfigured) return;
     await supabase.auth.signOut();
+    clearDashboardDataCache();
     setUser(null);
     setProfile(null);
     router.replace("/login");

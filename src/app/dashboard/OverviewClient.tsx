@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import KPICard from "@/components/ui/KPICard";
 import StatusBadge from "@/components/ui/StatusBadge";
-import ChartLine from "@/components/ui/ChartLine";
-import ChartDonut from "@/components/ui/ChartDonut";
 import { mockVisitsData, mockLeadSourceData, mockAIInsights } from "@/lib/mock-data";
 import { Zap, Mail, RefreshCw, CalendarCheck, Share2 } from "lucide-react";
+
+const ChartLine = dynamic(() => import("@/components/ui/ChartLine"), {
+  ssr: false,
+  loading: () => <div className="h-[240px] animate-pulse rounded-xl bg-slate-100" />,
+});
+const ChartDonut = dynamic(() => import("@/components/ui/ChartDonut"), {
+  ssr: false,
+  loading: () => <div className="h-[220px] animate-pulse rounded-xl bg-slate-100" />,
+});
 
 const automations = [
   { name: "Speed-to-Lead", status: "live" as const, icon: Zap },
@@ -139,7 +147,7 @@ export default function OverviewClient() {
                 AI Insight of the Day
               </h2>
               <Link
-                href="/ai-insights"
+                href="/google-ads-analytics?tab=ai-suggestions"
                 className="text-xs text-[#1A6B6B] hover:underline"
               >
                 View all →

@@ -31,7 +31,7 @@ export default function ChartLine({
   height = 260,
 }: ChartLineProps) {
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ResponsiveContainer width="100%" height={height} minWidth={0}>
       <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
         <XAxis

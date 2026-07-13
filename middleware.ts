@@ -13,6 +13,7 @@ export const config = {
     "/nurture/:path*",
     "/message-logs/:path*",
     "/google-ads-analytics/:path*",
+    "/ai-insights/:path*",
     "/settings/:path*",
     "/google-business/:path*",
   ],

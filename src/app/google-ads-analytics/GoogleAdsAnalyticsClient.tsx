@@ -1,15 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { DollarSign, MousePointerClick, TrendingUp, ShoppingCart, RefreshCw, Loader2 } from "lucide-react";
-import CampaignsTab from "./components/CampaignsTab";
-import AdGroupsTab from "./components/AdGroupsTab";
-import CreativesTab from "./components/CreativesTab";
-import KeywordsTab from "./components/KeywordsTab";
-import AISuggestionsTab from "./components/AISuggestionsTab";
-import PendingAdsPanel from "@/app/dashboard/PendingAdsPanel";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
+
+const tabFallback = () => <div className="h-48 animate-pulse rounded-2xl border border-white/[.06] bg-white/[.025]" />;
+const CampaignsTab = dynamic(() => import("./components/CampaignsTab"), { ssr: false, loading: tabFallback });
+const AdGroupsTab = dynamic(() => import("./components/AdGroupsTab"), { ssr: false, loading: tabFallback });
+const CreativesTab = dynamic(() => import("./components/CreativesTab"), { ssr: false, loading: tabFallback });
+const KeywordsTab = dynamic(() => import("./components/KeywordsTab"), { ssr: false, loading: tabFallback });
+const AISuggestionsTab = dynamic(() => import("./components/AISuggestionsTab"), { ssr: false, loading: tabFallback });
+const PendingAdsPanel = dynamic(() => import("@/app/dashboard/PendingAdsPanel"), { ssr: false, loading: tabFallback });
 
 export type Campaign = {
   id: string; accountName: string; campaignId: string; campaignName: string;
@@ -85,17 +89,32 @@ function AnalyticsInner() {
   const router = useRouter();
   const activeTab = (searchParams.get("tab") ?? "campaigns") as TabId;
   const days = Number(searchParams.get("days") ?? 30);
+  const cachedCampaigns = useDashboardCachedData<{ data?: Campaign[] }>(DATA_CACHE_KEYS.campaigns);
+  const cachedAdGroups = useDashboardCachedData<{ data?: AdGroup[] }>(DATA_CACHE_KEYS.adGroups);
+  const cachedCreatives = useDashboardCachedData<{ data?: Creative[] }>(DATA_CACHE_KEYS.creatives);
+  const cachedKeywords = useDashboardCachedData<{ data?: Keyword[] }>(DATA_CACHE_KEYS.keywords);
+  const cached = useMemo(() => days === 30 ? { campaigns: cachedCampaigns, adGroups: cachedAdGroups, creatives: cachedCreatives, keywords: cachedKeywords } : null, [cachedAdGroups, cachedCampaigns, cachedCreatives, cachedKeywords, days]);
+  const hasCompleteCache = Boolean(cached?.campaigns && cached.adGroups && cached.creatives && cached.keywords);
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [adGroups, setAdGroups] = useState<AdGroup[]>([]);
-  const [creatives, setCreatives] = useState<Creative[]>([]);
-  const [keywords, setKeywords] = useState<Keyword[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(() => cached?.campaigns?.data ?? []);
+  const [adGroups, setAdGroups] = useState<AdGroup[]>(() => cached?.adGroups?.data ?? []);
+  const [creatives, setCreatives] = useState<Creative[]>(() => cached?.creatives?.data ?? []);
+  const [keywords, setKeywords] = useState<Keyword[]>(() => cached?.keywords?.data ?? []);
+  const [loading, setLoading] = useState(() => !hasCompleteCache);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    if (!cached || !hasCompleteCache) return;
+    setCampaigns(cached.campaigns?.data ?? []);
+    setAdGroups(cached.adGroups?.data ?? []);
+    setCreatives(cached.creatives?.data ?? []);
+    setKeywords(cached.keywords?.data ?? []);
+    setLoading(false);
+  }, [cached, hasCompleteCache]);
+
+  const fetchAll = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(null);
     try {
       const [cr, ag, cv, kw] = await Promise.all([
@@ -109,6 +128,12 @@ function AnalyticsInner() {
       setAdGroups(ag.data ?? []);
       setCreatives(cv.data ?? []);
       setKeywords(kw.data ?? []);
+      if (days === 30) {
+        setCachedData(DATA_CACHE_KEYS.campaigns, cr);
+        setCachedData(DATA_CACHE_KEYS.adGroups, ag);
+        setCachedData(DATA_CACHE_KEYS.creatives, cv);
+        setCachedData(DATA_CACHE_KEYS.keywords, kw);
+      }
       setLastRefresh(new Date());
     } catch (e) {
       setError(String(e));
@@ -117,7 +142,7 @@ function AnalyticsInner() {
     }
   }, [days]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { void fetchAll(!hasCompleteCache); }, [fetchAll, hasCompleteCache]);
 
   useEffect(() => {
     const refresh = () => void fetchAll();
@@ -194,7 +219,7 @@ function AnalyticsInner() {
               </button>
             ))}
           </div>
-          <button onClick={fetchAll} disabled={loading}
+          <button onClick={() => void fetchAll()} disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors"
             style={{ border: `1px solid ${BORDER}`, color: MUTED }}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}

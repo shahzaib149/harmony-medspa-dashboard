@@ -1,13 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AlertCircle, ChevronDown, Clock3, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
-import { DATA_CACHE_KEYS, getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
+import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
 import { NURTURE_STEPS, type NurtureEnrollment, type NurtureFunnelStep, type NurtureStats as Stats } from "@/lib/types/nurture";
 import NurtureStats from "./nurture-stats";
-import NurtureFunnel from "./nurture-funnel";
 import NurtureDetail from "./nurture-detail";
+
+const NurtureFunnel = dynamic(() => import("./nurture-funnel"), {
+  ssr: false,
+  loading: () => <div className="h-[300px] animate-pulse rounded-2xl border border-white/[.06] bg-white/[.025]" />,
+});
 
 const GOLD = "#C9A84C", PANEL = "#0D0D12", CARD = "#111117", TEXT = "#F0ECE4", MUTED = "#7A7A8A", DIM = "#5A5A6A", BORDER = "rgba(201,168,76,.12)", SOFT = "rgba(255,255,255,.06)";
 const PAGE_LOADED_AT = Date.now();
@@ -72,7 +77,8 @@ function NurtureRefreshBar({ latest, loading, onRefresh }: { latest: NurtureEnro
 }
 
 export default function NurtureTable() {
-  const cachedNurture = useMemo(() => getCachedData<{ enrollments?: NurtureEnrollment[] }>(DATA_CACHE_KEYS.nurture), []);
+  const cachedNurture = useDashboardCachedData<{ enrollments?: NurtureEnrollment[] }>(DATA_CACHE_KEYS.nurture);
+  const hadCachedNurtureOnMount = useRef(Boolean(cachedNurture));
   const [enrollments, setEnrollments] = useState<NurtureEnrollment[]>(() => cachedNurture?.enrollments ?? []);
   const [loading, setLoading] = useState(() => !cachedNurture);
   const [error, setError] = useState("");
@@ -81,6 +87,10 @@ export default function NurtureTable() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<Sort>("next");
   const [selected, setSelected] = useState<NurtureEnrollment | null>(null);
+
+  useEffect(() => {
+    if (cachedNurture?.enrollments) { setEnrollments(cachedNurture.enrollments); setLoading(false); }
+  }, [cachedNurture]);
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true); setError("");
@@ -94,7 +104,7 @@ export default function NurtureTable() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void load(!cachedNurture); }, [cachedNurture, load]);
+  useEffect(() => { void load(!hadCachedNurtureOnMount.current); }, [load]);
 
   useEffect(() => {
     const refresh = () => void load();

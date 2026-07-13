@@ -11,7 +11,7 @@ export default function NurtureFunnel({ data }: { data: NurtureFunnelStep[] }) {
         <p className="text-xs text-[#7A7A8A]">Reach, conversion, and drop-off by step</p>
       </div>
       <div className="h-[310px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <BarChart data={data} layout="vertical" margin={{ top: 0, right: 12, left: 8, bottom: 0 }}>
             <CartesianGrid stroke="rgba(255,255,255,.05)" horizontal={false} />
             <XAxis type="number" allowDecimals={false} stroke="#5A5A6A" fontSize={11} />
