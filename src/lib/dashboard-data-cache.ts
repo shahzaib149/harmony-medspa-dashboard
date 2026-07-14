@@ -35,6 +35,16 @@ export function setCachedData(key: string, data: unknown) {
   listeners.forEach((listener) => listener());
 }
 
+export function invalidateDashboardData(key: string) {
+  cache.delete(key);
+  pending.delete(key);
+  if (typeof window !== "undefined") {
+    try { window.sessionStorage.removeItem(`${STORAGE_PREFIX}${key}`); }
+    catch { /* The in-memory cache has still been invalidated. */ }
+  }
+  listeners.forEach((listener) => listener());
+}
+
 export function clearDashboardDataCache() {
   cache.clear(); pending.clear();
   if (typeof window !== "undefined") {

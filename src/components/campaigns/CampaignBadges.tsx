@@ -1,0 +1,5 @@
+import type { LeadCampaignSummary } from "@/lib/types/campaigns";
+const colors: Record<string, string> = { Active: "#4ECDC4", Completed: "#6BAED6", Stopped: "#EF6B73", Paused: "#E6AD55", "Coming Soon": "#8B8B98" };
+export function CampaignStatusBadge({ status }: { status: string }) { const color = colors[status] ?? "#8B8B98"; return <span className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ color, borderColor: `${color}55`, backgroundColor: `${color}16` }}>{status}</span>; }
+export function LeadCampaignBadges({ campaigns }: { campaigns: LeadCampaignSummary[] }) { return <div className="flex flex-wrap gap-1">{campaigns.length ? campaigns.map((item) => <span key={`${item.slug}-${item.enrollmentId ?? item.status}`} className="rounded-full border px-2 py-1 text-[10px]" style={{ color: colors[item.status], borderColor: `${colors[item.status]}44`, backgroundColor: `${colors[item.status]}12` }}>{item.campaign} · {item.status}</span>) : <span className="text-xs text-[#777784]">No Campaign</span>}</div>; }
+export const EnrollmentStatusBadge = CampaignStatusBadge;

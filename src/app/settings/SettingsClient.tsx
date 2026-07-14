@@ -266,6 +266,16 @@ export default function SettingsClient() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSaved, setPasswordSaved] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!passwordModalOpen) return;
+    const timer = window.setTimeout(() => passwordInputRef.current?.focus(), 0);
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !passwordSaving) setPasswordModalOpen(false); };
+    document.addEventListener("keydown", close);
+    return () => { window.clearTimeout(timer); document.removeEventListener("keydown", close); };
+  }, [passwordModalOpen, passwordSaving]);
 
   useEffect(() => {
     if (cachedStaff?.users) { setStaff(cachedStaff.users); setLoading(false); }
@@ -394,6 +404,7 @@ export default function SettingsClient() {
       if (updateError) throw updateError;
       setCurrentPassword(""); setNewPassword(""); setConfirmNewPassword("");
       setPasswordSaved(true);
+      setPasswordModalOpen(false);
       window.setTimeout(() => setPasswordSaved(false), 3000);
     } catch (event) {
       setPasswordError(event instanceof Error ? event.message : "Could not change password.");
@@ -473,54 +484,21 @@ export default function SettingsClient() {
           </button>
         </SettingsCard>
 
-        {/* Change password */}
+        {/* Account security */}
         <SettingsCard className="p-5 sm:p-6">
-          <div className="mb-5 flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.10)" }}>
               <LockKeyhole size={15} />
             </span>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>Change Password</p>
-              <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>Update the password for your account.</p>
+              <p className="text-xs font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>Account &amp; Security</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: MUTED }}>Manage your sign-in credentials.</p>
             </div>
+            </div>
+            <button type="button" onClick={() => { setPasswordError(null); setPasswordModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold" style={{ color: GOLD, borderColor: "rgba(201,168,76,.24)", backgroundColor: "rgba(201,168,76,.06)" }}><LockKeyhole size={13}/>Change password</button>
           </div>
-
-          <form onSubmit={changePassword} className="space-y-4">
-            {[
-              { label: "Current Password", value: currentPassword, setValue: setCurrentPassword, autoComplete: "current-password" },
-              { label: "New Password", value: newPassword, setValue: setNewPassword, autoComplete: "new-password" },
-              { label: "Confirm New Password", value: confirmNewPassword, setValue: setConfirmNewPassword, autoComplete: "new-password" },
-            ].map(field => (
-              <label key={field.label} className="block">
-                <span className="mb-2 block text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: DIM }}>{field.label}</span>
-                <span className="relative block">
-                  <input
-                    type={showPasswords ? "text" : "password"}
-                    value={field.value}
-                    onChange={event => { field.setValue(event.target.value); setPasswordError(null); setPasswordSaved(false); }}
-                    autoComplete={field.autoComplete}
-                    disabled={passwordSaving}
-                    className="h-11 w-full rounded-xl border px-3 pr-10 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40 disabled:opacity-55"
-                    style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }}
-                  />
-                  <button type="button" onClick={() => setShowPasswords(value => !value)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} aria-label={showPasswords ? "Hide passwords" : "Show passwords"}>
-                    {showPasswords ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </span>
-              </label>
-            ))}
-
-            <p className="text-[11px] leading-5" style={{ color: MUTED }}>Use at least 8 characters. Your new password must differ from your current password.</p>
-            {passwordError && <p role="alert" className="flex items-start gap-1.5 text-xs" style={{ color: RED }}><AlertCircle size={13} className="mt-0.5 shrink-0" />{passwordError}</p>}
-            {passwordSaved && <p role="status" className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: TEAL }}><Check size={13} />Password changed successfully.</p>}
-
-            <button type="submit" disabled={passwordSaving || !currentPassword || !newPassword || !confirmNewPassword}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-bold outline-none transition hover:brightness-110 active:translate-y-px disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40"
-              style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.08)", borderColor: "rgba(201,168,76,0.24)" }}>
-              {passwordSaving ? <Loader2 size={14} className="animate-spin" /> : <LockKeyhole size={14} />}
-              {passwordSaving ? "Changing Password..." : "Change Password"}
-            </button>
-          </form>
+          {passwordSaved && <p role="status" className="mt-3 flex items-center gap-1.5 text-xs font-semibold" style={{ color: TEAL }}><Check size={13}/>Password changed successfully.</p>}
         </SettingsCard>
 
         {/* Account info */}
@@ -723,6 +701,11 @@ export default function SettingsClient() {
           onDelete={() => void deleteStaffMember(form.id)}
         />
       )}
+      {passwordModalOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="password-title" onMouseDown={event => { if (event.target === event.currentTarget && !passwordSaving) setPasswordModalOpen(false); }}><div className="w-full max-w-md rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: "rgba(201,168,76,.25)" }}><div className="flex items-center justify-between"><h2 id="password-title" className="text-lg font-bold" style={{ color: TEXT }}>Change password</h2><button aria-label="Close" disabled={passwordSaving} onClick={() => setPasswordModalOpen(false)}><X size={18} style={{ color: MUTED }}/></button></div><form onSubmit={changePassword} className="mt-5 space-y-4">{[
+        { label: "Current password", value: currentPassword, setValue: setCurrentPassword, autoComplete: "current-password" },
+        { label: "New password", value: newPassword, setValue: setNewPassword, autoComplete: "new-password" },
+        { label: "Confirm new password", value: confirmNewPassword, setValue: setConfirmNewPassword, autoComplete: "new-password" },
+      ].map((field,index)=><label key={field.label} className="block"><span className="mb-2 block text-xs font-bold" style={{ color: DIM }}>{field.label}</span><span className="relative block"><input ref={index===0?passwordInputRef:undefined} required type={showPasswords?"text":"password"} value={field.value} onChange={event=>{field.setValue(event.target.value);setPasswordError(null)}} autoComplete={field.autoComplete} disabled={passwordSaving} className="h-11 w-full rounded-xl border px-3 pr-10 text-sm" style={{backgroundColor:PANEL,borderColor:BORDER,color:TEXT}}/><button type="button" onClick={()=>setShowPasswords(value=>!value)} className="absolute right-3 top-3" aria-label={showPasswords?"Hide passwords":"Show passwords"}>{showPasswords?<EyeOff size={16}/>:<Eye size={16}/>}</button></span></label>)}<p className="text-xs" style={{color:MUTED}}>Use at least 8 characters. New and confirmation passwords must match.</p>{passwordError&&<p role="alert" className="text-xs" style={{color:RED}}>{passwordError}</p>}<div className="flex justify-end gap-2"><button type="button" disabled={passwordSaving} onClick={()=>setPasswordModalOpen(false)} className="rounded-xl border px-4 py-2 text-sm" style={{borderColor:BORDER,color:MUTED}}>Cancel</button><button type="submit" disabled={passwordSaving||!currentPassword||newPassword.length<8||newPassword!==confirmNewPassword} className="rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-40" style={{backgroundColor:GOLD,color:"#08080C"}}>{passwordSaving?"Changing…":"Change password"}</button></div></form></div></div>}
       </div>
     </div>
   );

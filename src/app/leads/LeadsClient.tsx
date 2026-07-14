@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Activity,
   CalendarDays,
   Check,
   ChevronDown,
@@ -21,7 +24,8 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
-  Upload,
+  UserPlus,
+  FileUp,
   X,
 } from "lucide-react";
 import type { Lead } from "@/app/api/airtable/leads/route";
@@ -29,6 +33,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
 import { createClient } from "@/lib/supabase/client";
+import { LeadCampaignBadges } from "@/components/campaigns/CampaignBadges";
+import { DestructiveConfirmDialog } from "@/components/ui/ConfirmDialog";
+import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
 
 const GOLD = "#C9A84C";
 const BG = "#0A0A0D";
@@ -211,10 +218,12 @@ function StatCard({ label, value, meta, color = GOLD }: { label: string; value: 
   );
 }
 
-function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onExport, canAdd }: { lead: Lead | null; loading: boolean; importing: boolean; onRefresh: () => void; onAdd: () => void; onImport: () => void; onExport: () => void; canAdd: boolean }) {
+function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onExport, onUpdateVisits, canAdd }: { lead: Lead | null; loading: boolean; importing: boolean; onRefresh: () => void; onAdd: () => void; onImport: () => void; onExport: () => void; onUpdateVisits:()=>void; canAdd: boolean }) {
+  const [menuOpen,setMenuOpen]=useState(false);const menuRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!menuOpen)return;const close=(event:MouseEvent)=>{if(!menuRef.current?.contains(event.target as Node))setMenuOpen(false)},key=(event:KeyboardEvent)=>{if(event.key==="Escape")setMenuOpen(false)};document.addEventListener("mousedown",close);document.addEventListener("keydown",key);return()=>{document.removeEventListener("mousedown",close);document.removeEventListener("keydown",key)}},[menuOpen]);
   return (
     <div
-      className="overflow-hidden rounded-2xl border px-4 py-3"
+      className="relative overflow-visible rounded-2xl border px-4 py-3"
       style={{
         background: `linear-gradient(135deg, rgba(201,168,76,0.12), rgba(45,212,191,0.045) 45%, rgba(255,255,255,0.018)), ${PANEL}`,
         borderColor: "rgba(201,168,76,0.22)",
@@ -232,43 +241,32 @@ function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onEx
               Last lead received
             </p>
             <p className="truncate text-sm font-bold" style={{ color: TEXT }}>
-              {lead ? `${lead.name || "Unnamed lead"} - ${sourceLabel(lead.source)}` : "Waiting for the first lead"}
+              {lead ? `${lead.name || "Unnamed lead"} - ${sourceLabel(lead.source)}` : loading ? <span className="inline-block h-4 w-40 animate-pulse rounded bg-white/10" aria-label="Loading latest Lead" /> : "No Leads yet"}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ color: MUTED, backgroundColor: "rgba(0,0,0,0.18)" }}>
             <Clock3 size={13} />
-            {lead ? timeAgo(lead.createdAt) : "No activity"}
+            {lead ? timeAgo(lead.createdAt) : loading ? "Loading…" : "No activity"}
           </div>
           <button type="button" onClick={onExport} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:brightness-110" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>
             <Download size={13} /> Export CSV
           </button>
+          <button type="button" onClick={onUpdateVisits} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold" style={{backgroundColor:CARD,borderColor:BORDER,color:TEXT}}><Activity size={13}/>Update visits</button>
           {canAdd && (
-            <button type="button" onClick={onImport} disabled={importing} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: "rgba(201,168,76,.06)", borderColor: BORDER, color: GOLD }}>
-              {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {importing ? "Importing..." : "Import CSV"}
-            </button>
-          )}
-          {canAdd && (
-            <button
-              type="button"
-              onClick={onAdd}
-              className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-extrabold outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/40"
-              style={{ color: "#09090D", background: "linear-gradient(135deg, #E0C36B, #C9A84C)", borderColor: "#D7B95B", boxShadow: "0 8px 24px rgba(201,168,76,0.18)" }}
-            >
-              <Plus size={14} />
-              Add Lead
-            </button>
+            <div className="relative z-40" ref={menuRef}><button type="button" aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(value=>!value)} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-extrabold" style={{color:"#09090D",backgroundColor:GOLD,borderColor:"#D7B95B"}}><Plus size={14}/>Add Lead<ChevronDown size={13}/></button>{menuOpen&&<div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-[80] w-44 rounded-xl border p-1 shadow-2xl" style={{backgroundColor:"#09090D",borderColor:BORDER}}><button type="button" role="menuitem" onClick={()=>{setMenuOpen(false);onAdd()}} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white hover:bg-white/5"><UserPlus size={14}/>Add manually</button><button type="button" role="menuitem" disabled={importing} onClick={()=>{setMenuOpen(false);onImport()}} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white hover:bg-white/5 disabled:opacity-50"><FileUp size={14}/>{importing?"Importing…":"Import CSV"}</button></div>}</div>
           )}
           <button
             type="button"
             onClick={onRefresh}
             disabled={loading}
-            className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
+            title="Refresh Leads"
+            aria-label="Refresh Leads"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
             style={{ backgroundColor: "rgba(201,168,76,0.06)", borderColor: BORDER, color: GOLD }}
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            Refresh
           </button>
         </div>
       </div>
@@ -276,7 +274,7 @@ function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onEx
   );
 }
 
-function LeadSlideOver({
+function LeadDetailsModal({
   lead,
   duplicate,
   onClose,
@@ -285,6 +283,7 @@ function LeadSlideOver({
   canDelete,
   onDelete,
   getAuthHeaders,
+  onLeadUpdate,
 }: {
   lead: Lead | null;
   duplicate: boolean;
@@ -294,9 +293,15 @@ function LeadSlideOver({
   canDelete: boolean;
   onDelete: (lead: Lead) => void;
   getAuthHeaders: () => Promise<HeadersInit>;
+  onLeadUpdate: (lead: Lead) => void;
 }) {
   const [updating, setUpdating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", message: "", source: "", notes: "" });
+
+  useEffect(() => { if (lead) setEditForm({ name: lead.name, email: lead.email, phone: lead.phone, message: lead.message, source: lead.source, notes: lead.notes }); }, [lead]);
 
   if (!lead) return null;
 
@@ -322,6 +327,19 @@ function LeadSlideOver({
     }
   }
 
+  async function saveLeadFields() {
+    if (!lead) return;
+    const currentLead = lead;
+    setEditSaving(true); setActionError(null);
+    try {
+      const res = await fetch("/api/airtable/leads", { method: "PATCH", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify({ id: currentLead.id, ...editForm }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Could not save lead");
+      onLeadUpdate({ ...currentLead, ...editForm }); setEditing(false);
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Could not save lead"); }
+    finally { setEditSaving(false); }
+  }
+
   const events = [
     { label: "Lead received", value: fullDate(lead.createdAt), icon: Sparkles, tone: GOLD },
     ...(lead.emailSentStatus ? [{ label: `Email ${lead.emailSentStatus}`, value: "Automation status", icon: Mail, tone: isSent(lead.emailSentStatus) ? "#22C55E" : "#F59E0B" }] : []),
@@ -330,11 +348,13 @@ function LeadSlideOver({
   ];
 
   return (
-    <div className="fixed inset-0 z-[70]">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-0 sm:p-8">
       <button className="absolute inset-0 bg-black/55" aria-label="Close lead detail panel" onClick={onClose} />
       <aside
-        className="absolute right-0 top-0 flex h-full w-full max-w-[480px] flex-col border-l"
-        style={{ backgroundColor: "#09090D", borderColor: BORDER, boxShadow: "-28px 0 80px rgba(0,0,0,0.42)" }}
+        role="dialog"
+        aria-modal="true"
+        className="relative z-10 flex h-full w-full flex-col overflow-hidden border sm:h-[82vh] sm:min-w-[800px] sm:max-w-[1080px] sm:rounded-2xl"
+        style={{ backgroundColor: "#09090D", borderColor: BORDER, boxShadow: "0 28px 100px rgba(0,0,0,0.58)" }}
       >
         <div className="flex items-start justify-between gap-4 border-b p-5" style={{ borderColor: BORDER }}>
           <div className="min-w-0">
@@ -471,6 +491,14 @@ function LeadSlideOver({
             </div>
           </div>
 
+          {canUpdate && <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}><div className="flex items-center justify-between"><p className="text-[10px] font-bold uppercase" style={{color:GOLD}}>Lead details</p><button onClick={()=>setEditing(value=>!value)} className="text-xs font-bold" style={{color:GOLD}}>{editing?"Cancel":"Edit"}</button></div>{editing&&<><div className="mt-3 grid gap-3 sm:grid-cols-2">{[["Name","name"],["Email","email"],["Phone","phone"],["Source","source"],["Message","message"],["Notes","notes"]].map(([label,key])=><label key={key} className={key==="message"||key==="notes"?"sm:col-span-2":""}><span className="mb-1 block text-[10px] uppercase" style={{color:DIM}}>{label}</span><input value={editForm[key as keyof typeof editForm]} onChange={event=>setEditForm(current=>({...current,[key]:event.target.value}))} className="h-10 w-full rounded-lg border px-3 text-sm" style={{backgroundColor:PANEL,borderColor:BORDER,color:TEXT}}/></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={()=>setEditing(false)} className="rounded-lg border px-3 py-2 text-xs" style={{borderColor:BORDER,color:MUTED}}>Cancel</button><button disabled={editSaving} onClick={()=>void saveLeadFields()} className="rounded-lg px-3 py-2 text-xs font-bold" style={{backgroundColor:GOLD,color:BG}}>{editSaving?"Saving…":"Save"}</button></div></>}</div>}
+
+          <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>Campaign Activity</p>
+            <LeadCampaignBadges campaigns={lead.campaigns} />
+            {lead.campaigns.map((item) => <div key={`${item.slug}-${item.enrollmentId ?? item.status}`} className="mt-3 rounded-xl p-3 text-xs" style={{ backgroundColor: "rgba(255,255,255,.025)", color: MUTED }}><div className="flex justify-between gap-3"><b style={{ color: TEXT }}>{item.campaign}</b><Link href={`/campaigns/${item.slug}`} style={{ color: GOLD }}>View Campaign</Link></div><p className="mt-2">{item.status}{item.currentStep ? ` · ${item.currentStep}` : ""}</p>{item.nextSendAt && <p>Next send: {fullDate(item.nextSendAt)}</p>}{item.lastSentAt && <p>Last sent: {fullDate(item.lastSentAt)}</p>}{item.stopReason && <p>Stop reason: {item.stopReason}</p>}</div>)}
+          </div>
+
           <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
             <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
               Attribution
@@ -511,6 +539,7 @@ function parseCsv(text: string): string[][] {
       row = [];
     } else value += character;
   }
+
   row.push(value);
   if (row.some((cell) => cell.trim())) rows.push(row);
   return rows;
@@ -590,6 +619,7 @@ function AddLeadModal({ open, saving, error, onClose, onSubmit }: {
 }
 
 export default function LeadsClient() {
+  const searchParams = useSearchParams();
   const { can } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const canUpdateLeads = can("update:leads");
@@ -605,10 +635,17 @@ export default function LeadsClient() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [smsFilter, setSmsFilter] = useState<SentFilter>("all");
   const [emailFilter, setEmailFilter] = useState<SentFilter>("all");
+  const [campaignFilter, setCampaignFilter] = useState("all");
+  const [campaignStatusFilter, setCampaignStatusFilter] = useState("all");
+  const [campaignStepFilter, setCampaignStepFilter] = useState("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<{nurtureEnrollments:number;messageLogs:number;activeCampaign:string}|null>(null);
+  const [deletingLead, setDeletingLead] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [metricsModalOpen, setMetricsModalOpen] = useState(false);
   const [savingLead, setSavingLead] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -619,6 +656,11 @@ export default function LeadsClient() {
   useEffect(() => {
     if (cachedLeads?.leads) { setLeads(cachedLeads.leads); setLoading(false); }
   }, [cachedLeads]);
+
+  useEffect(() => {
+    const leadId = searchParams.get("lead");
+    if (leadId) setSelectedLead(leads.find((lead) => lead.id === leadId) ?? null);
+  }, [leads, searchParams]);
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -681,9 +723,12 @@ export default function LeadsClient() {
       const matchesDate = withinDateRange(lead.createdAt, dateFilter);
       const matchesSms = smsFilter === "all" || (smsFilter === "sent" ? isSent(lead.smsSentStatus) : !isSent(lead.smsSentStatus));
       const matchesEmail = emailFilter === "all" || (emailFilter === "sent" ? isSent(lead.emailSentStatus) : !isSent(lead.emailSentStatus));
-      return matchesSearch && matchesStatus && matchesSource && matchesDate && matchesSms && matchesEmail;
+      const matchesCampaign = campaignFilter === "all" || (campaignFilter === "none" ? lead.campaigns.length === 0 : lead.campaigns.some((item) => item.slug === campaignFilter));
+      const matchesCampaignStatus = campaignStatusFilter === "all" || lead.campaigns.some((item) => item.status === campaignStatusFilter);
+      const matchesCampaignStep = campaignStepFilter === "all" || lead.campaigns.some((item) => item.currentStep === campaignStepFilter);
+      return matchesSearch && matchesStatus && matchesSource && matchesDate && matchesSms && matchesEmail && matchesCampaign && matchesCampaignStatus && matchesCampaignStep;
     });
-  }, [dateFilter, emailFilter, isDuplicateLead, leads, search, smsFilter, sourceFilter, statusFilter]);
+  }, [campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, isDuplicateLead, leads, search, smsFilter, sourceFilter, statusFilter]);
 
   const latestLead = filtered[0] ?? leads[0] ?? null;
   const todayCount = leads.filter((lead) => withinDateRange(lead.createdAt, "today")).length;
@@ -816,25 +861,19 @@ export default function LeadsClient() {
     if (!canDeleteLeads) return;
     setOpenMenuId(null);
     setDeleteError(null);
-    const res = await fetch("/api/airtable/leads", {
-      method: "DELETE",
-      credentials: "same-origin",
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ id: lead.id }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.error) {
-      setDeleteError(data.error ?? "Could not delete lead");
-      return;
-    }
-    setLeads((current) => current.filter((item) => item.id !== lead.id));
-    setSelectedLead((current) => current?.id === lead.id ? null : current);
+    setDeleteTarget(lead); setDeleteImpact(null);
+    const res = await fetch(`/api/airtable/leads/${lead.id}/delete-impact`,{headers:await getAuthHeaders(),cache:"no-store"});
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok){setDeleteTarget(null);setDeleteError(data.error??`Could not calculate deletion impact for ${lead.name}.`);return}
+    setDeleteImpact(data);
   }
+
+  async function confirmDeleteLead(){if(!deleteTarget)return;const lead=deleteTarget;setDeletingLead(true);const res=await fetch(`/api/airtable/leads/${lead.id}`,{method:"DELETE",credentials:"same-origin",headers:await getAuthHeaders()});const data=await res.json().catch(()=>({}));setDeletingLead(false);if(!res.ok){setDeleteError(data.partial?`Deletion was only partially completed: ${data.error}. Refresh before trying again.`:data.error??`Could not permanently delete ${lead.name}.`);setDeleteTarget(null);await load(false);return}setLeads(current=>current.filter(item=>item.id!==lead.id));setSelectedLead(current=>current?.id===lead.id?null:current);setDeleteTarget(null);showToast("success",`${lead.name} and linked campaign history were deleted permanently.`)}
 
   return (
     <div className="space-y-5">
       <input ref={importInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCsv(file); }} />
-      <LeadTicker lead={latestLead} loading={loading} importing={importingLeads} onRefresh={() => void load()} onAdd={() => { setAddError(null); setAddModalOpen(true); }} onImport={() => importInputRef.current?.click()} onExport={exportCsv} canAdd={canUpdateLeads} />
+      <LeadTicker lead={latestLead} loading={loading} importing={importingLeads} onRefresh={() => void load(false)} onAdd={() => { setAddError(null); setAddModalOpen(true); }} onImport={() => importInputRef.current?.click()} onExport={exportCsv} onUpdateVisits={()=>setMetricsModalOpen(true)} canAdd={canUpdateLeads} />
 
       {toast && <div role="status" className="fixed right-5 top-5 z-[110] flex max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold" style={{ color: toast.tone === "success" ? "#86EFAC" : "#FCA5A5", backgroundColor: toast.tone === "success" ? "#0D2117" : "#281012", borderColor: toast.tone === "success" ? "rgba(34,197,94,.35)" : "rgba(248,113,113,.35)", boxShadow: "0 18px 60px rgba(0,0,0,.45)" }}>{toast.tone === "success" ? <Check size={17} /> : <AlertCircle size={17} />}{toast.message}<button type="button" onClick={() => setToast(null)} className="ml-2 opacity-70"><X size={14} /></button></div>}
 
@@ -880,7 +919,10 @@ export default function LeadsClient() {
               style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5 xl:flex">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:flex xl:flex-wrap">
+            <SelectControl label="Filter by campaign" value={campaignFilter} onChange={setCampaignFilter} options={[{ label: "All Campaigns", value: "all" }, { label: "Speed-to-Lead", value: "speed-to-lead" }, { label: "14-Day Nurture", value: "14-day-nurture" }, { label: "No Campaign", value: "none" }]} />
+            <SelectControl label="Filter by campaign status" value={campaignStatusFilter} onChange={setCampaignStatusFilter} options={[{ label: "Campaign status: All", value: "all" }, ...["Active", "Paused", "Stopped", "Completed"].map((value) => ({ label: value, value }))]} />
+            <SelectControl label="Filter by current step" value={campaignStepFilter} onChange={setCampaignStepFilter} options={[{ label: "All Steps", value: "all" }, ...["Day 1 SMS", "Day 3 Email", "Day 5 SMS", "Day 8 Email", "Day 12 SMS"].map((value) => ({ label: value, value }))]} />
             <SelectControl
               label="Filter by status"
               value={statusFilter}
@@ -957,6 +999,7 @@ export default function LeadsClient() {
                       { key: "email-address", label: "Email" },
                       { key: "source", label: "Source" },
                       { key: "status", label: "Status" },
+                      { key: "campaigns", label: "Campaigns" },
                       { key: "replied", label: "Replied" },
                       { key: "sms", label: "SMS" },
                       { key: "email-delivery", label: "Email" },
@@ -1019,6 +1062,7 @@ export default function LeadsClient() {
                             <StatusPill status={lead.status} />
                           )}
                         </td>
+                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><LeadCampaignBadges campaigns={lead.campaigns} /></td>
                         <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
                           <button type="button" role="switch" aria-checked={lead.replied} aria-label={`Mark ${lead.name || "lead"} as ${lead.replied ? "not replied" : "replied"}`} disabled={!canUpdateLeads || updatingReplied.has(lead.id)} onClick={() => void changeReplied(lead, !lead.replied)} className="relative inline-flex h-6 w-10 items-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: lead.replied ? "rgba(45,212,191,.22)" : "rgba(255,255,255,.05)", borderColor: lead.replied ? "rgba(45,212,191,.45)" : BORDER_SOFT }}>
                             {updatingReplied.has(lead.id) ? <Loader2 size={13} className="m-auto animate-spin" style={{ color: GOLD }} /> : <span className={`h-4 w-4 rounded-full transition-transform ${lead.replied ? "translate-x-[19px]" : "translate-x-[3px]"}`} style={{ backgroundColor: lead.replied ? TEAL : MUTED }} />}
@@ -1129,7 +1173,7 @@ export default function LeadsClient() {
         </>
       )}
 
-      <LeadSlideOver
+      <LeadDetailsModal
         lead={selectedLead}
         duplicate={selectedLead ? isDuplicateLead(selectedLead) : false}
         onClose={() => setSelectedLead(null)}
@@ -1138,8 +1182,11 @@ export default function LeadsClient() {
         canDelete={canDeleteLeads}
         onDelete={(lead) => void deleteLead(lead)}
         getAuthHeaders={getAuthHeaders}
+        onLeadUpdate={(updated) => { setLeads(current => current.map(item => item.id === updated.id ? updated : item)); setSelectedLead(updated); showToast("success", "Lead updated"); }}
       />
       <AddLeadModal open={addModalOpen} saving={savingLead} error={addError} onClose={() => { if (!savingLead) setAddModalOpen(false); }} onSubmit={addLead} />
+      <UpdateClinicMetricsModal open={metricsModalOpen} onClose={()=>setMetricsModalOpen(false)} onSaved={()=>showToast("success","Monthly clinic metrics updated")}/>
+      <DestructiveConfirmDialog open={Boolean(deleteTarget)} title={`Permanently delete ${deleteTarget?.name ?? "this Lead"}?`} description="This will permanently delete the Lead and all linked Nurture Enrollment and Message Log records. This action cannot be undone." confirmLabel="Delete permanently" loading={deletingLead} onCancel={()=>{setDeleteTarget(null);setDeleteImpact(null)}} onConfirm={()=>void confirmDeleteLead()}><div className="space-y-1"><p>{deleteImpact?.nurtureEnrollments ?? "…"} Nurture Enrollment records</p><p>{deleteImpact?.messageLogs ?? "…"} Message Log records</p><p>Current campaign status: {deleteImpact?.activeCampaign ?? "Loading…"}</p></div></DestructiveConfirmDialog>
     </div>
   );
 }

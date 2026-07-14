@@ -1,5 +1,7 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
+import type { LeadCampaignSummary } from "@/lib/types/campaigns";
+import { normalizeUsPhone } from "@/lib/airtable/leads-base";
 
 const TABLE_NAME = "Leads";
 const BASE_ID    = AIRTABLE_LEADS_BASE_ID;
@@ -24,6 +26,9 @@ export interface Lead {
   emailSentStatus: string;
   smsSentStatus: string;
   replied: boolean;
+  notes: string;
+  lastContactedAt: string;
+  campaigns: LeadCampaignSummary[];
 }
 
 function str(fields: Record<string, unknown>, ...keys: string[]): string {
@@ -35,6 +40,25 @@ function str(fields: Record<string, unknown>, ...keys: string[]): string {
 }
 
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
+
+function values(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : value ? [String(value)] : [];
+}
+
+function campaignSummaries(fields: Record<string, unknown>): LeadCampaignSummary[] {
+  const campaigns: LeadCampaignSummary[] = [];
+  const speedSent = [str(fields, "Email Sent Status"), str(fields, "SMS Sent Status")].some((value) => ["sent", "delivered"].includes(value.toLowerCase()));
+  if (speedSent) campaigns.push({ campaign: "Speed-to-Lead", slug: "speed-to-lead", status: "Completed" });
+  const enrollmentIds = values(fields["Nurture Enrollments"]);
+  const statuses = values(fields["Nurture Status"]);
+  const steps = values(fields["Nurture Current Step"]);
+  const next = values(fields["Nurture Next Send At"]);
+  const last = values(fields["Nurture Last Sent At"]);
+  const reasons = values(fields["Nurture Stop Reason"]);
+  const created = values(fields["Nurture Enrollment Created At"]);
+  enrollmentIds.forEach((enrollmentId, index) => campaigns.push({ campaign: "14-Day Nurture", slug: "14-day-nurture", status: (statuses[index] || "Completed") as LeadCampaignSummary["status"], currentStep: steps[index] || null, nextSendAt: next[index] || null, lastSentAt: last[index] || null, stopReason: reasons[index] || null, enrolledAt: created[index] || null, enrollmentId }));
+  return campaigns;
+}
 
 async function fetchLeadRecords(params: URLSearchParams) {
   const records: AirtableRecord[] = [];
@@ -111,6 +135,9 @@ export async function GET(request: Request) {
     emailSentStatus: str(r.fields, "Email Sent Status"),
     smsSentStatus:   str(r.fields, "SMS Sent Status"),
     replied:         r.fields.Replied === true,
+    notes:           str(r.fields, "Notes"),
+    lastContactedAt: str(r.fields, "Last Contacted At"),
+    campaigns:       campaignSummaries(r.fields),
   }));
 
   return Response.json(
@@ -127,9 +154,11 @@ function validateNewLead(input: NewLeadInput, row?: number) {
   const email = typeof input.email === "string" ? input.email.trim() : "";
   const message = typeof input.message === "string" ? input.message.trim() : "";
   const prefix = row ? `Row ${row}: ` : "";
+  const normalizedPhone = normalizeUsPhone(phone);
   if (!name || !phone) throw new Error(`${prefix}Name and phone are required`);
+  if (!normalizedPhone) throw new Error(`${prefix}Enter a valid US phone number`);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`${prefix}Enter a valid email address`);
-  return { name, phone, email, message };
+  return { name, phone: normalizedPhone, email, message };
 }
 
 function newLeadFields(input: ReturnType<typeof validateNewLead>) {
@@ -203,19 +232,25 @@ export async function PATCH(request: Request) {
 
   if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
-  const { id, status, replied } = await request.json() as { id?: string; status?: unknown; replied?: unknown };
+  const { id, status, replied, name, email, phone, message, source, notes } = await request.json() as Record<string, unknown>;
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const fields: Record<string, unknown> = {};
   if (typeof status === "string" && status.trim()) fields.Status = status.trim();
   if (typeof replied === "boolean") fields.Replied = replied;
-  if (Object.keys(fields).length === 0) return Response.json({ error: "status or replied required" }, { status: 400 });
+  if (typeof name === "string") { if (!name.trim()) return Response.json({ error: "Name is required" }, { status: 400 }); fields.Name = name.trim(); }
+  if (typeof email === "string") { if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return Response.json({ error: "Enter a valid email address" }, { status: 400 }); fields.Email = email.trim() || null; }
+  if (typeof phone === "string") { const normalized = phone.trim() ? normalizeUsPhone(phone) : null; if (phone.trim() && !normalized) return Response.json({ error: "Enter a valid US phone number" }, { status: 400 }); fields.Phone = normalized; }
+  if (typeof message === "string") fields.Message = message.trim();
+  if (typeof source === "string") fields.Source = source.trim();
+  if (typeof notes === "string") fields.Notes = notes.trim();
+  if (Object.keys(fields).length === 0) return Response.json({ error: "No editable fields provided" }, { status: 400 });
 
   const res = await fetch(
     `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${id}`,
     {
       method: "PATCH",
       headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ fields }),
+      body: JSON.stringify({ fields, typecast: true }),
     }
   );
 

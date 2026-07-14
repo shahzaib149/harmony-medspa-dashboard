@@ -5,7 +5,7 @@ export default function DashboardPage() {
   return (
     <DashboardLayout
       title="Growth Command Center"
-      subtitle="Harmony MedSpa — June 2026"
+      subtitle="Live patient-growth and clinic operations"
     >
       <OverviewClient />
     </DashboardLayout>
