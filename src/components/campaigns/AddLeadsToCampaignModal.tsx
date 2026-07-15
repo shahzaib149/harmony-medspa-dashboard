@@ -122,17 +122,52 @@ export default function AddLeadsToCampaignModal({
     if (!open) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      const params = new URLSearchParams({ pageSize: "50" });
-      if (initialLeadId && !query && status === "All") params.set("recordId", initialLeadId);
-      if (query.trim()) params.set("search", query.trim());
-      if (status !== "All") params.set("status", status);
-      void fetch(`/api/airtable/leads?${params}`, { cache: "no-store", signal: controller.signal })
-        .then((response) => response.json())
-        .then((body) => setLeads(body.leads ?? []))
-        .catch((caught) => { if (!(caught instanceof DOMException && caught.name === "AbortError")) setError("Leads could not be loaded"); });
+      void (async () => {
+        try {
+          const allLeads: Lead[] = [];
+          let cursor: string | null = null;
+          let page = 1;
+
+          do {
+            const params = new URLSearchParams({
+              page: String(page),
+              pageSize: "50",
+            });
+            if (cursor) params.set("cursor", cursor);
+            if (query.trim()) params.set("search", query.trim());
+            if (status !== "All") params.set("status", status);
+
+            const response = await fetch(`/api/airtable/leads?${params}`, {
+              cache: "no-store",
+              signal: controller.signal,
+            });
+            const body = (await response.json()) as {
+              error?: string;
+              leads?: Lead[];
+              nextCursor?: string | null;
+            };
+            if (!response.ok || body.error) {
+              throw new Error(body.error || "Leads could not be loaded");
+            }
+
+            allLeads.push(...(body.leads ?? []));
+            cursor = body.nextCursor ?? null;
+            page += 1;
+          } while (cursor && !controller.signal.aborted);
+
+          if (!controller.signal.aborted) {
+            setLeads(allLeads);
+            setError("");
+          }
+        } catch (caught) {
+          if (!(caught instanceof DOMException && caught.name === "AbortError")) {
+            setError("Leads could not be loaded");
+          }
+        }
+      })();
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [initialLeadId, open, query, status]);
+  }, [open, query, status]);
   const visible = useMemo(
     () =>
       leads,
