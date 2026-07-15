@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "harmony-medspa-dashboard/**",
+    ".codex-chrome-theme/**",
+    "artifacts/**",
   ]),
   {
     rules: {

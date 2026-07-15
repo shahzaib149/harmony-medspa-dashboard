@@ -2,6 +2,7 @@ import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { airtableFetch, linkedIds, listRecords, mapLead, normalizeUsPhone, safeAirtableError, type AirtableRecord } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
 import type { BulkEnrollmentRequest, BulkEnrollmentResult, BulkEnrollNewLead } from "@/lib/types/campaigns";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 
 const blocked = new Set(["Booked", "Duplicate", "Failed", "Not Interested"]);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,7 +24,8 @@ async function createEnrollment(leadId: string, firstSendAt: string, note = "Man
 }
 
 export async function POST(request: Request) {
-  try { await requireRole(request, "editor"); } catch (error) { return authErrorResponse(error); }
+  let actor;
+  try { ({ profile: actor } = await requireRole(request, "editor")); } catch (error) { return authErrorResponse(error); }
   if (!isAirtableConfigured()) return Response.json({ error: "Airtable is not configured" }, { status: 503 });
   const body = await request.json().catch(() => null) as (BulkEnrollmentRequest & { enrollmentNote?: string }) | null;
   if (!body || !Array.isArray(body.leadIds) || !Array.isArray(body.newLeads) || !body.firstSendAt || body.timezone !== "America/New_York") return Response.json({ error: "Invalid enrollment request" }, { status: 400 });
@@ -65,6 +67,10 @@ export async function POST(request: Request) {
         const enrollment = await createEnrollment(leadId!, body.firstSendAt, body.enrollmentNote); activeIds.add(leadId!); result.enrolled.push({ leadId, name: input.name, enrollmentId: enrollment.id });
       } catch (caught) { result.failed.push({ leadId, name: input.name, reason: caught instanceof Error ? caught.message : "Enrollment failed" }); }
     }
+    await logAuditEvent({ actor, action: "campaign_enrollment_started", category: "campaigns", resource: { type: "campaign", id: "14-day-nurture", label: "14-Day Nurture" }, summary: `Started nurture enrollment for ${result.enrolled.length} leads`, metadata: { requested: body.leadIds.length + body.newLeads.length, enrolled: result.enrolled.length, skipped: result.skipped.length, failed: result.failed.length }, result: result.failed.length && !result.enrolled.length ? "failed" : "success", request });
     return Response.json(result, { status: result.enrolled.length ? 201 : result.failed.length ? 422 : 200 });
-  } catch { return Response.json({ error: "Could not complete enrollment" }, { status: 500 }); }
+  } catch {
+    await logAuditEvent({ actor, action: "action_failed", category: "campaigns", resource: { type: "campaign", id: "14-day-nurture", label: "14-Day Nurture" }, summary: "Nurture enrollment could not be completed", metadata: { operation: "campaign_enrollment_started", requested: body.leadIds.length + body.newLeads.length }, result: "failed", request });
+    return Response.json({ error: "Could not complete enrollment" }, { status: 500 });
+  }
 }

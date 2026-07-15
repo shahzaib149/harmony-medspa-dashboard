@@ -1,4 +1,5 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 
 const BASE_ID  = process.env.AIRTABLE_BASE_ID ?? "appGumYdPTtL5GW6M";
 const TABLE_ID = "tbl8XpPEGCr720IUi";
@@ -86,8 +87,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  let actor;
   try {
-    await requireRole(request, "editor");
+    ({ profile: actor } = await requireRole(request, "editor"));
   } catch (error) {
     return authErrorResponse(error);
   }
@@ -98,6 +100,7 @@ export async function PATCH(request: Request) {
 
   const { id, status } = await request.json() as { id?: string; status?: "Approved" | "Rejected" | "Published" };
   if (!id || !status) return Response.json({ error: "id and status required" }, { status: 400 });
+  await logAuditEvent({ actor, action: "google_ads_change_requested", category: "google_ads", resource: { type: "pending_ad", id }, summary: `Requested pending ad status change to ${status}`, after: { status }, request });
 
   const res = await fetch(
     `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${id}`,
@@ -110,8 +113,10 @@ export async function PATCH(request: Request) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    await logAuditEvent({ actor, action: "action_failed", category: "google_ads", resource: { type: "pending_ad", id }, summary: "Pending ad status change failed", metadata: { operation: "google_ads_change_completed", proposed_status: status }, result: "failed", request });
     return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
 
+  await logAuditEvent({ actor, action: "google_ads_change_completed", category: "google_ads", resource: { type: "pending_ad", id }, summary: `Changed pending ad status to ${status}`, after: { status }, request });
   return Response.json({ success: true });
 }

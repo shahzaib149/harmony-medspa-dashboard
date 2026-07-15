@@ -40,8 +40,9 @@ export default function ChartDonut({ data, height = 240 }: ChartDonutProps) {
         <Tooltip
           formatter={(value) => [`${value}%`, ""]}
           contentStyle={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
+            background: "var(--chart-tooltip)",
+            color: "var(--text-primary)",
+            border: "1px solid var(--border-subtle)",
             borderRadius: "8px",
             fontSize: "12px",
           }}
@@ -49,7 +50,7 @@ export default function ChartDonut({ data, height = 240 }: ChartDonutProps) {
         <Legend
           wrapperStyle={{ fontSize: "12px", paddingTop: "12px" }}
           formatter={(value) => (
-            <span className="text-[#6B7280]">{value}</span>
+            <span style={{ color: "var(--chart-axis)" }}>{value}</span>
           )}
         />
       </PieChart>

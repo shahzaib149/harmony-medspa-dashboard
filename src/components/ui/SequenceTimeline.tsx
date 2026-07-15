@@ -33,9 +33,9 @@ export default function SequenceTimeline({ stepCounts = [] }: SequenceTimelinePr
             <div className="flex flex-col items-center min-w-[120px]">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center mb-2"
-                style={{ backgroundColor: "#1A6B6B" }}
+                style={{ backgroundColor: "var(--healthy)" }}
               >
-                <Icon size={18} className="text-white" />
+                <Icon size={18} style={{ color: "#fff" }} />
               </div>
               <p className="text-xs font-semibold text-[#1A1A2E] text-center">
                 Day {step.day}

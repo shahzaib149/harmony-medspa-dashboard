@@ -9,11 +9,11 @@ import { createClient } from "@/lib/supabase/client";
 const PUBLISH_WEBHOOK = "https://hook.us2.make.com/j51ev3akcj3svqgnxbi52f8a9v4rczhk";
 
 const GOLD   = "#C9A84C";
-const CARD   = "#111117";
-const BORDER = "rgba(201,168,76,0.12)";
-const TEXT   = "#F0ECE4";
-const MUTED  = "#7A7A8A";
-const DIM    = "#5A5A6A";
+const CARD   = "var(--surface-1)";
+const BORDER = "var(--border-subtle)";
+const TEXT   = "var(--text-primary)";
+const MUTED  = "var(--text-muted)";
+const DIM    = "var(--text-muted)";
 const TEAL   = "#2DD4BF";
 
 type PublishState = "idle" | "publishing" | "published" | "error";
@@ -180,7 +180,7 @@ function AdCard({ ad }: { ad: PendingAd }) {
             { label: "H2", value: ad.headline2, max: 30 },
             { label: "H3", value: ad.headline3, max: 30 },
           ].map(f => (
-            <div key={f.label} style={{ padding: "6px 8px", borderRadius: 8, backgroundColor: "rgba(255,255,255,0.025)", borderWidth: "1px", borderStyle: "solid", borderColor: "rgba(255,255,255,0.05)" }}>
+            <div key={f.label} style={{ padding: "6px 8px", borderRadius: 8, backgroundColor: "var(--surface-2)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border-subtle)" }}>
               <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: DIM, margin: "0 0 3px" }}>{f.label}</p>
               <p style={{ fontSize: 10, color: TEXT, margin: 0, lineHeight: 1.3 }}>{f.value || "—"}</p>
               <p style={{ fontSize: 8, fontFamily: "monospace", color: f.value.length <= f.max ? TEAL : "#F87171", margin: "3px 0 0" }}>
@@ -196,7 +196,7 @@ function AdCard({ ad }: { ad: PendingAd }) {
             { label: "D1", value: ad.description1, max: 90 },
             { label: "D2", value: ad.description2, max: 90 },
           ].map(f => (
-            <div key={f.label} style={{ padding: "6px 8px", borderRadius: 8, backgroundColor: "rgba(255,255,255,0.025)", borderWidth: "1px", borderStyle: "solid", borderColor: "rgba(255,255,255,0.05)" }}>
+            <div key={f.label} style={{ padding: "6px 8px", borderRadius: 8, backgroundColor: "var(--surface-2)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border-subtle)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
                 <p style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: DIM, margin: 0 }}>{f.label}</p>
                 <p style={{ fontSize: 8, fontFamily: "monospace", color: f.value.length <= f.max ? TEAL : "#F87171", margin: 0 }}>
@@ -335,7 +335,7 @@ export default function PendingAdsPanel() {
           <button
             onClick={load}
             disabled={loading}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", backgroundColor: "rgba(255,255,255,0.04)", color: MUTED, border: `1px solid ${BORDER}` }}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", backgroundColor: "var(--surface-2)", color: MUTED, border: `1px solid ${BORDER}` }}
           >
             {loading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
             Refresh
@@ -344,7 +344,7 @@ export default function PendingAdsPanel() {
       </div>
 
       {/* Body */}
-      <div style={{ padding: "16px 20px", backgroundColor: "#0D0D12" }}>
+      <div style={{ padding: "16px 20px", backgroundColor: "var(--background-subtle)" }}>
         {loading ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0", gap: 10 }}>
             <Loader2 size={22} className="animate-spin" style={{ color: GOLD }} />

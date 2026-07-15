@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AuthProvider } from "@/contexts/AuthProvider";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -11,7 +12,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Harmony Growth Command Center",
-  description: "Marketing & patient growth dashboard for Harmony MedSpa — powered by CodeSquad AI Solutions",
+  description:
+    "Marketing & patient growth dashboard for Harmony MedSpa — powered by CodeSquad AI Solutions",
 };
 
 export default function RootLayout({
@@ -20,9 +22,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} h-full`}>
-      <body className="h-full bg-[#F5F7FA] text-[#1A1A2E] antialiased" style={{ fontFamily: "var(--font-inter), sans-serif" }}>
-        <AuthProvider>{children}</AuthProvider>
+    <html
+      lang="en"
+      className={`${inter.variable} h-full`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=localStorage.getItem('harmony-dashboard-theme');if(p!=='dark'&&p!=='light'&&p!=='system')p='dark';var r=p==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):p;var d=document.documentElement;d.dataset.theme=r;d.dataset.themePreference=p;d.style.colorScheme=r}catch(e){document.documentElement.dataset.theme='dark';document.documentElement.style.colorScheme='dark'}})();`,
+          }}
+        />
+      </head>
+      <body
+        className="h-full antialiased"
+        style={{ fontFamily: "var(--font-inter), sans-serif" }}
+      >
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

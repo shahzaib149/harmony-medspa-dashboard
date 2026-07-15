@@ -1,6 +1,10 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 
-export async function GET() {
+export async function GET(request: Request) {
+  let actor;
+  try { ({ profile: actor } = await requireRole(request, "editor")); } catch (error) { return authErrorResponse(error); }
   try {
     const supabase = await createServiceClient();
 
@@ -22,6 +26,8 @@ export async function GET() {
 
     if (error) throw error;
 
+    await logAuditEvent({ actor, action: "integration_updated", category: "google_ads", resource: { type: "google_ads_sync", label: "Google Ads snapshots" }, summary: `Synced ${mockData.length} Google Ads snapshots`, metadata: { synced_rows: mockData.length }, request });
+
     return Response.json({
       success: true,
       synced: mockData.length,
@@ -29,6 +35,7 @@ export async function GET() {
     });
   } catch (err) {
     console.error("/api/google-ads/sync error:", err);
+    await logAuditEvent({ actor, action: "action_failed", category: "google_ads", resource: { type: "google_ads_sync", label: "Google Ads snapshots" }, summary: "Google Ads snapshot sync failed", metadata: { operation: "integration_updated" }, result: "failed", request });
     return Response.json({ error: "Sync failed" }, { status: 500 });
   }
 }

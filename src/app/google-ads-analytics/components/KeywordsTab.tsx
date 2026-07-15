@@ -88,7 +88,7 @@ export default function KeywordsTab({ keywords }: { keywords: Keyword[] }) {
                     if (!active || !payload?.[0]) return null;
                     const d = payload[0].payload;
                     return (
-                      <div className="bg-[#1e293b] text-white text-xs px-3 py-2 rounded-lg shadow">
+                      <div className="text-xs px-3 py-2 rounded-lg shadow" style={{ background: "var(--surface-raised)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)" }}>
                         <p className="font-medium">{d.name}</p>
                         <p>{fmt$(d.value)}</p>
                       </div>
@@ -126,7 +126,7 @@ export default function KeywordsTab({ keywords }: { keywords: Keyword[] }) {
                     if (!active || !payload?.[0]) return null;
                     const d = payload[0].payload;
                     return (
-                      <div className="bg-[#1e293b] text-white text-xs px-3 py-2 rounded-lg shadow">
+                      <div className="text-xs px-3 py-2 rounded-lg shadow" style={{ background: "var(--surface-raised)", color: "var(--text-primary)", border: "1px solid var(--border-subtle)" }}>
                         <p className="font-medium mb-1">{d.full}</p>
                         <p>Spend: {fmt$(d.spend)}</p>
                         <p>ROAS: {fmtRoas(d.roas)}</p>

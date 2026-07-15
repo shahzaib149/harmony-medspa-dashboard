@@ -4,11 +4,13 @@ import { useState, useEffect, useCallback } from "react";
 import { Star, MessageSquare, MapPin, Phone, Globe, Navigation, Loader2, Send, Pencil, RefreshCw, AlertCircle } from "lucide-react";
 
 const GOLD = "#C9A84C";
-const CARD = "#111117";
-const BORDER = "rgba(201,168,76,0.12)";
-const TEXT = "#F0ECE4";
-const MUTED = "#7A7A8A";
-const DIM = "#5A5A6A";
+const GOLD_BG = "var(--brand-primary)";
+const GOLD_FG = "var(--primary-foreground)";
+const CARD = "var(--surface-1)";
+const BORDER = "var(--border-subtle)";
+const TEXT = "var(--text-primary)";
+const MUTED = "var(--text-muted)";
+const DIM = "var(--text-muted)";
 
 const RATING_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
@@ -172,7 +174,7 @@ export default function GoogleBusinessClient() {
             {[7, 30, 90].map(d => (
               <button key={d} onClick={() => setDays(d)}
                 className="px-3 py-1.5 text-xs font-medium transition-colors"
-                style={days === d ? { backgroundColor: GOLD, color: "#0A0A0D" } : { color: MUTED }}>
+                style={days === d ? { backgroundColor: GOLD_BG, color: GOLD_FG } : { color: MUTED }}>
                 {d}d
               </button>
             ))}
@@ -259,8 +261,8 @@ export default function GoogleBusinessClient() {
                       return (
                         <div key={n} className="flex items-center gap-2">
                           <span className="text-xs w-2" style={{ color: DIM }}>{n}</span>
-                          <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
-                            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: GOLD }} />
+                          <div className="flex-1 h-1.5 rounded-full" style={{ backgroundColor: "var(--border-subtle)" }}>
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: GOLD_BG }} />
                           </div>
                           <span className="text-xs w-4 text-right" style={{ color: DIM }}>{count}</span>
                         </div>
@@ -318,11 +320,11 @@ export default function GoogleBusinessClient() {
                             <textarea value={draft}
                               onChange={e => setDraftReplies(p => ({ ...p, [review.reviewId]: e.target.value }))}
                               className="w-full rounded-lg px-3 py-2 text-sm resize-none"
-                              style={{ backgroundColor: "#1A1A22", border: `1px solid ${BORDER}`, color: TEXT }}
+                              style={{ backgroundColor: "var(--surface-2)", border: `1px solid ${BORDER}`, color: TEXT }}
                               rows={3} />
                             <button onClick={() => postReply(review.reviewId, draft)}
                               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
-                              style={{ backgroundColor: GOLD, color: "#0A0A0D" }}>
+                              style={{ backgroundColor: GOLD_BG, color: GOLD_FG }}>
                               <Send size={13} /> Post Reply
                             </button>
                           </div>
@@ -382,7 +384,7 @@ export default function GoogleBusinessClient() {
                           </span>
                           <span className="font-semibold tabular-nums" style={{ color: item.color }}>{item.value.toLocaleString()}</span>
                         </div>
-                        <div className="h-1.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
+                        <div className="h-1.5 rounded-full" style={{ backgroundColor: "var(--border-subtle)" }}>
                           <div className="h-full rounded-full transition-all duration-700"
                             style={{ width: `${pct}%`, backgroundColor: item.color }} />
                         </div>
@@ -445,7 +447,7 @@ export default function GoogleBusinessClient() {
                     <button key={t} onClick={() => setPostType(t)}
                       className="flex-1 py-2 rounded-lg text-xs font-medium transition-all"
                       style={postType === t
-                        ? { backgroundColor: GOLD, color: "#0A0A0D" }
+                        ? { backgroundColor: GOLD_BG, color: GOLD_FG }
                         : { border: `1px solid ${BORDER}`, color: MUTED }}>
                       {t === "STANDARD" ? "Update" : t === "OFFER" ? "Offer" : "Event"}
                     </button>
@@ -460,7 +462,7 @@ export default function GoogleBusinessClient() {
               </div>
               <button onClick={generatePost} disabled={loadingPost}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                style={{ backgroundColor: GOLD, color: "#0A0A0D", opacity: loadingPost ? 0.7 : 1 }}>
+                style={{ backgroundColor: GOLD_BG, color: GOLD_FG, opacity: loadingPost ? 0.7 : 1 }}>
                 {loadingPost ? <><Loader2 size={14} className="animate-spin" /> Drafting...</> : "✦ AI Draft Post"}
               </button>
               {postDraft && (
@@ -473,7 +475,7 @@ export default function GoogleBusinessClient() {
                   </div>
                   <button onClick={publishPost} disabled={publishingPost}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                    style={{ backgroundColor: "#1A2A1A", border: "1px solid rgba(34,197,94,0.3)", color: "#22C55E", opacity: publishingPost ? 0.7 : 1 }}>
+                    style={{ backgroundColor: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)", color: "#22C55E", opacity: publishingPost ? 0.7 : 1 }}>
                     {publishingPost ? <><Loader2 size={14} className="animate-spin" /> Publishing...</> : <><Send size={14} /> Publish to Google Business</>}
                   </button>
                 </>

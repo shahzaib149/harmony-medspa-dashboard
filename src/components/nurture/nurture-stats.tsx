@@ -16,12 +16,12 @@ export default function NurtureStats({ stats }: { stats: Stats }) {
         const raw = stats[key];
         const value = key === "conversionRate" ? `${raw}%` : key === "avgDaysToBook" ? (raw === null ? "—" : `${raw}d`) : raw;
         return (
-          <div key={key} className="rounded-2xl border px-4 py-4" style={{ background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.01)),#111117", borderColor: "rgba(201,168,76,.12)" }}>
+          <div key={key} className="rounded-2xl border px-4 py-4" style={{ background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.01)),var(--surface-1)", borderColor: "var(--border-subtle)" }}>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-[.08em] text-[#5A5A6A]">{label}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[.08em] text-[var(--text-muted)]">{label}</p>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ color, backgroundColor: `${color}14` }}><Icon size={15} /></span>
             </div>
-            <p className="mt-2 text-[29px] font-extrabold leading-none text-[#F0ECE4]">{value}</p>
+            <p className="mt-2 text-[29px] font-extrabold leading-none text-[var(--text-primary)]">{value}</p>
           </div>
         );
       })}

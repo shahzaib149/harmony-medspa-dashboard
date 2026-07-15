@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -31,34 +31,79 @@ import {
 import type { Lead } from "@/app/api/airtable/leads/route";
 import { useAuth } from "@/contexts/AuthContext";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
-import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
+import {
+  DATA_CACHE_KEYS,
+  setCachedData,
+  useDashboardCachedData,
+} from "@/lib/dashboard-data-cache";
 import { createClient } from "@/lib/supabase/client";
 import { LeadCampaignBadges } from "@/components/campaigns/CampaignBadges";
+import AddLeadsToCampaignModal from "@/components/campaigns/AddLeadsToCampaignModal";
 import { DestructiveConfirmDialog } from "@/components/ui/ConfirmDialog";
 import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
 
-const GOLD = "#C9A84C";
-const BG = "#0A0A0D";
-const PANEL = "#0D0D12";
-const CARD = "#111117";
-const CARD_HOVER = "#18181F";
-const TEXT = "#F0ECE4";
-const MUTED = "#7A7A8A";
-const DIM = "#5A5A6A";
-const BORDER = "rgba(201,168,76,0.12)";
-const BORDER_SOFT = "rgba(255,255,255,0.06)";
-const TEAL = "#2DD4BF";
+const GOLD = "var(--brand-primary)";
+const BG = "var(--background)";
+const PANEL = "var(--background-subtle)";
+const CARD = "var(--surface-1)";
+const CARD_HOVER = "var(--surface-hover)";
+const TEXT = "var(--text-primary)";
+const MUTED = "var(--text-muted)";
+const DIM = "var(--text-muted)";
+const BORDER = "var(--border-subtle)";
+const BORDER_SOFT = "var(--border-subtle)";
+const TEAL = "var(--healthy)";
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string; label: string }> = {
-  "New": { color: "#60A5FA", bg: "rgba(96,165,250,0.12)", border: "rgba(96,165,250,0.28)", label: "New" },
-  "Contacted": { color: "#F59E0B", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.28)", label: "Contacted" },
-  "Booked": { color: "#22C55E", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.28)", label: "Booked" },
-  "Duplicate": { color: "#A1A1AA", bg: "rgba(161,161,170,0.12)", border: "rgba(161,161,170,0.24)", label: "Duplicate" },
-  "Failed": { color: "#F87171", bg: "rgba(248,113,113,0.12)", border: "rgba(248,113,113,0.28)", label: "Failed" },
-  "Not Interested": { color: "#F87171", bg: "rgba(248,113,113,0.10)", border: "rgba(248,113,113,0.22)", label: "Not Interested" },
+const STATUS_CONFIG: Record<
+  string,
+  { color: string; bg: string; border: string; label: string }
+> = {
+  New: {
+    color: "#60A5FA",
+    bg: "rgba(96,165,250,0.12)",
+    border: "rgba(96,165,250,0.28)",
+    label: "New",
+  },
+  Contacted: {
+    color: "#F59E0B",
+    bg: "rgba(245,158,11,0.12)",
+    border: "rgba(245,158,11,0.28)",
+    label: "Contacted",
+  },
+  Booked: {
+    color: "#22C55E",
+    bg: "rgba(34,197,94,0.12)",
+    border: "rgba(34,197,94,0.28)",
+    label: "Booked",
+  },
+  Duplicate: {
+    color: "#A1A1AA",
+    bg: "rgba(161,161,170,0.12)",
+    border: "rgba(161,161,170,0.24)",
+    label: "Duplicate",
+  },
+  Failed: {
+    color: "#F87171",
+    bg: "rgba(248,113,113,0.12)",
+    border: "rgba(248,113,113,0.28)",
+    label: "Failed",
+  },
+  "Not Interested": {
+    color: "#F87171",
+    bg: "rgba(248,113,113,0.10)",
+    border: "rgba(248,113,113,0.22)",
+    label: "Not Interested",
+  },
 };
 
-const STATUS_OPTIONS = ["New", "Contacted", "Booked", "Duplicate", "Failed", "Not Interested"];
+const STATUS_OPTIONS = [
+  "New",
+  "Contacted",
+  "Booked",
+  "Duplicate",
+  "Failed",
+  "Not Interested",
+];
 
 type DateFilter = "all" | "today" | "7" | "30";
 type SentFilter = "all" | "sent" | "not_sent";
@@ -88,7 +133,11 @@ function timeAgo(iso: string) {
   if (min < 60) return `${min}m ago`;
   if (hour < 24) return `${hour}h ago`;
   if (day < 7) return `${day}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function fullDate(iso: string) {
@@ -114,7 +163,15 @@ function withinDateRange(iso: string, range: DateFilter) {
 }
 
 function initials(name: string) {
-  return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
+  return (
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "?"
+  );
 }
 
 function sourceLabel(source: string) {
@@ -127,8 +184,10 @@ function trendLabel(count: number, total: number) {
 }
 
 function lastContacted(lead: Lead) {
-  if (isSent(lead.smsSentStatus) || isSent(lead.emailSentStatus)) return lead.createdAt;
-  if (lead.status === "Contacted" || lead.status === "Booked") return lead.createdAt;
+  if (isSent(lead.smsSentStatus) || isSent(lead.emailSentStatus))
+    return lead.createdAt;
+  if (lead.status === "Contacted" || lead.status === "Booked")
+    return lead.createdAt;
   return "";
 }
 
@@ -139,9 +198,16 @@ function StatusPill({ status }: { status: string }) {
       role="status"
       aria-label={`Lead status: ${cfg.label}`}
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
-      style={{ color: cfg.color, backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }}
+      style={{
+        color: cfg.color,
+        backgroundColor: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+      }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: cfg.color }}
+      />
       {cfg.label}
     </span>
   );
@@ -154,9 +220,17 @@ function DeliveryPill({ label, value }: { label: string; value: string }) {
     <span
       aria-label={`${label}: ${value || "not sent"}`}
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
-      style={{ color, backgroundColor: sent ? "rgba(34,197,94,0.10)" : "rgba(255,255,255,0.035)" }}
+      style={{
+        color,
+        backgroundColor: sent
+          ? "rgba(34,197,94,0.10)"
+          : "rgba(255,255,255,0.035)",
+      }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: color }}
+      />
       {value || "-"}
     </span>
   );
@@ -189,12 +263,26 @@ function SelectControl({
           </option>
         ))}
       </select>
-      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
+      <ChevronDown
+        size={14}
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+        style={{ color: MUTED }}
+      />
     </label>
   );
 }
 
-function StatCard({ label, value, meta, color = GOLD }: { label: string; value: number; meta: string; color?: string }) {
+function StatCard({
+  label,
+  value,
+  meta,
+  color = GOLD,
+}: {
+  label: string;
+  value: number;
+  meta: string;
+  color?: string;
+}) {
   return (
     <div
       className="min-w-0 rounded-2xl border px-4 py-3"
@@ -204,58 +292,190 @@ function StatCard({ label, value, meta, color = GOLD }: { label: string; value: 
       }}
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="truncate text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>
+        <p
+          className="truncate text-[10px] font-bold uppercase tracking-[0.08em]"
+          style={{ color: DIM }}
+        >
           {label}
         </p>
-        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color, backgroundColor: `${color}18` }}>
+        <span
+          className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+          style={{ color, backgroundColor: `${color}18` }}
+        >
           {meta}
         </span>
       </div>
-      <p className="mt-2 text-[30px] font-extrabold leading-none" style={{ color: TEXT }}>
+      <p
+        className="mt-2 text-[30px] font-extrabold leading-none"
+        style={{ color: TEXT }}
+      >
         {value}
       </p>
     </div>
   );
 }
 
-function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onExport, onUpdateVisits, canAdd }: { lead: Lead | null; loading: boolean; importing: boolean; onRefresh: () => void; onAdd: () => void; onImport: () => void; onExport: () => void; onUpdateVisits:()=>void; canAdd: boolean }) {
-  const [menuOpen,setMenuOpen]=useState(false);const menuRef=useRef<HTMLDivElement>(null);
-  useEffect(()=>{if(!menuOpen)return;const close=(event:MouseEvent)=>{if(!menuRef.current?.contains(event.target as Node))setMenuOpen(false)},key=(event:KeyboardEvent)=>{if(event.key==="Escape")setMenuOpen(false)};document.addEventListener("mousedown",close);document.addEventListener("keydown",key);return()=>{document.removeEventListener("mousedown",close);document.removeEventListener("keydown",key)}},[menuOpen]);
+function LeadTicker({
+  lead,
+  loading,
+  importing,
+  onRefresh,
+  onAdd,
+  onImport,
+  onExport,
+  onUpdateVisits,
+  canAdd,
+}: {
+  lead: Lead | null;
+  loading: boolean;
+  importing: boolean;
+  onRefresh: () => void;
+  onAdd: () => void;
+  onImport: () => void;
+  onExport: () => void;
+  onUpdateVisits: () => void;
+  canAdd: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => {
+        if (!menuRef.current?.contains(event.target as Node))
+          setMenuOpen(false);
+      },
+      key = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setMenuOpen(false);
+      };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [menuOpen]);
   return (
     <div
       className="relative overflow-visible rounded-2xl border px-4 py-3"
       style={{
         background: `linear-gradient(135deg, rgba(201,168,76,0.12), rgba(45,212,191,0.045) 45%, rgba(255,255,255,0.018)), ${PANEL}`,
         borderColor: "rgba(201,168,76,0.22)",
-        boxShadow: "0 18px 60px rgba(0,0,0,0.22)",
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="relative flex h-3 w-3 flex-shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40" style={{ backgroundColor: TEAL }} />
-            <span className="relative inline-flex h-3 w-3 rounded-full" style={{ backgroundColor: TEAL }} />
+            <span
+              className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+              style={{ backgroundColor: TEAL }}
+            />
+            <span
+              className="relative inline-flex h-3 w-3 rounded-full"
+              style={{ backgroundColor: TEAL }}
+            />
           </span>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>
+            <p
+              className="text-[10px] font-bold uppercase tracking-[0.1em]"
+              style={{ color: GOLD }}
+            >
               Last lead received
             </p>
             <p className="truncate text-sm font-bold" style={{ color: TEXT }}>
-              {lead ? `${lead.name || "Unnamed lead"} - ${sourceLabel(lead.source)}` : loading ? <span className="inline-block h-4 w-40 animate-pulse rounded bg-white/10" aria-label="Loading latest Lead" /> : "No Leads yet"}
+              {lead ? (
+                `${lead.name || "Unnamed lead"} - ${sourceLabel(lead.source)}`
+              ) : loading ? (
+                <span
+                  className="inline-block h-4 w-40 animate-pulse rounded bg-white/10"
+                  aria-label="Loading latest Lead"
+                />
+              ) : (
+                "No Leads yet"
+              )}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ color: MUTED, backgroundColor: "rgba(0,0,0,0.18)" }}>
+          <div
+            className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold"
+            style={{ color: MUTED, backgroundColor: "rgba(0,0,0,0.18)" }}
+          >
             <Clock3 size={13} />
-            {lead ? timeAgo(lead.createdAt) : loading ? "Loading…" : "No activity"}
+            {lead
+              ? timeAgo(lead.createdAt)
+              : loading
+                ? "Loading…"
+                : "No activity"}
           </div>
-          <button type="button" onClick={onExport} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:brightness-110" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>
+          <button
+            type="button"
+            onClick={onExport}
+            className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:brightness-110"
+            style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}
+          >
             <Download size={13} /> Export CSV
           </button>
-          <button type="button" onClick={onUpdateVisits} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold" style={{backgroundColor:CARD,borderColor:BORDER,color:TEXT}}><Activity size={13}/>Update visits</button>
+          <button
+            type="button"
+            onClick={onUpdateVisits}
+            className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold"
+            style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}
+          >
+            <Activity size={13} />
+            Update visits
+          </button>
           {canAdd && (
-            <div className="relative z-40" ref={menuRef}><button type="button" aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(value=>!value)} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-extrabold" style={{color:"#09090D",backgroundColor:GOLD,borderColor:"#D7B95B"}}><Plus size={14}/>Add Lead<ChevronDown size={13}/></button>{menuOpen&&<div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-[80] w-44 rounded-xl border p-1 shadow-2xl" style={{backgroundColor:"#09090D",borderColor:BORDER}}><button type="button" role="menuitem" onClick={()=>{setMenuOpen(false);onAdd()}} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white hover:bg-white/5"><UserPlus size={14}/>Add manually</button><button type="button" role="menuitem" disabled={importing} onClick={()=>{setMenuOpen(false);onImport()}} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white hover:bg-white/5 disabled:opacity-50"><FileUp size={14}/>{importing?"Importing…":"Import CSV"}</button></div>}</div>
+            <div className="relative z-40" ref={menuRef}>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((value) => !value)}
+                className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-extrabold"
+                style={{
+                  color: "var(--primary-foreground)",
+                  backgroundColor: GOLD,
+                  borderColor: "#D7B95B",
+                }}
+              >
+                <Plus size={14} />
+                Add Lead
+                <ChevronDown size={13} />
+              </button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+8px)] z-[80] w-44 rounded-xl border p-1 shadow-2xl"
+                  style={{ backgroundColor: "#09090D", borderColor: BORDER }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onAdd();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white hover:bg-white/5"
+                  >
+                    <UserPlus size={14} />
+                    Add manually
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={importing}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onImport();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white hover:bg-white/5 disabled:opacity-50"
+                  >
+                    <FileUp size={14} />
+                    {importing ? "Importing…" : "Import CSV"}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           <button
             type="button"
@@ -264,7 +484,11 @@ function LeadTicker({ lead, loading, importing, onRefresh, onAdd, onImport, onEx
             title="Refresh Leads"
             aria-label="Refresh Leads"
             className="flex h-9 w-9 items-center justify-center rounded-xl border outline-none transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#C9A84C]/35"
-            style={{ backgroundColor: "rgba(201,168,76,0.06)", borderColor: BORDER, color: GOLD }}
+            style={{
+              backgroundColor: "rgba(201,168,76,0.06)",
+              borderColor: BORDER,
+              color: GOLD,
+            }}
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
@@ -284,6 +508,7 @@ function LeadDetailsModal({
   onDelete,
   getAuthHeaders,
   onLeadUpdate,
+  onAddToCampaign,
 }: {
   lead: Lead | null;
   duplicate: boolean;
@@ -294,14 +519,32 @@ function LeadDetailsModal({
   onDelete: (lead: Lead) => void;
   getAuthHeaders: () => Promise<HeadersInit>;
   onLeadUpdate: (lead: Lead) => void;
+  onAddToCampaign: (lead: Lead) => void;
 }) {
   const [updating, setUpdating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", message: "", source: "", notes: "" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    message: "",
+    source: "",
+    notes: "",
+  });
 
-  useEffect(() => { if (lead) setEditForm({ name: lead.name, email: lead.email, phone: lead.phone, message: lead.message, source: lead.source, notes: lead.notes }); }, [lead]);
+  useEffect(() => {
+    if (lead)
+      setEditForm({
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone,
+        message: lead.message,
+        source: lead.source,
+        notes: lead.notes,
+      });
+  }, [lead]);
 
   if (!lead) return null;
 
@@ -330,38 +573,95 @@ function LeadDetailsModal({
   async function saveLeadFields() {
     if (!lead) return;
     const currentLead = lead;
-    setEditSaving(true); setActionError(null);
+    setEditSaving(true);
+    setActionError(null);
     try {
-      const res = await fetch("/api/airtable/leads", { method: "PATCH", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify({ id: currentLead.id, ...editForm }) });
+      const res = await fetch("/api/airtable/leads", {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ id: currentLead.id, ...editForm }),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not save lead");
-      onLeadUpdate({ ...currentLead, ...editForm }); setEditing(false);
-    } catch (error) { setActionError(error instanceof Error ? error.message : "Could not save lead"); }
-    finally { setEditSaving(false); }
+      onLeadUpdate({ ...currentLead, ...editForm });
+      setEditing(false);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not save lead",
+      );
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   const events = [
-    { label: "Lead received", value: fullDate(lead.createdAt), icon: Sparkles, tone: GOLD },
-    ...(lead.emailSentStatus ? [{ label: `Email ${lead.emailSentStatus}`, value: "Automation status", icon: Mail, tone: isSent(lead.emailSentStatus) ? "#22C55E" : "#F59E0B" }] : []),
-    ...(lead.smsSentStatus ? [{ label: `SMS ${lead.smsSentStatus}`, value: "Automation status", icon: MessageSquare, tone: isSent(lead.smsSentStatus) ? "#22C55E" : "#F59E0B" }] : []),
-    { label: `Current status: ${lead.status}`, value: duplicate ? "Possible duplicate detected" : "Live Airtable status", icon: ShieldCheck, tone: duplicate ? "#A1A1AA" : TEAL },
+    {
+      label: "Lead received",
+      value: fullDate(lead.createdAt),
+      icon: Sparkles,
+      tone: GOLD,
+    },
+    ...(lead.emailSentStatus
+      ? [
+          {
+            label: `Email ${lead.emailSentStatus}`,
+            value: "Automation status",
+            icon: Mail,
+            tone: isSent(lead.emailSentStatus) ? "#22C55E" : "#F59E0B",
+          },
+        ]
+      : []),
+    ...(lead.smsSentStatus
+      ? [
+          {
+            label: `SMS ${lead.smsSentStatus}`,
+            value: "Automation status",
+            icon: MessageSquare,
+            tone: isSent(lead.smsSentStatus) ? "#22C55E" : "#F59E0B",
+          },
+        ]
+      : []),
+    {
+      label: `Current status: ${lead.status}`,
+      value: duplicate ? "Possible duplicate detected" : "Live Airtable status",
+      icon: ShieldCheck,
+      tone: duplicate ? "#A1A1AA" : TEAL,
+    },
   ];
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-0 sm:p-8">
-      <button className="absolute inset-0 bg-black/55" aria-label="Close lead detail panel" onClick={onClose} />
+      <button
+        className="absolute inset-0 bg-black/55"
+        aria-label="Close lead detail panel"
+        onClick={onClose}
+      />
       <aside
         role="dialog"
         aria-modal="true"
-        className="relative z-10 flex h-full w-full flex-col overflow-hidden border sm:h-[82vh] sm:min-w-[800px] sm:max-w-[1080px] sm:rounded-2xl"
-        style={{ backgroundColor: "#09090D", borderColor: BORDER, boxShadow: "0 28px 100px rgba(0,0,0,0.58)" }}
+        className="relative z-10 flex h-dvh max-h-dvh w-full flex-col overflow-hidden border sm:h-[78dvh] sm:max-h-[760px] sm:w-[calc(100vw-4rem)] sm:max-w-[980px] sm:rounded-2xl"
+        style={{
+          backgroundColor: "#09090D",
+          borderColor: BORDER,
+          boxShadow: "0 28px 100px rgba(0,0,0,0.58)",
+        }}
       >
-        <div className="flex items-start justify-between gap-4 border-b p-5" style={{ borderColor: BORDER }}>
+        <div
+          className="mobile-safe-top flex shrink-0 items-start justify-between gap-4 border-b p-4 sm:p-5"
+          style={{ borderColor: BORDER }}
+        >
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>
+            <p
+              className="text-[10px] font-bold uppercase tracking-[0.1em]"
+              style={{ color: GOLD }}
+            >
               Lead profile
             </p>
-            <h2 className="mt-1 truncate text-xl font-extrabold" style={{ color: TEXT }}>
+            <h2
+              className="mt-1 truncate text-xl font-extrabold"
+              style={{ color: TEXT }}
+            >
               {lead.name || "Unnamed lead"}
             </h2>
             <p className="mt-1 text-xs" style={{ color: MUTED }}>
@@ -370,7 +670,7 @@ function LeadDetailsModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-xl border p-2"
+            className="grid size-11 shrink-0 place-items-center rounded-xl border"
             style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}
             aria-label="Close lead details"
           >
@@ -378,21 +678,16 @@ function LeadDetailsModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
-          {canDelete && (
-            <button
-              type="button"
-              onClick={() => onDelete(lead)}
-              className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold"
-              style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}
-            >
-              <Trash2 size={15} />
-              Delete lead
-            </button>
-          )}
-
+        <div className="mobile-safe-bottom flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
           {actionError && (
-            <div className="mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm" style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}>
+            <div
+              className="mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm"
+              style={{
+                color: "#F87171",
+                backgroundColor: "rgba(248,113,113,0.08)",
+                borderColor: "rgba(248,113,113,0.25)",
+              }}
+            >
               <AlertCircle size={16} />
               {actionError}
             </div>
@@ -407,22 +702,50 @@ function LeadDetailsModal({
 
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {[
-              { label: "Phone", value: lead.phone, href: `tel:${lead.phone}`, icon: Phone },
-              { label: "Email", value: lead.email, href: `mailto:${lead.email}`, icon: Mail },
+              {
+                label: "Phone",
+                value: lead.phone,
+                href: `tel:${lead.phone}`,
+                icon: Phone,
+              },
+              {
+                label: "Email",
+                value: lead.email,
+                href: `mailto:${lead.email}`,
+                icon: Mail,
+              },
               { label: "Treatment", value: lead.treatment, icon: Sparkles },
-              { label: "Created", value: fullDate(lead.createdAt), icon: CalendarDays },
+              {
+                label: "Created",
+                value: fullDate(lead.createdAt),
+                icon: CalendarDays,
+              },
             ].map(({ label, value, href, icon: Icon }) => (
-              <div key={label} className="rounded-2xl border p-3" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>
+              <div
+                key={label}
+                className="rounded-2xl border p-3"
+                style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+              >
+                <p
+                  className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+                  style={{ color: DIM }}
+                >
                   <Icon size={11} />
                   {label}
                 </p>
                 {href && value ? (
-                  <a className="break-words text-sm font-semibold" style={{ color: TEAL }} href={href}>
+                  <a
+                    className="break-words text-sm font-semibold"
+                    style={{ color: TEAL }}
+                    href={href}
+                  >
                     {value}
                   </a>
                 ) : (
-                  <p className="break-words text-sm font-semibold" style={{ color: value ? TEXT : MUTED }}>
+                  <p
+                    className="break-words text-sm font-semibold"
+                    style={{ color: value ? TEXT : MUTED }}
+                  >
                     {value || "Not captured"}
                   </p>
                 )}
@@ -431,8 +754,14 @@ function LeadDetailsModal({
           </div>
 
           {canUpdate && (
-            <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+            <div
+              className="mt-5 rounded-2xl border p-4"
+              style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+            >
+              <p
+                className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]"
+                style={{ color: GOLD }}
+              >
                 Inline status change
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -443,9 +772,18 @@ function LeadDetailsModal({
                     onClick={() => changeStatus(status)}
                     className="rounded-xl border px-3 py-2 text-left text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
                     style={{
-                      borderColor: lead.status === status ? STATUS_CONFIG[status].border : BORDER_SOFT,
-                      color: lead.status === status ? STATUS_CONFIG[status].color : MUTED,
-                      backgroundColor: lead.status === status ? STATUS_CONFIG[status].bg : "rgba(255,255,255,0.025)",
+                      borderColor:
+                        lead.status === status
+                          ? STATUS_CONFIG[status].border
+                          : BORDER_SOFT,
+                      color:
+                        lead.status === status
+                          ? STATUS_CONFIG[status].color
+                          : MUTED,
+                      backgroundColor:
+                        lead.status === status
+                          ? STATUS_CONFIG[status].bg
+                          : "rgba(255,255,255,0.025)",
                     }}
                   >
                     {status}
@@ -455,28 +793,55 @@ function LeadDetailsModal({
             </div>
           )}
 
-          <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-            <p className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+          <div
+            className="mt-5 rounded-2xl border p-4"
+            style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+          >
+            <p
+              className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: GOLD }}
+            >
               <MessageSquare size={12} />
               Original message
             </p>
-            <p className="text-sm leading-6" style={{ color: lead.message ? TEXT : MUTED }}>
+            <p
+              className="text-sm leading-6"
+              style={{ color: lead.message ? TEXT : MUTED }}
+            >
               {lead.message || "No message captured on this lead."}
             </p>
           </div>
 
-          <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+          <div
+            className="mt-5 rounded-2xl border p-4"
+            style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+          >
+            <p
+              className="mb-4 text-[10px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: GOLD }}
+            >
               Message and status timeline
             </p>
             <div className="space-y-4">
               {events.map(({ label, value, icon: Icon, tone }, index) => (
                 <div key={`${label}-${index}`} className="flex gap-3">
                   <div className="flex flex-col items-center">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full border" style={{ color: tone, backgroundColor: `${tone}12`, borderColor: `${tone}35` }}>
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded-full border"
+                      style={{
+                        color: tone,
+                        backgroundColor: `color-mix(in srgb, ${tone} 9%, transparent)`,
+                        borderColor: `color-mix(in srgb, ${tone} 28%, transparent)`,
+                      }}
+                    >
                       <Icon size={14} />
                     </div>
-                    {index < events.length - 1 && <div className="mt-2 h-8 w-px" style={{ backgroundColor: BORDER_SOFT }} />}
+                    {index < events.length - 1 && (
+                      <div
+                        className="mt-2 h-8 w-px"
+                        style={{ backgroundColor: BORDER_SOFT }}
+                      />
+                    )}
                   </div>
                   <div className="min-w-0 pt-1">
                     <p className="text-sm font-bold" style={{ color: TEXT }}>
@@ -491,29 +856,206 @@ function LeadDetailsModal({
             </div>
           </div>
 
-          {canUpdate && <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}><div className="flex items-center justify-between"><p className="text-[10px] font-bold uppercase" style={{color:GOLD}}>Lead details</p><button onClick={()=>setEditing(value=>!value)} className="text-xs font-bold" style={{color:GOLD}}>{editing?"Cancel":"Edit"}</button></div>{editing&&<><div className="mt-3 grid gap-3 sm:grid-cols-2">{[["Name","name"],["Email","email"],["Phone","phone"],["Source","source"],["Message","message"],["Notes","notes"]].map(([label,key])=><label key={key} className={key==="message"||key==="notes"?"sm:col-span-2":""}><span className="mb-1 block text-[10px] uppercase" style={{color:DIM}}>{label}</span><input value={editForm[key as keyof typeof editForm]} onChange={event=>setEditForm(current=>({...current,[key]:event.target.value}))} className="h-10 w-full rounded-lg border px-3 text-sm" style={{backgroundColor:PANEL,borderColor:BORDER,color:TEXT}}/></label>)}</div><div className="mt-3 flex justify-end gap-2"><button onClick={()=>setEditing(false)} className="rounded-lg border px-3 py-2 text-xs" style={{borderColor:BORDER,color:MUTED}}>Cancel</button><button disabled={editSaving} onClick={()=>void saveLeadFields()} className="rounded-lg px-3 py-2 text-xs font-bold" style={{backgroundColor:GOLD,color:BG}}>{editSaving?"Saving…":"Save"}</button></div></>}</div>}
+          {canUpdate && (
+            <div
+              className="mt-5 rounded-2xl border p-4"
+              style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+            >
+              <div className="flex items-center justify-between">
+                <p
+                  className="text-[10px] font-bold uppercase"
+                  style={{ color: GOLD }}
+                >
+                  Lead details
+                </p>
+                <button
+                  onClick={() => setEditing((value) => !value)}
+                  className="text-xs font-bold"
+                  style={{ color: GOLD }}
+                >
+                  {editing ? "Cancel" : "Edit"}
+                </button>
+              </div>
+              {editing && (
+                <>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {[
+                      ["Name", "name"],
+                      ["Email", "email"],
+                      ["Phone", "phone"],
+                      ["Source", "source"],
+                      ["Message", "message"],
+                      ["Notes", "notes"],
+                    ].map(([label, key]) => (
+                      <label
+                        key={key}
+                        className={
+                          key === "message" || key === "notes"
+                            ? "sm:col-span-2"
+                            : ""
+                        }
+                      >
+                        <span
+                          className="mb-1 block text-[10px] uppercase"
+                          style={{ color: DIM }}
+                        >
+                          {label}
+                        </span>
+                        <input
+                          value={editForm[key as keyof typeof editForm]}
+                          onChange={(event) =>
+                            setEditForm((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          className="h-10 w-full rounded-lg border px-3 text-sm"
+                          style={{
+                            backgroundColor: PANEL,
+                            borderColor: BORDER,
+                            color: TEXT,
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      onClick={() => setEditing(false)}
+                      className="rounded-lg border px-3 py-2 text-xs"
+                      style={{ borderColor: BORDER, color: MUTED }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      disabled={editSaving}
+                      onClick={() => void saveLeadFields()}
+                      className="rounded-lg px-3 py-2 text-xs font-bold"
+                      style={{ backgroundColor: GOLD, color: BG }}
+                    >
+                      {editSaving ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
-          <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>Campaign Activity</p>
+          <div
+            className="mt-5 rounded-2xl border p-4"
+            style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+          >
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <p
+                className="text-[10px] font-bold uppercase tracking-[0.08em]"
+                style={{ color: GOLD }}
+              >
+                Campaign Activity
+              </p>
+              <button
+                type="button"
+                onClick={() => onAddToCampaign(lead)}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition hover:brightness-110"
+                style={{
+                  color: "var(--primary-foreground)",
+                  backgroundColor: GOLD,
+                  borderColor: "#D7B95B",
+                }}
+              >
+                <Plus size={14} /> Add to campaign
+              </button>
+            </div>
             <LeadCampaignBadges campaigns={lead.campaigns} />
-            {lead.campaigns.map((item) => <div key={`${item.slug}-${item.enrollmentId ?? item.status}`} className="mt-3 rounded-xl p-3 text-xs" style={{ backgroundColor: "rgba(255,255,255,.025)", color: MUTED }}><div className="flex justify-between gap-3"><b style={{ color: TEXT }}>{item.campaign}</b><Link href={`/campaigns/${item.slug}`} style={{ color: GOLD }}>View Campaign</Link></div><p className="mt-2">{item.status}{item.currentStep ? ` · ${item.currentStep}` : ""}</p>{item.nextSendAt && <p>Next send: {fullDate(item.nextSendAt)}</p>}{item.lastSentAt && <p>Last sent: {fullDate(item.lastSentAt)}</p>}{item.stopReason && <p>Stop reason: {item.stopReason}</p>}</div>)}
+            {lead.campaigns.map((item) => (
+              <div
+                key={`${item.slug}-${item.enrollmentId ?? item.status}`}
+                className="mt-3 rounded-xl p-3 text-xs"
+                style={{
+                  backgroundColor: "rgba(255,255,255,.025)",
+                  color: MUTED,
+                }}
+              >
+                <div className="flex justify-between gap-3">
+                  <b style={{ color: TEXT }}>{item.campaign}</b>
+                  <Link
+                    href={`/campaigns/${item.slug}`}
+                    style={{ color: GOLD }}
+                  >
+                    View Campaign
+                  </Link>
+                </div>
+                <p className="mt-2">
+                  {item.status}
+                  {item.currentStep ? ` · ${item.currentStep}` : ""}
+                </p>
+                {item.nextSendAt && (
+                  <p>Next send: {fullDate(item.nextSendAt)}</p>
+                )}
+                {item.lastSentAt && (
+                  <p>Last sent: {fullDate(item.lastSentAt)}</p>
+                )}
+                {item.stopReason && <p>Stop reason: {item.stopReason}</p>}
+              </div>
+            ))}
           </div>
 
-          <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+          <div
+            className="mt-5 rounded-2xl border p-4"
+            style={{ backgroundColor: CARD, borderColor: BORDER_SOFT }}
+          >
+            <p
+              className="mb-3 text-[10px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: GOLD }}
+            >
               Attribution
             </p>
             <div className="flex flex-wrap gap-2">
-              {[lead.utmSource, lead.utmMedium, lead.utmCampaign, lead.pageUrl].filter(Boolean).map((item) => (
-                <span key={item} className="max-w-full truncate rounded-full px-3 py-1 text-xs" style={{ color: MUTED, backgroundColor: "rgba(255,255,255,0.04)" }}>
-                  {item}
+              {[lead.utmSource, lead.utmMedium, lead.utmCampaign, lead.pageUrl]
+                .filter(Boolean)
+                .map((item) => (
+                  <span
+                    key={item}
+                    className="max-w-full truncate rounded-full px-3 py-1 text-xs"
+                    style={{
+                      color: MUTED,
+                      backgroundColor: "rgba(255,255,255,0.04)",
+                    }}
+                  >
+                    {item}
+                  </span>
+                ))}
+              {![
+                lead.utmSource,
+                lead.utmMedium,
+                lead.utmCampaign,
+                lead.pageUrl,
+              ].some(Boolean) && (
+                <span className="text-xs" style={{ color: MUTED }}>
+                  No campaign attribution captured.
                 </span>
-              ))}
-              {![lead.utmSource, lead.utmMedium, lead.utmCampaign, lead.pageUrl].some(Boolean) && (
-                <span className="text-xs" style={{ color: MUTED }}>No campaign attribution captured.</span>
               )}
             </div>
           </div>
+
+          {canDelete && (
+            <div
+              className="mt-4 flex justify-end border-t pt-4"
+              style={{ borderColor: BORDER_SOFT }}
+            >
+              <button
+                type="button"
+                onClick={() => onDelete(lead)}
+                className="flex shrink-0 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold"
+                style={{
+                  color: "#F87171",
+                  backgroundColor: "rgba(248,113,113,0.06)",
+                  borderColor: "rgba(248,113,113,0.22)",
+                }}
+              >
+                <Trash2 size={14} /> Delete lead
+              </button>
+            </div>
+          )}
         </div>
       </aside>
     </div>
@@ -524,17 +1066,23 @@ type LeadForm = { name: string; phone: string; email: string; message: string };
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
-  let row: string[] = [], value = "", quoted = false;
+  let row: string[] = [],
+    value = "",
+    quoted = false;
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
     if (character === '"') {
-      if (quoted && text[index + 1] === '"') { value += '"'; index += 1; }
-      else quoted = !quoted;
+      if (quoted && text[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else quoted = !quoted;
     } else if (character === "," && !quoted) {
-      row.push(value); value = "";
+      row.push(value);
+      value = "";
     } else if ((character === "\n" || character === "\r") && !quoted) {
       if (character === "\r" && text[index + 1] === "\n") index += 1;
-      row.push(value); value = "";
+      row.push(value);
+      value = "";
       if (row.some((cell) => cell.trim())) rows.push(row);
       row = [];
     } else value += character;
@@ -545,20 +1093,28 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-function csvCell(value: unknown) {
-  const text = String(value ?? "");
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function AddLeadModal({ open, saving, error, onClose, onSubmit }: {
+function AddLeadModal({
+  open,
+  saving,
+  error,
+  onClose,
+  onSubmit,
+}: {
   open: boolean;
   saving: boolean;
   error: string | null;
   onClose: () => void;
   onSubmit: (form: LeadForm) => Promise<void>;
 }) {
-  const [form, setForm] = useState<LeadForm>({ name: "", phone: "", email: "", message: "" });
-  const [errors, setErrors] = useState<Partial<Record<keyof LeadForm, string>>>({});
+  const [form, setForm] = useState<LeadForm>({
+    name: "",
+    phone: "",
+    email: "",
+    message: "",
+  });
+  const [errors, setErrors] = useState<Partial<Record<keyof LeadForm, string>>>(
+    {},
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -582,36 +1138,210 @@ function AddLeadModal({ open, saving, error, onClose, onSubmit }: {
   }, [open]);
 
   if (!open) return null;
-  const fieldStyle = { backgroundColor: "rgba(255,255,255,0.035)", borderColor: BORDER_SOFT, color: TEXT };
+  const fieldStyle = {
+    backgroundColor: "rgba(255,255,255,0.035)",
+    borderColor: BORDER_SOFT,
+    color: TEXT,
+  };
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const next: Partial<Record<keyof LeadForm, string>> = {};
     if (!form.name.trim()) next.name = "Full name is required.";
     if (!form.phone.trim()) next.phone = "Phone number is required.";
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = "Enter a valid email address.";
+    if (
+      form.email.trim() &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
+    )
+      next.email = "Enter a valid email address.";
     setErrors(next);
     if (Object.keys(next).length) return;
     await onSubmit(form);
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="add-lead-title">
-      <button type="button" className="absolute inset-0 bg-black/75 backdrop-blur-sm" aria-label="Close add lead modal" onClick={() => !saving && onClose()} />
-      <div className="relative w-full max-w-[590px] overflow-hidden rounded-3xl border" style={{ background: "linear-gradient(145deg, rgba(201,168,76,.08), transparent 34%), #0D0D12", borderColor: "rgba(201,168,76,.25)", boxShadow: "0 35px 110px rgba(0,0,0,.7)" }}>
-        <div className="flex items-start justify-between border-b px-6 py-5" style={{ borderColor: BORDER }}>
-          <div><p className="text-[10px] font-bold uppercase tracking-[.13em]" style={{ color: GOLD }}>New opportunity</p><h2 id="add-lead-title" className="mt-1 text-xl font-extrabold" style={{ color: TEXT }}>Add Lead</h2><p className="mt-1 text-xs" style={{ color: MUTED }}>Create a new lead directly in Airtable.</p></div>
-          <button type="button" onClick={onClose} disabled={saving} className="rounded-xl border p-2 disabled:opacity-40" style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }} aria-label="Close"><X size={16} /></button>
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center p-0 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-lead-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        aria-label="Close add lead modal"
+        onClick={() => !saving && onClose()}
+      />
+      <div
+        className="relative flex h-dvh max-h-dvh w-full max-w-[590px] flex-col overflow-hidden border sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl"
+        style={{
+          background:
+            "linear-gradient(145deg, rgba(201,168,76,.08), transparent 34%), #0D0D12",
+          borderColor: "rgba(201,168,76,.25)",
+          boxShadow: "0 35px 110px rgba(0,0,0,.7)",
+        }}
+      >
+        <div
+          className="mobile-safe-top flex shrink-0 items-start justify-between border-b px-4 py-4 sm:px-6 sm:py-5"
+          style={{ borderColor: BORDER }}
+        >
+          <div>
+            <p
+              className="text-[10px] font-bold uppercase tracking-[.13em]"
+              style={{ color: GOLD }}
+            >
+              New opportunity
+            </p>
+            <h2
+              id="add-lead-title"
+              className="mt-1 text-xl font-extrabold"
+              style={{ color: TEXT }}
+            >
+              Add Lead
+            </h2>
+            <p className="mt-1 text-xs" style={{ color: MUTED }}>
+              Create a new lead directly in Airtable.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="grid size-11 shrink-0 place-items-center rounded-xl border disabled:opacity-40"
+            style={{ borderColor: BORDER, color: MUTED, backgroundColor: CARD }}
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <form onSubmit={submit} noValidate className="space-y-4 p-6">
+        <form
+          onSubmit={submit}
+          noValidate
+          className="mobile-safe-bottom flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-6"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
-            {([{ key: "name", label: "Full Name *", type: "text", placeholder: "e.g. Olivia Bennett", autoFocus: true }, { key: "phone", label: "Phone Number *", type: "tel", placeholder: "e.g. (555) 123-4567" }, { key: "email", label: "Email Address", type: "email", placeholder: "olivia@example.com" }] as const).map((item) => (
-              <label key={item.key} className={item.key === "email" ? "sm:col-span-2" : ""}><span className="mb-1.5 block text-xs font-bold" style={{ color: TEXT }}>{item.label}</span><input autoFocus={"autoFocus" in item} type={item.type} value={form[item.key]} onChange={(e) => { setForm({ ...form, [item.key]: e.target.value }); setErrors({ ...errors, [item.key]: undefined }); }} placeholder={item.placeholder} className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10" style={{ ...fieldStyle, borderColor: errors[item.key] ? "rgba(248,113,113,.55)" : BORDER_SOFT }} />{errors[item.key] && <span className="mt-1 block text-xs text-[#F87171]">{errors[item.key]}</span>}</label>
+            {(
+              [
+                {
+                  key: "name",
+                  label: "Full Name *",
+                  type: "text",
+                  placeholder: "e.g. Olivia Bennett",
+                  autoFocus: true,
+                },
+                {
+                  key: "phone",
+                  label: "Phone Number *",
+                  type: "tel",
+                  placeholder: "e.g. (555) 123-4567",
+                },
+                {
+                  key: "email",
+                  label: "Email Address",
+                  type: "email",
+                  placeholder: "olivia@example.com",
+                },
+              ] as const
+            ).map((item) => (
+              <label
+                key={item.key}
+                className={item.key === "email" ? "sm:col-span-2" : ""}
+              >
+                <span
+                  className="mb-1.5 block text-xs font-bold"
+                  style={{ color: TEXT }}
+                >
+                  {item.label}
+                </span>
+                <input
+                  autoFocus={"autoFocus" in item}
+                  type={item.type}
+                  value={form[item.key]}
+                  onChange={(e) => {
+                    setForm({ ...form, [item.key]: e.target.value });
+                    setErrors({ ...errors, [item.key]: undefined });
+                  }}
+                  placeholder={item.placeholder}
+                  className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10"
+                  style={{
+                    ...fieldStyle,
+                    borderColor: errors[item.key]
+                      ? "rgba(248,113,113,.55)"
+                      : BORDER_SOFT,
+                  }}
+                />
+                {errors[item.key] && (
+                  <span className="mt-1 block text-xs text-[#F87171]">
+                    {errors[item.key]}
+                  </span>
+                )}
+              </label>
             ))}
           </div>
-          <label><span className="mb-1.5 block text-xs font-bold" style={{ color: TEXT }}>Message / Notes</span><textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} placeholder="Add context, treatment interest, or follow-up notes..." className="w-full resize-none rounded-xl border px-3 py-3 text-sm outline-none focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10" style={fieldStyle} /></label>
-          {error && <div className="flex items-start gap-2 rounded-xl border p-3 text-sm text-[#F87171]" style={{ backgroundColor: "rgba(248,113,113,.08)", borderColor: "rgba(248,113,113,.25)" }}><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</div>}
-          <div className="flex justify-end gap-3 border-t pt-5" style={{ borderColor: BORDER }}><button type="button" onClick={onClose} disabled={saving} className="rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-40" style={{ color: MUTED, borderColor: BORDER_SOFT }}>Cancel</button><button type="submit" disabled={saving} className="flex min-w-[126px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-extrabold disabled:cursor-not-allowed disabled:opacity-60" style={{ color: "#08080B", background: "linear-gradient(135deg, #E0C36B, #C9A84C)" }}>{saving ? <><Loader2 size={16} className="animate-spin" />Saving...</> : <><Plus size={16} />Add Lead</>}</button></div>
+
+          <label>
+            <span
+              className="mb-1.5 block text-xs font-bold"
+              style={{ color: TEXT }}
+            >
+              Message / Notes
+            </span>
+            <textarea
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              rows={4}
+              placeholder="Add context, treatment interest, or follow-up notes..."
+              className="w-full resize-none rounded-xl border px-3 py-3 text-sm outline-none focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10"
+              style={fieldStyle}
+            />
+          </label>
+          {error && (
+            <div
+              className="flex items-start gap-2 rounded-xl border p-3 text-sm text-[#F87171]"
+              style={{
+                backgroundColor: "rgba(248,113,113,.08)",
+                borderColor: "rgba(248,113,113,.25)",
+              }}
+            >
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              {error}
+            </div>
+          )}
+          <div
+            className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-2 border-t bg-[#0D0D12] px-4 pb-1 pt-4 min-[380px]:flex-row min-[380px]:justify-end sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pt-5"
+            style={{ borderColor: BORDER }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-40"
+              style={{ color: MUTED, borderColor: BORDER_SOFT }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex min-h-11 min-w-[126px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-extrabold disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                color: "#08080B",
+                background: "linear-gradient(135deg, #E0C36B, #C9A84C)",
+              }}
+            >
+              {saving ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Plus size={16} />
+                  Add Lead
+                </>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -620,14 +1350,20 @@ function AddLeadModal({ open, saving, error, onClose, onSubmit }: {
 
 export default function LeadsClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { can } = useAuth();
   const supabase = useMemo(() => createClient(), []);
   const canUpdateLeads = can("update:leads");
   const canDeleteLeads = can("delete:leads");
-  const cachedLeads = useDashboardCachedData<{ leads?: Lead[] }>(DATA_CACHE_KEYS.leads);
-  const hadCachedLeadsOnMount = useRef(Boolean(cachedLeads));
-  const [leads, setLeads] = useState<Lead[]>(() => cachedLeads?.leads ?? []);
-  const [loading, setLoading] = useState(() => !cachedLeads);
+  const initialPageSize = [20, 30, 50].includes(Number(searchParams.get("pageSize"))) ? Number(searchParams.get("pageSize")) : 20;
+  const cachedLeads = useDashboardCachedData<{ leads?: Lead[]; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number }>(
+    DATA_CACHE_KEYS.leads,
+  );
+  const useCachedFirstPage = initialPageSize === 20 && Boolean(cachedLeads);
+  const [leads, setLeads] = useState<Lead[]>(() => useCachedFirstPage ? cachedLeads?.leads ?? [] : []);
+  const [latestLeadOverall, setLatestLeadOverall] = useState<Lead | null>(() => useCachedFirstPage ? cachedLeads?.leads?.[0] ?? null : null);
+  const [loading, setLoading] = useState(() => !useCachedFirstPage);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -638,58 +1374,109 @@ export default function LeadsClient() {
   const [campaignFilter, setCampaignFilter] = useState("all");
   const [campaignStatusFilter, setCampaignStatusFilter] = useState("all");
   const [campaignStepFilter, setCampaignStepFilter] = useState("all");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [cursorHistory, setCursorHistory] = useState<Array<string | null>>([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(cachedLeads?.nextCursor ?? null);
+  const [visibleRange, setVisibleRange] = useState({ from: cachedLeads?.visibleFrom ?? (leads.length ? 1 : 0), to: cachedLeads?.visibleTo ?? leads.length });
+  const requestRef = useRef<AbortController | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
-  const [deleteImpact, setDeleteImpact] = useState<{nurtureEnrollments:number;messageLogs:number;activeCampaign:string}|null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<{
+    nurtureEnrollments: number;
+    messageLogs: number;
+    activeCampaign: string;
+  } | null>(null);
   const [deletingLead, setDeletingLead] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [metricsModalOpen, setMetricsModalOpen] = useState(false);
+  const [campaignLead, setCampaignLead] = useState<Lead | null>(null);
   const [savingLead, setSavingLead] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-  const [updatingReplied, setUpdatingReplied] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [updatingReplied, setUpdatingReplied] = useState<Set<string>>(
+    new Set(),
+  );
   const [importingLeads, setImportingLeads] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (cachedLeads?.leads) { setLeads(cachedLeads.leads); setLoading(false); }
-  }, [cachedLeads]);
-
-  useEffect(() => {
     const leadId = searchParams.get("lead");
-    if (leadId) setSelectedLead(leads.find((lead) => lead.id === leadId) ?? null);
+    if (leadId)
+      setSelectedLead(leads.find((lead) => lead.id === leadId) ?? null);
   }, [leads, searchParams]);
 
-  const load = useCallback(async (showLoading = true) => {
-    if (showLoading) setLoading(true);
+  const load = useCallback(async (showLoading = true, cursor: string | null = null, pageNumber = 1) => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    if (showLoading && leads.length === 0) setLoading(true);
+    else setRefreshing(true);
     setError(null);
     try {
-      const res = await fetch("/api/airtable/leads?status=all", { cache: "no-store" });
-      const data = await res.json() as { leads?: Lead[]; error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? "Could not load leads");
+      const params = new URLSearchParams({ pageSize: String(pageSize), page: String(pageNumber), sort: "newest" });
+      if (cursor) params.set("cursor", cursor);
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (sourceFilter !== "all") params.set("source", sourceFilter);
+      if (smsFilter !== "all") params.set("smsStatus", smsFilter);
+      if (emailFilter !== "all") params.set("emailStatus", emailFilter);
+      if (campaignFilter !== "all") params.set("campaign", campaignFilter);
+      if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
+      if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
+      const now = new Date();
+      if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
+      if (dateFilter === "7" || dateFilter === "30") {
+        const from = new Date(now);
+        from.setDate(from.getDate() - Number(dateFilter));
+        params.set("dateFrom", from.toISOString().slice(0, 10));
+      }
+      const res = await fetch(`/api/airtable/leads?${params}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const data = (await res.json()) as { leads?: Lead[]; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number; error?: string };
+      if (!res.ok || data.error)
+        throw new Error(data.error ?? "Could not load leads");
       setLeads(data.leads ?? []);
-      setCachedData(DATA_CACHE_KEYS.leads, data);
+      if (pageNumber === 1) setLatestLeadOverall(data.leads?.[0] ?? null);
+      setNextCursor(data.nextCursor ?? null);
+      setVisibleRange({ from: data.visibleFrom ?? 0, to: data.visibleTo ?? 0 });
+      if (pageNumber === 1 && pageSize === 20 && !debouncedSearch && statusFilter === "all" && sourceFilter === "all") setCachedData(DATA_CACHE_KEYS.leads, data);
+      return true;
     } catch (event) {
+      if (event instanceof DOMException && event.name === "AbortError") return false;
       setError(String(event));
+      return false;
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, debouncedSearch, emailFilter, leads.length, pageSize, smsFilter, sourceFilter, statusFilter]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void load(!hadCachedLeadsOnMount.current);
-    }, 0);
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [search]);
 
   useEffect(() => {
-    const refresh = () => void load();
+    setCursorHistory([null]);
+    setPageIndex(0);
+    void load(!useCachedFirstPage, null, 1);
+    return () => requestRef.current?.abort();
+  }, [campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, debouncedSearch, emailFilter, pageSize, smsFilter, sourceFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const refresh = () => void load(false, cursorHistory[pageIndex] ?? null, pageIndex + 1);
     window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
     return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
-  }, [load]);
+  }, [cursorHistory, load, pageIndex]);
 
   const duplicateKeys = useMemo(() => {
     const emailCounts = new Map<string, number>();
@@ -703,49 +1490,53 @@ export default function LeadsClient() {
     return { emailCounts, phoneCounts };
   }, [leads]);
 
-  const isDuplicateLead = useCallback((lead: Lead) => {
-    const email = normalize(lead.email);
-    const phone = normalizePhone(lead.phone);
-    return Boolean((email && (duplicateKeys.emailCounts.get(email) ?? 0) > 1) || (phone && (duplicateKeys.phoneCounts.get(phone) ?? 0) > 1));
-  }, [duplicateKeys]);
+  const isDuplicateLead = useCallback(
+    (lead: Lead) => {
+      const email = normalize(lead.email);
+      const phone = normalizePhone(lead.phone);
+      return Boolean(
+        (email && (duplicateKeys.emailCounts.get(email) ?? 0) > 1) ||
+        (phone && (duplicateKeys.phoneCounts.get(phone) ?? 0) > 1),
+      );
+    },
+    [duplicateKeys],
+  );
 
   const sources = useMemo(() => {
-    const values = Array.from(new Set(leads.map((lead) => sourceLabel(lead.source)).filter(Boolean))).sort();
-    return [{ label: "All sources", value: "all" }, ...values.map((source) => ({ label: source, value: source }))];
+    const values = Array.from(
+      new Set(leads.map((lead) => sourceLabel(lead.source)).filter(Boolean)),
+    ).sort();
+    return [
+      { label: "All sources", value: "all" },
+      ...values.map((source) => ({ label: source, value: source })),
+    ];
   }, [leads]);
 
-  const filtered = useMemo(() => {
-    const query = normalize(search);
-    return leads.filter((lead) => {
-      const matchesSearch = !query || [lead.name, lead.phone, lead.email].some((value) => normalize(value).includes(query));
-      const matchesStatus = statusFilter === "all" || lead.status === statusFilter || (statusFilter === "Duplicate" && isDuplicateLead(lead));
-      const matchesSource = sourceFilter === "all" || sourceLabel(lead.source) === sourceFilter;
-      const matchesDate = withinDateRange(lead.createdAt, dateFilter);
-      const matchesSms = smsFilter === "all" || (smsFilter === "sent" ? isSent(lead.smsSentStatus) : !isSent(lead.smsSentStatus));
-      const matchesEmail = emailFilter === "all" || (emailFilter === "sent" ? isSent(lead.emailSentStatus) : !isSent(lead.emailSentStatus));
-      const matchesCampaign = campaignFilter === "all" || (campaignFilter === "none" ? lead.campaigns.length === 0 : lead.campaigns.some((item) => item.slug === campaignFilter));
-      const matchesCampaignStatus = campaignStatusFilter === "all" || lead.campaigns.some((item) => item.status === campaignStatusFilter);
-      const matchesCampaignStep = campaignStepFilter === "all" || lead.campaigns.some((item) => item.currentStep === campaignStepFilter);
-      return matchesSearch && matchesStatus && matchesSource && matchesDate && matchesSms && matchesEmail && matchesCampaign && matchesCampaignStatus && matchesCampaignStep;
-    });
-  }, [campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, isDuplicateLead, leads, search, smsFilter, sourceFilter, statusFilter]);
+  const filtered = leads;
 
-  const latestLead = filtered[0] ?? leads[0] ?? null;
-  const todayCount = leads.filter((lead) => withinDateRange(lead.createdAt, "today")).length;
-  const contactedCount = leads.filter((lead) => lead.status === "Contacted").length;
+  const todayCount = leads.filter((lead) =>
+    withinDateRange(lead.createdAt, "today"),
+  ).length;
+  const contactedCount = leads.filter(
+    (lead) => lead.status === "Contacted",
+  ).length;
   const bookedCount = leads.filter((lead) => lead.status === "Booked").length;
   const duplicateCount = leads.filter(isDuplicateLead).length;
 
   function updateStatus(id: string, status: string) {
-    setLeads((current) => current.map((lead) => lead.id === id ? { ...lead, status } : lead));
-    setSelectedLead((lead) => lead?.id === id ? { ...lead, status } : lead);
+    setLeads((current) =>
+      current.map((lead) => (lead.id === id ? { ...lead, status } : lead)),
+    );
+    setSelectedLead((lead) => (lead?.id === id ? { ...lead, status } : lead));
   }
 
   async function getAuthHeaders(): Promise<HeadersInit> {
     const { data } = await supabase.auth.getSession();
     return {
       "Content-Type": "application/json",
-      ...(data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+      ...(data.session?.access_token
+        ? { Authorization: `Bearer ${data.session.access_token}` }
+        : {}),
     };
   }
 
@@ -771,66 +1562,114 @@ export default function LeadsClient() {
     window.setTimeout(() => setToast(null), 4000);
   }
 
+  async function refreshLeads() {
+    if (refreshing) return;
+    const refreshed = await load(false, cursorHistory[pageIndex] ?? null, pageIndex + 1);
+    showToast(
+      refreshed ? "success" : "error",
+      refreshed ? "Leads refreshed." : "Could not refresh Leads.",
+    );
+  }
+
   async function addLead(form: LeadForm) {
     setSavingLead(true);
     setAddError(null);
     try {
       const res = await fetch("/api/airtable/leads", {
-        method: "POST", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify(form),
+        method: "POST",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify(form),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error ?? "Could not create lead");
+      if (!res.ok || data.error)
+        throw new Error(data.error ?? "Could not create lead");
       setAddModalOpen(false);
       showToast("success", "Lead added successfully.");
-      await load();
+      setCursorHistory([null]);
+      setPageIndex(0);
+      await load(false, null, 1);
     } catch (event) {
-      setAddError(event instanceof Error ? event.message : "Could not create lead");
+      setAddError(
+        event instanceof Error ? event.message : "Could not create lead",
+      );
     } finally {
       setSavingLead(false);
     }
   }
 
   function exportCsv() {
-    const headers = ["Name", "Phone", "Email", "Message", "Source", "Status", "Replied", "Lead Created At"];
-    const rows = leads.map((lead) => [lead.name, lead.phone, lead.email, lead.message, lead.source, lead.status, lead.replied ? "Yes" : "No", lead.createdAt]);
-    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `harmony-leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    showToast("success", `${leads.length} leads exported.`);
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (sourceFilter !== "all") params.set("source", sourceFilter);
+    if (smsFilter !== "all") params.set("smsStatus", smsFilter);
+    if (emailFilter !== "all") params.set("emailStatus", emailFilter);
+    if (campaignFilter !== "all") params.set("campaign", campaignFilter);
+    if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
+    if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
+    const now = new Date();
+    if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
+    if (dateFilter === "7" || dateFilter === "30") {
+      const from = new Date(now);
+      from.setDate(from.getDate() - Number(dateFilter));
+      params.set("dateFrom", from.toISOString().slice(0, 10));
+    }
+    window.location.assign(`/api/airtable/leads/export?${params}`);
+    showToast("success", "Filtered Leads export started.");
   }
 
   async function importCsv(file: File) {
     setImportingLeads(true);
     try {
       const rows = parseCsv(await file.text());
-      if (rows.length < 2) throw new Error("CSV must include a header row and at least one lead.");
-      const headers = rows[0].map((header) => header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]/g, ""));
-      const column = (...names: string[]) => headers.findIndex((header) => names.includes(header));
+      if (rows.length < 2)
+        throw new Error("CSV must include a header row and at least one lead.");
+      const headers = rows[0].map((header) =>
+        header
+          .replace(/^\uFEFF/, "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, ""),
+      );
+      const column = (...names: string[]) =>
+        headers.findIndex((header) => names.includes(header));
       const nameIndex = column("name", "fullname", "leadname");
       const phoneIndex = column("phone", "phonenumber", "mobile");
       const emailIndex = column("email", "emailaddress");
       const messageIndex = column("message", "notes", "messagenotes");
-      if (nameIndex < 0 || phoneIndex < 0) throw new Error("CSV headers must include Name and Phone columns.");
+      if (nameIndex < 0 || phoneIndex < 0)
+        throw new Error("CSV headers must include Name and Phone columns.");
       const imported = rows.slice(1).map((row) => ({
         name: row[nameIndex]?.trim() ?? "",
         phone: row[phoneIndex]?.trim() ?? "",
-        email: emailIndex >= 0 ? row[emailIndex]?.trim() ?? "" : "",
-        message: messageIndex >= 0 ? row[messageIndex]?.trim() ?? "" : "",
+        email: emailIndex >= 0 ? (row[emailIndex]?.trim() ?? "") : "",
+        message: messageIndex >= 0 ? (row[messageIndex]?.trim() ?? "") : "",
       }));
       const response = await fetch("/api/airtable/leads", {
-        method: "POST", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify({ leads: imported }),
+        method: "POST",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ leads: imported }),
       });
-      const data = await response.json().catch(() => ({})) as { error?: string; created?: number };
-      if (!response.ok || data.error) throw new Error(data.error ?? "Could not import leads");
-      showToast("success", `${data.created ?? imported.length} leads imported successfully.`);
-      await load();
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        created?: number;
+      };
+      if (!response.ok || data.error)
+        throw new Error(data.error ?? "Could not import leads");
+      showToast(
+        "success",
+        `${data.created ?? imported.length} leads imported successfully.`,
+      );
+      setCursorHistory([null]);
+      setPageIndex(0);
+      await load(false, null, 1);
     } catch (event) {
-      showToast("error", event instanceof Error ? event.message : "Could not import CSV.");
+      showToast(
+        "error",
+        event instanceof Error ? event.message : "Could not import CSV.",
+      );
     } finally {
       setImportingLeads(false);
       if (importInputRef.current) importInputRef.current.value = "";
@@ -839,21 +1678,48 @@ export default function LeadsClient() {
 
   async function changeReplied(lead: Lead, replied: boolean) {
     if (!canUpdateLeads || updatingReplied.has(lead.id)) return;
-    setLeads((current) => current.map((item) => item.id === lead.id ? { ...item, replied } : item));
-    setSelectedLead((current) => current?.id === lead.id ? { ...current, replied } : current);
+    setLeads((current) =>
+      current.map((item) =>
+        item.id === lead.id ? { ...item, replied } : item,
+      ),
+    );
+    setSelectedLead((current) =>
+      current?.id === lead.id ? { ...current, replied } : current,
+    );
     setUpdatingReplied((current) => new Set(current).add(lead.id));
     try {
       const res = await fetch("/api/airtable/leads", {
-        method: "PATCH", credentials: "same-origin", headers: await getAuthHeaders(), body: JSON.stringify({ id: lead.id, replied }),
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ id: lead.id, replied }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error ?? "Could not update replied status");
+      if (!res.ok || data.error)
+        throw new Error(data.error ?? "Could not update replied status");
     } catch (event) {
-      setLeads((current) => current.map((item) => item.id === lead.id ? { ...item, replied: lead.replied } : item));
-      setSelectedLead((current) => current?.id === lead.id ? { ...current, replied: lead.replied } : current);
-      showToast("error", event instanceof Error ? event.message : "Could not update replied status");
+      setLeads((current) =>
+        current.map((item) =>
+          item.id === lead.id ? { ...item, replied: lead.replied } : item,
+        ),
+      );
+      setSelectedLead((current) =>
+        current?.id === lead.id
+          ? { ...current, replied: lead.replied }
+          : current,
+      );
+      showToast(
+        "error",
+        event instanceof Error
+          ? event.message
+          : "Could not update replied status",
+      );
     } finally {
-      setUpdatingReplied((current) => { const next = new Set(current); next.delete(lead.id); return next; });
+      setUpdatingReplied((current) => {
+        const next = new Set(current);
+        next.delete(lead.id);
+        return next;
+      });
     }
   }
 
@@ -861,43 +1727,205 @@ export default function LeadsClient() {
     if (!canDeleteLeads) return;
     setOpenMenuId(null);
     setDeleteError(null);
-    setDeleteTarget(lead); setDeleteImpact(null);
-    const res = await fetch(`/api/airtable/leads/${lead.id}/delete-impact`,{headers:await getAuthHeaders(),cache:"no-store"});
-    const data = await res.json().catch(()=>({}));
-    if(!res.ok){setDeleteTarget(null);setDeleteError(data.error??`Could not calculate deletion impact for ${lead.name}.`);return}
+    setDeleteTarget(lead);
+    setDeleteImpact(null);
+    const res = await fetch(`/api/airtable/leads/${lead.id}/delete-impact`, {
+      headers: await getAuthHeaders(),
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setDeleteTarget(null);
+      setDeleteError(
+        data.error ?? `Could not calculate deletion impact for ${lead.name}.`,
+      );
+      return;
+    }
     setDeleteImpact(data);
   }
 
-  async function confirmDeleteLead(){if(!deleteTarget)return;const lead=deleteTarget;setDeletingLead(true);const res=await fetch(`/api/airtable/leads/${lead.id}`,{method:"DELETE",credentials:"same-origin",headers:await getAuthHeaders()});const data=await res.json().catch(()=>({}));setDeletingLead(false);if(!res.ok){setDeleteError(data.partial?`Deletion was only partially completed: ${data.error}. Refresh before trying again.`:data.error??`Could not permanently delete ${lead.name}.`);setDeleteTarget(null);await load(false);return}setLeads(current=>current.filter(item=>item.id!==lead.id));setSelectedLead(current=>current?.id===lead.id?null:current);setDeleteTarget(null);showToast("success",`${lead.name} and linked campaign history were deleted permanently.`)}
+  async function confirmDeleteLead() {
+    if (!deleteTarget) return;
+    const lead = deleteTarget;
+    setDeletingLead(true);
+    const res = await fetch(`/api/airtable/leads/${lead.id}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: await getAuthHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    setDeletingLead(false);
+    if (!res.ok) {
+      setDeleteError(
+        data.partial
+          ? `Deletion was only partially completed: ${data.error}. Refresh before trying again.`
+          : (data.error ?? `Could not permanently delete ${lead.name}.`),
+      );
+      setDeleteTarget(null);
+      await load(false);
+      return;
+    }
+    setLeads((current) => current.filter((item) => item.id !== lead.id));
+    setSelectedLead((current) => (current?.id === lead.id ? null : current));
+    setDeleteTarget(null);
+    showToast(
+      "success",
+      `${lead.name} and linked campaign history were deleted permanently.`,
+    );
+    if (leads.length === 1 && pageIndex > 0) {
+      const previousIndex = pageIndex - 1;
+      const previousCursor = cursorHistory[previousIndex] ?? null;
+      if (await load(false, previousCursor, previousIndex + 1)) setPageIndex(previousIndex);
+    } else {
+      await load(false, cursorHistory[pageIndex] ?? null, pageIndex + 1);
+    }
+  }
+
+  async function goNext() {
+    if (!nextCursor || refreshing) return;
+    const nextIndex = pageIndex + 1;
+    if (await load(false, nextCursor, nextIndex + 1)) {
+      setCursorHistory((current) => [...current.slice(0, nextIndex), nextCursor]);
+      setPageIndex(nextIndex);
+    }
+  }
+
+  async function goPrevious() {
+    if (pageIndex === 0 || refreshing) return;
+    const previousIndex = pageIndex - 1;
+    if (await load(false, cursorHistory[previousIndex] ?? null, previousIndex + 1)) setPageIndex(previousIndex);
+  }
+
+  function changePageSize(value: string) {
+    const nextSize = Number(value);
+    if (![20, 30, 50].includes(nextSize)) return;
+    setPageSize(nextSize);
+    setCursorHistory([null]);
+    setPageIndex(0);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("pageSize", String(nextSize));
+    params.delete("lead");
+    router.replace(`/leads?${params.toString()}`, { scroll: false });
+  }
 
   return (
     <div className="space-y-5">
-      <input ref={importInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCsv(file); }} />
-      <LeadTicker lead={latestLead} loading={loading} importing={importingLeads} onRefresh={() => void load(false)} onAdd={() => { setAddError(null); setAddModalOpen(true); }} onImport={() => importInputRef.current?.click()} onExport={exportCsv} onUpdateVisits={()=>setMetricsModalOpen(true)} canAdd={canUpdateLeads} />
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importCsv(file);
+        }}
+      />
+      <LeadTicker
+        lead={latestLeadOverall}
+        loading={loading || refreshing}
+        importing={importingLeads}
+        onRefresh={() => void refreshLeads()}
+        onAdd={() => {
+          setAddError(null);
+          setAddModalOpen(true);
+        }}
+        onImport={() => importInputRef.current?.click()}
+        onExport={exportCsv}
+        onUpdateVisits={() => setMetricsModalOpen(true)}
+        canAdd={canUpdateLeads}
+      />
 
-      {toast && <div role="status" className="fixed right-5 top-5 z-[110] flex max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold" style={{ color: toast.tone === "success" ? "#86EFAC" : "#FCA5A5", backgroundColor: toast.tone === "success" ? "#0D2117" : "#281012", borderColor: toast.tone === "success" ? "rgba(34,197,94,.35)" : "rgba(248,113,113,.35)", boxShadow: "0 18px 60px rgba(0,0,0,.45)" }}>{toast.tone === "success" ? <Check size={17} /> : <AlertCircle size={17} />}{toast.message}<button type="button" onClick={() => setToast(null)} className="ml-2 opacity-70"><X size={14} /></button></div>}
+      {toast && (
+        <div
+          role="status"
+          className="fixed right-5 top-5 z-[110] flex max-w-sm items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold"
+          style={{
+            color: toast.tone === "success" ? "#86EFAC" : "#FCA5A5",
+            backgroundColor: toast.tone === "success" ? "#0D2117" : "#281012",
+            borderColor:
+              toast.tone === "success"
+                ? "rgba(34,197,94,.35)"
+                : "rgba(248,113,113,.35)",
+            boxShadow: "0 18px 60px rgba(0,0,0,.45)",
+          }}
+        >
+          {toast.tone === "success" ? (
+            <Check size={17} />
+          ) : (
+            <AlertCircle size={17} />
+          )}
+          {toast.message}
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="ml-2 opacity-70"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {deleteError && (
-        <div className="flex items-start justify-between gap-3 rounded-2xl border p-4" style={{ borderColor: "rgba(248,113,113,0.25)", backgroundColor: "rgba(248,113,113,0.08)" }}>
+        <div
+          className="flex items-start justify-between gap-3 rounded-2xl border p-4"
+          style={{
+            borderColor: "rgba(248,113,113,0.25)",
+            backgroundColor: "rgba(248,113,113,0.08)",
+          }}
+        >
           <div className="flex items-start gap-3">
             <AlertCircle size={18} style={{ color: "#F87171" }} />
             <div>
-              <p className="text-sm font-bold" style={{ color: "#F87171" }}>Could not delete lead</p>
-              <p className="mt-1 text-xs" style={{ color: MUTED }}>{deleteError}</p>
+              <p className="text-sm font-bold" style={{ color: "#F87171" }}>
+                Could not delete lead
+              </p>
+              <p className="mt-1 text-xs" style={{ color: MUTED }}>
+                {deleteError}
+              </p>
             </div>
           </div>
-          <button type="button" onClick={() => setDeleteError(null)} className="rounded-lg p-1" style={{ color: MUTED }}>
+          <button
+            type="button"
+            onClick={() => setDeleteError(null)}
+            className="rounded-lg p-1"
+            style={{ color: MUTED }}
+          >
             <X size={16} />
           </button>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <StatCard label="Total leads" value={leads.length} meta={`${filtered.length} visible`} color={GOLD} />
-        <StatCard label="New today" value={todayCount} meta={trendLabel(todayCount, leads.length)} color="#60A5FA" />
-        <StatCard label="Contacted" value={contactedCount} meta={trendLabel(contactedCount, leads.length)} color="#F59E0B" />
-        <StatCard label="Booked" value={bookedCount} meta={trendLabel(bookedCount, leads.length)} color="#22C55E" />
-        <StatCard label="Duplicates" value={duplicateCount} meta="matched" color="#A1A1AA" />
+        <StatCard
+          label="Leads on this page"
+          value={leads.length}
+          meta={visibleRange.from ? `${visibleRange.from}–${visibleRange.to} visible` : "No visible rows"}
+          color={GOLD}
+        />
+        <StatCard
+          label="New today"
+          value={todayCount}
+          meta={`${trendLabel(todayCount, leads.length)} of page`}
+          color="#60A5FA"
+        />
+        <StatCard
+          label="Contacted"
+          value={contactedCount}
+          meta={`${trendLabel(contactedCount, leads.length)} of page`}
+          color="#F59E0B"
+        />
+        <StatCard
+          label="Booked"
+          value={bookedCount}
+          meta={`${trendLabel(bookedCount, leads.length)} of page`}
+          color="#22C55E"
+        />
+        <StatCard
+          label="Duplicates"
+          value={duplicateCount}
+          meta="on this page"
+          color="#A1A1AA"
+        />
       </div>
 
       <div
@@ -909,27 +1937,80 @@ export default function LeadsClient() {
       >
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
           <div className="relative min-w-0 flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: MUTED }}
+            />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search name, phone, or email"
               aria-label="Search leads"
               className="h-11 w-full rounded-xl border pl-10 pr-3 text-sm"
-              style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}
+              style={{
+                backgroundColor: CARD,
+                borderColor: BORDER,
+                color: TEXT,
+              }}
             />
           </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:flex xl:flex-wrap">
-            <SelectControl label="Filter by campaign" value={campaignFilter} onChange={setCampaignFilter} options={[{ label: "All Campaigns", value: "all" }, { label: "Speed-to-Lead", value: "speed-to-lead" }, { label: "14-Day Nurture", value: "14-day-nurture" }, { label: "No Campaign", value: "none" }]} />
-            <SelectControl label="Filter by campaign status" value={campaignStatusFilter} onChange={setCampaignStatusFilter} options={[{ label: "Campaign status: All", value: "all" }, ...["Active", "Paused", "Stopped", "Completed"].map((value) => ({ label: value, value }))]} />
-            <SelectControl label="Filter by current step" value={campaignStepFilter} onChange={setCampaignStepFilter} options={[{ label: "All Steps", value: "all" }, ...["Day 1 SMS", "Day 3 Email", "Day 5 SMS", "Day 8 Email", "Day 12 SMS"].map((value) => ({ label: value, value }))]} />
+            <SelectControl
+              label="Filter by campaign"
+              value={campaignFilter}
+              onChange={setCampaignFilter}
+              options={[
+                { label: "All Campaigns", value: "all" },
+                { label: "Speed-to-Lead", value: "speed-to-lead" },
+                { label: "14-Day Nurture", value: "14-day-nurture" },
+                { label: "No Campaign", value: "none" },
+              ]}
+            />
+            <SelectControl
+              label="Filter by campaign status"
+              value={campaignStatusFilter}
+              onChange={setCampaignStatusFilter}
+              options={[
+                { label: "Campaign status: All", value: "all" },
+                ...["Active", "Paused", "Stopped", "Completed"].map(
+                  (value) => ({ label: value, value }),
+                ),
+              ]}
+            />
+            <SelectControl
+              label="Filter by current step"
+              value={campaignStepFilter}
+              onChange={setCampaignStepFilter}
+              options={[
+                { label: "All Steps", value: "all" },
+                ...[
+                  "Day 1 SMS",
+                  "Day 3 Email",
+                  "Day 5 SMS",
+                  "Day 8 Email",
+                  "Day 12 SMS",
+                ].map((value) => ({ label: value, value })),
+              ]}
+            />
             <SelectControl
               label="Filter by status"
               value={statusFilter}
               onChange={setStatusFilter}
-              options={[{ label: "All statuses", value: "all" }, ...STATUS_OPTIONS.map((status) => ({ label: status, value: status }))]}
+              options={[
+                { label: "All statuses", value: "all" },
+                ...STATUS_OPTIONS.map((status) => ({
+                  label: status,
+                  value: status,
+                })),
+              ]}
             />
-            <SelectControl label="Filter by source" value={sourceFilter} onChange={setSourceFilter} options={sources} />
+            <SelectControl
+              label="Filter by source"
+              value={sourceFilter}
+              onChange={setSourceFilter}
+              options={sources}
+            />
             <SelectControl
               label="Filter by date range"
               value={dateFilter}
@@ -966,33 +2047,66 @@ export default function LeadsClient() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-3 rounded-2xl border py-20" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-          <RefreshCw size={18} className="animate-spin" style={{ color: GOLD }} />
-          <span className="text-sm font-semibold" style={{ color: MUTED }}>Loading live Airtable leads...</span>
+        <div
+          className="flex items-center justify-center gap-3 rounded-2xl border py-20"
+          style={{ borderColor: BORDER, backgroundColor: CARD }}
+        >
+          <RefreshCw
+            size={18}
+            className="animate-spin"
+            style={{ color: GOLD }}
+          />
+          <span className="text-sm font-semibold" style={{ color: MUTED }}>
+            Loading live Airtable leads...
+          </span>
         </div>
       ) : error ? (
-        <div className="flex items-start gap-3 rounded-2xl border p-5" style={{ borderColor: "rgba(248,113,113,0.25)", backgroundColor: "rgba(248,113,113,0.08)" }}>
+        <div
+          className="flex items-start gap-3 rounded-2xl border p-5"
+          style={{
+            borderColor: "rgba(248,113,113,0.25)",
+            backgroundColor: "rgba(248,113,113,0.08)",
+          }}
+        >
           <AlertCircle size={18} style={{ color: "#F87171" }} />
           <div>
-            <p className="text-sm font-bold" style={{ color: "#F87171" }}>Could not load leads</p>
-            <p className="mt-1 text-xs" style={{ color: MUTED }}>{error}</p>
+            <p className="text-sm font-bold" style={{ color: "#F87171" }}>
+              Could not load leads
+            </p>
+            <p className="mt-1 text-xs" style={{ color: MUTED }}>
+              {error}
+            </p>
           </div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border px-6 py-20 text-center" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ backgroundColor: "rgba(201,168,76,0.10)", color: GOLD }}>
+        <div
+          className="flex flex-col items-center justify-center rounded-2xl border px-6 py-20 text-center"
+          style={{ borderColor: BORDER, backgroundColor: CARD }}
+        >
+          <div
+            className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
+            style={{ backgroundColor: "rgba(201,168,76,0.10)", color: GOLD }}
+          >
             <SlidersHorizontal size={22} />
           </div>
-          <p className="text-base font-bold" style={{ color: TEXT }}>No leads match these filters</p>
-          <p className="mt-1 max-w-md text-sm" style={{ color: MUTED }}>Adjust the filters or search term to bring the live Airtable records back into view.</p>
+          <p className="text-base font-bold" style={{ color: TEXT }}>
+            No leads match these filters
+          </p>
+          <p className="mt-1 max-w-md text-sm" style={{ color: MUTED }}>
+            Adjust the filters or search term to bring the live Airtable records
+            back into view.
+          </p>
         </div>
       ) : (
         <>
-          <div className="hidden overflow-visible rounded-2xl border md:block" style={{ borderColor: BORDER, backgroundColor: CARD }}>
+          <div
+            className="hidden overflow-visible rounded-2xl border md:block"
+            style={{ borderColor: BORDER, backgroundColor: CARD }}
+          >
             <div className="max-h-[68vh] overflow-auto">
               <table className="w-full min-w-[1120px] border-separate border-spacing-0">
                 <thead className="sticky top-0 z-10">
-                  <tr style={{ backgroundColor: "#0B0B10" }}>
+                  <tr style={{ backgroundColor: "var(--background-subtle)" }}>
                     {[
                       { key: "name", label: "Name" },
                       { key: "phone", label: "Phone" },
@@ -1007,7 +2121,11 @@ export default function LeadsClient() {
                       { key: "last-contacted", label: "Last Contacted" },
                       { key: "actions", label: "" },
                     ].map((heading) => (
-                      <th key={heading.key} className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: DIM, borderColor: BORDER_SOFT }}>
+                      <th
+                        key={heading.key}
+                        className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
+                        style={{ color: DIM, borderColor: BORDER_SOFT }}
+                      >
                         {heading.label}
                       </th>
                     ))}
@@ -1022,63 +2140,203 @@ export default function LeadsClient() {
                         className="group cursor-pointer transition-colors"
                         style={{ backgroundColor: BG }}
                         onClick={() => setSelectedLead(lead)}
-                        onMouseEnter={(event) => { event.currentTarget.style.backgroundColor = CARD_HOVER; }}
-                        onMouseLeave={(event) => { event.currentTarget.style.backgroundColor = BG; }}
+                        onMouseEnter={(event) => {
+                          event.currentTarget.style.backgroundColor =
+                            CARD_HOVER;
+                        }}
+                        onMouseLeave={(event) => {
+                          event.currentTarget.style.backgroundColor = BG;
+                        }}
                         tabIndex={0}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") setSelectedLead(lead);
+                          if (event.key === "Enter" || event.key === " ")
+                            setSelectedLead(lead);
                         }}
                       >
-                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}>
+                        <td
+                          className="border-b px-4 py-3"
+                          style={{ borderColor: BORDER_SOFT }}
+                        >
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-xl border text-xs font-extrabold" style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.09)", borderColor: "rgba(201,168,76,0.18)" }}>
+                            <div
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border text-xs font-extrabold"
+                              style={{
+                                color: GOLD,
+                                backgroundColor: "rgba(201,168,76,0.09)",
+                                borderColor: "rgba(201,168,76,0.18)",
+                              }}
+                            >
                               {initials(lead.name)}
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-bold" style={{ color: TEXT }}>{lead.name || "Unnamed lead"}</p>
-                              <p className="truncate text-[11px]" style={{ color: duplicate ? "#A1A1AA" : DIM }}>{duplicate ? "Possible duplicate" : lead.treatment || "No treatment captured"}</p>
+                              <p
+                                className="truncate text-sm font-bold"
+                                style={{ color: TEXT }}
+                              >
+                                {lead.name || "Unnamed lead"}
+                              </p>
+                              <p
+                                className="truncate text-[11px]"
+                                style={{ color: duplicate ? "#A1A1AA" : DIM }}
+                              >
+                                {duplicate
+                                  ? "Possible duplicate"
+                                  : lead.treatment || "No treatment captured"}
+                              </p>
                             </div>
                           </div>
                         </td>
-                        <td className="border-b px-4 py-3 text-sm" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{lead.phone || "-"}</td>
-                        <td className="border-b px-4 py-3 text-sm" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{lead.email || "-"}</td>
-                        <td className="border-b px-4 py-3 text-xs font-semibold" style={{ borderColor: BORDER_SOFT, color: TEXT }}>{sourceLabel(lead.source)}</td>
-                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
+                        <td
+                          className="border-b px-4 py-3 text-sm"
+                          style={{ borderColor: BORDER_SOFT, color: MUTED }}
+                        >
+                          {lead.phone || "-"}
+                        </td>
+                        <td
+                          className="border-b px-4 py-3 text-sm"
+                          style={{ borderColor: BORDER_SOFT, color: MUTED }}
+                        >
+                          {lead.email || "-"}
+                        </td>
+                        <td
+                          className="border-b px-4 py-3 text-xs font-semibold"
+                          style={{ borderColor: BORDER_SOFT, color: TEXT }}
+                        >
+                          {sourceLabel(lead.source)}
+                        </td>
+                        <td
+                          className="border-b px-4 py-3"
+                          style={{ borderColor: BORDER_SOFT }}
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           {canUpdateLeads ? (
                             <select
                               value={lead.status}
-                              onChange={(event) => changeRowStatus(lead, event.target.value)}
+                              onChange={(event) =>
+                                changeRowStatus(lead, event.target.value)
+                              }
                               className="rounded-full border px-2.5 py-1 text-[11px] font-bold"
                               style={{
-                                color: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).color,
-                                backgroundColor: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).bg,
-                                borderColor: (STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.New).border,
+                                color: (
+                                  STATUS_CONFIG[lead.status] ??
+                                  STATUS_CONFIG.New
+                                ).color,
+                                backgroundColor: (
+                                  STATUS_CONFIG[lead.status] ??
+                                  STATUS_CONFIG.New
+                                ).bg,
+                                borderColor: (
+                                  STATUS_CONFIG[lead.status] ??
+                                  STATUS_CONFIG.New
+                                ).border,
                               }}
                               aria-label={`Change status for ${lead.name}`}
                             >
-                              {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                              {STATUS_OPTIONS.map((status) => (
+                                <option key={status} value={status}>
+                                  {status}
+                                </option>
+                              ))}
                             </select>
                           ) : (
                             <StatusPill status={lead.status} />
                           )}
                         </td>
-                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><LeadCampaignBadges campaigns={lead.campaigns} /></td>
-                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
-                          <button type="button" role="switch" aria-checked={lead.replied} aria-label={`Mark ${lead.name || "lead"} as ${lead.replied ? "not replied" : "replied"}`} disabled={!canUpdateLeads || updatingReplied.has(lead.id)} onClick={() => void changeReplied(lead, !lead.replied)} className="relative inline-flex h-6 w-10 items-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: lead.replied ? "rgba(45,212,191,.22)" : "rgba(255,255,255,.05)", borderColor: lead.replied ? "rgba(45,212,191,.45)" : BORDER_SOFT }}>
-                            {updatingReplied.has(lead.id) ? <Loader2 size={13} className="m-auto animate-spin" style={{ color: GOLD }} /> : <span className={`h-4 w-4 rounded-full transition-transform ${lead.replied ? "translate-x-[19px]" : "translate-x-[3px]"}`} style={{ backgroundColor: lead.replied ? TEAL : MUTED }} />}
+                        <td
+                          className="border-b px-4 py-3"
+                          style={{ borderColor: BORDER_SOFT }}
+                        >
+                          <LeadCampaignBadges campaigns={lead.campaigns} />
+                        </td>
+                        <td
+                          className="border-b px-4 py-3"
+                          style={{ borderColor: BORDER_SOFT }}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={lead.replied}
+                            aria-label={`Mark ${lead.name || "lead"} as ${lead.replied ? "not replied" : "replied"}`}
+                            disabled={
+                              !canUpdateLeads || updatingReplied.has(lead.id)
+                            }
+                            onClick={() =>
+                              void changeReplied(lead, !lead.replied)
+                            }
+                            className="relative inline-flex h-6 w-10 items-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-60"
+                            style={{
+                              backgroundColor: lead.replied
+                                ? "rgba(45,212,191,.22)"
+                                : "rgba(255,255,255,.05)",
+                              borderColor: lead.replied
+                                ? "rgba(45,212,191,.45)"
+                                : BORDER_SOFT,
+                            }}
+                          >
+                            {updatingReplied.has(lead.id) ? (
+                              <Loader2
+                                size={13}
+                                className="m-auto animate-spin"
+                                style={{ color: GOLD }}
+                              />
+                            ) : (
+                              <span
+                                className={`h-4 w-4 rounded-full transition-transform ${lead.replied ? "translate-x-[19px]" : "translate-x-[3px]"}`}
+                                style={{
+                                  backgroundColor: lead.replied ? TEAL : MUTED,
+                                }}
+                              />
+                            )}
                           </button>
                         </td>
-                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><DeliveryPill label="SMS" value={lead.smsSentStatus} /></td>
-                        <td className="border-b px-4 py-3" style={{ borderColor: BORDER_SOFT }}><DeliveryPill label="Email" value={lead.emailSentStatus} /></td>
-                        <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{timeAgo(lead.createdAt)}</td>
-                        <td className="border-b px-4 py-3 text-xs" style={{ borderColor: BORDER_SOFT, color: MUTED }}>{lastContacted(lead) ? timeAgo(lastContacted(lead)) : "Not contacted"}</td>
-                        <td className="relative border-b px-4 py-3 text-right" style={{ borderColor: BORDER_SOFT }} onClick={(event) => event.stopPropagation()}>
+                        <td
+                          className="border-b px-4 py-3"
+                          style={{ borderColor: BORDER_SOFT }}
+                        >
+                          <DeliveryPill
+                            label="SMS"
+                            value={lead.smsSentStatus}
+                          />
+                        </td>
+                        <td
+                          className="border-b px-4 py-3"
+                          style={{ borderColor: BORDER_SOFT }}
+                        >
+                          <DeliveryPill
+                            label="Email"
+                            value={lead.emailSentStatus}
+                          />
+                        </td>
+                        <td
+                          className="border-b px-4 py-3 text-xs"
+                          style={{ borderColor: BORDER_SOFT, color: MUTED }}
+                        >
+                          {timeAgo(lead.createdAt)}
+                        </td>
+                        <td
+                          className="border-b px-4 py-3 text-xs"
+                          style={{ borderColor: BORDER_SOFT, color: MUTED }}
+                        >
+                          {lastContacted(lead)
+                            ? timeAgo(lastContacted(lead))
+                            : "Not contacted"}
+                        </td>
+                        <td
+                          className="relative border-b px-4 py-3 text-right"
+                          style={{ borderColor: BORDER_SOFT }}
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <div className="flex items-center justify-end gap-2">
                             {canDeleteLeads && (
                               <button
                                 type="button"
                                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition hover:brightness-125"
-                                style={{ borderColor: "rgba(248,113,113,0.25)", color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)" }}
+                                style={{
+                                  borderColor: "rgba(248,113,113,0.25)",
+                                  color: "#F87171",
+                                  backgroundColor: "rgba(248,113,113,0.08)",
+                                }}
                                 aria-label={`Delete ${lead.name || "lead"}`}
                                 onClick={() => void deleteLead(lead)}
                                 title="Delete lead"
@@ -1088,20 +2346,64 @@ export default function LeadsClient() {
                             )}
                             <button
                               className="rounded-lg border p-1.5"
-                              style={{ borderColor: BORDER_SOFT, color: MUTED, backgroundColor: "rgba(255,255,255,0.025)" }}
+                              style={{
+                                borderColor: BORDER_SOFT,
+                                color: MUTED,
+                                backgroundColor: "rgba(255,255,255,0.025)",
+                              }}
                               aria-label={`Open quick actions for ${lead.name}`}
-                              onClick={() => setOpenMenuId(openMenuId === lead.id ? null : lead.id)}
+                              onClick={() =>
+                                setOpenMenuId(
+                                  openMenuId === lead.id ? null : lead.id,
+                                )
+                              }
                             >
                               <MoreHorizontal size={15} />
                             </button>
                           </div>
                           {openMenuId === lead.id && (
-                            <div className="absolute right-3 top-10 z-20 w-44 rounded-xl border p-1 text-left" style={{ backgroundColor: "#08080C", borderColor: BORDER, boxShadow: "0 18px 50px rgba(0,0,0,0.35)" }}>
-                              <a href={`tel:${lead.phone}`} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold" style={{ color: TEXT }}><Phone size={13} /> Call</a>
-                              <a href={`mailto:${lead.email}`} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold" style={{ color: TEXT }}><Mail size={13} /> Email</a>
-                              <button onClick={() => navigator.clipboard?.writeText(`${lead.name} ${lead.phone} ${lead.email}`)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold" style={{ color: TEXT }}><Copy size={13} /> Copy contact</button>
+                            <div
+                              className="absolute right-3 top-10 z-20 w-44 rounded-xl border p-1 text-left"
+                              style={{
+                                backgroundColor: "#08080C",
+                                borderColor: BORDER,
+                                boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+                              }}
+                            >
+                              <a
+                                href={`tel:${lead.phone}`}
+                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"
+                                style={{ color: TEXT }}
+                              >
+                                <Phone size={13} /> Call
+                              </a>
+                              <a
+                                href={`mailto:${lead.email}`}
+                                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"
+                                style={{ color: TEXT }}
+                              >
+                                <Mail size={13} /> Email
+                              </a>
+                              <button
+                                onClick={() =>
+                                  navigator.clipboard?.writeText(
+                                    `${lead.name} ${lead.phone} ${lead.email}`,
+                                  )
+                                }
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold"
+                                style={{ color: TEXT }}
+                              >
+                                <Copy size={13} /> Copy contact
+                              </button>
                               {canDeleteLeads && (
-                                <button type="button" onClick={() => void deleteLead(lead)} className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold" style={{ color: "#F87171" }}><Trash2 size={13} /> Delete lead</button>
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteLead(lead)}
+                                  className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold"
+                                  style={{ color: "#F87171" }}
+                                >
+                                  <Trash2 size={13} /> Delete lead
+                                </button>
                               )}
                             </div>
                           )}
@@ -1122,55 +2424,190 @@ export default function LeadsClient() {
                   key={lead.id}
                   onClick={() => setSelectedLead(lead)}
                   className="rounded-2xl border p-4 text-left"
-                  style={{ backgroundColor: CARD, borderColor: duplicate ? "rgba(161,161,170,0.28)" : BORDER }}
+                  style={{
+                    backgroundColor: CARD,
+                    borderColor: duplicate ? "rgba(161,161,170,0.28)" : BORDER,
+                  }}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 gap-3">
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border text-xs font-extrabold" style={{ color: GOLD, backgroundColor: "rgba(201,168,76,0.09)", borderColor: "rgba(201,168,76,0.18)" }}>
+                      <div
+                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border text-xs font-extrabold"
+                        style={{
+                          color: GOLD,
+                          backgroundColor: "rgba(201,168,76,0.09)",
+                          borderColor: "rgba(201,168,76,0.18)",
+                        }}
+                      >
                         {initials(lead.name)}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold" style={{ color: TEXT }}>{lead.name || "Unnamed lead"}</p>
-                        <p className="mt-1 truncate text-xs" style={{ color: MUTED }}>{lead.phone || lead.email || "No contact captured"}</p>
+                        <p
+                          className="truncate text-sm font-bold"
+                          style={{ color: TEXT }}
+                        >
+                          {lead.name || "Unnamed lead"}
+                        </p>
+                        <p
+                          className="mt-1 truncate text-xs"
+                          style={{ color: MUTED }}
+                        >
+                          {lead.phone || lead.email || "No contact captured"}
+                        </p>
                       </div>
                     </div>
-                    <StatusPill status={lead.status} />
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusPill status={lead.status} />
+                      {canDeleteLeads && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void deleteLead(lead);
+                          }}
+                          className="grid size-10 place-items-center rounded-xl border"
+                          style={{
+                            color: "#F87171",
+                            backgroundColor: "rgba(248,113,113,0.06)",
+                            borderColor: "rgba(248,113,113,0.2)",
+                          }}
+                          aria-label={`Delete ${lead.name || "lead"}`}
+                          title="Delete lead"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <div className="rounded-xl px-3 py-2" style={{ backgroundColor: "rgba(255,255,255,0.025)" }}>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>Source</p>
-                      <p className="mt-1 truncate text-xs font-semibold" style={{ color: TEXT }}>{sourceLabel(lead.source)}</p>
+                    <div
+                      className="rounded-xl px-3 py-2"
+                      style={{ backgroundColor: "rgba(255,255,255,0.025)" }}
+                    >
+                      <p
+                        className="text-[10px] font-bold uppercase tracking-[0.08em]"
+                        style={{ color: DIM }}
+                      >
+                        Source
+                      </p>
+                      <p
+                        className="mt-1 truncate text-xs font-semibold"
+                        style={{ color: TEXT }}
+                      >
+                        {sourceLabel(lead.source)}
+                      </p>
                     </div>
-                    <div className="rounded-xl px-3 py-2" style={{ backgroundColor: "rgba(255,255,255,0.025)" }}>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>Created</p>
-                      <p className="mt-1 text-xs font-semibold" style={{ color: TEXT }}>{timeAgo(lead.createdAt)}</p>
+                    <div
+                      className="rounded-xl px-3 py-2"
+                      style={{ backgroundColor: "rgba(255,255,255,0.025)" }}
+                    >
+                      <p
+                        className="text-[10px] font-bold uppercase tracking-[0.08em]"
+                        style={{ color: DIM }}
+                      >
+                        Created
+                      </p>
+                      <p
+                        className="mt-1 text-xs font-semibold"
+                        style={{ color: TEXT }}
+                      >
+                        {timeAgo(lead.createdAt)}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {duplicate && <StatusPill status="Duplicate" />}
                     <DeliveryPill label="SMS" value={lead.smsSentStatus} />
                     <DeliveryPill label="Email" value={lead.emailSentStatus} />
-                    <button type="button" role="switch" aria-checked={lead.replied} disabled={!canUpdateLeads || updatingReplied.has(lead.id)} onClick={(event) => { event.stopPropagation(); void changeReplied(lead, !lead.replied); }} className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-bold disabled:opacity-60" style={{ color: lead.replied ? TEAL : MUTED, borderColor: lead.replied ? "rgba(45,212,191,.35)" : BORDER_SOFT, backgroundColor: lead.replied ? "rgba(45,212,191,.1)" : "rgba(255,255,255,.03)" }}>{updatingReplied.has(lead.id) ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}Replied: {lead.replied ? "Yes" : "No"}</button>
-                  </div>
-                  {canDeleteLeads && (
                     <button
                       type="button"
+                      role="switch"
+                      aria-checked={lead.replied}
+                      disabled={!canUpdateLeads || updatingReplied.has(lead.id)}
                       onClick={(event) => {
                         event.stopPropagation();
-                        void deleteLead(lead);
+                        void changeReplied(lead, !lead.replied);
                       }}
-                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"
-                      style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.25)" }}
+                      className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-bold disabled:opacity-60"
+                      style={{
+                        color: lead.replied ? TEAL : MUTED,
+                        borderColor: lead.replied
+                          ? "rgba(45,212,191,.35)"
+                          : BORDER_SOFT,
+                        backgroundColor: lead.replied
+                          ? "rgba(45,212,191,.1)"
+                          : "rgba(255,255,255,.03)",
+                      }}
                     >
-                      <Trash2 size={14} />
-                      Delete lead
+                      {updatingReplied.has(lead.id) ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <Check size={11} />
+                      )}
+                      Replied: {lead.replied ? "Yes" : "No"}
                     </button>
-                  )}
+                  </div>
                 </div>
               );
             })}
           </div>
         </>
+      )}
+
+      {!loading && !error && (
+        <nav
+          aria-label="Leads pagination"
+          className="flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          style={{ borderColor: BORDER, backgroundColor: CARD }}
+        >
+          <p className="text-sm font-semibold tabular-nums" style={{ color: MUTED }}>
+            {visibleRange.from ? `Showing ${visibleRange.from}–${visibleRange.to}` : "Showing 0 leads"}
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+            <label className="flex items-center gap-2 text-xs font-bold" style={{ color: MUTED }}>
+              <span className="hidden sm:inline">Rows per page</span>
+              <span className="sm:hidden">Rows</span>
+              <select
+                value={pageSize}
+                onChange={(event) => changePageSize(event.target.value)}
+                disabled={refreshing}
+                aria-label="Rows per page"
+                className="h-10 rounded-xl border px-3 text-sm font-bold outline-none focus-visible:ring-2"
+                style={{ backgroundColor: PANEL, borderColor: BORDER, color: TEXT }}
+              >
+                {[20, 30, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void goPrevious()}
+                disabled={pageIndex === 0 || refreshing}
+                aria-label="Show previous page of leads"
+                className="h-10 rounded-xl border px-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ borderColor: BORDER, color: TEXT }}
+              >
+                Previous
+              </button>
+              <span className="min-w-14 text-center text-xs font-bold tabular-nums" style={{ color: MUTED }}>
+                Page {pageIndex + 1}
+              </span>
+              <button
+                type="button"
+                onClick={() => void goNext()}
+                disabled={!nextCursor || refreshing}
+                aria-label="Show next page of leads"
+                className="h-10 rounded-xl border px-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ borderColor: BORDER, color: TEXT }}
+              >
+                {refreshing ? <Loader2 className="mx-auto animate-spin" size={14} aria-hidden="true" /> : "Next"}
+              </button>
+            </div>
+          </div>
+          <p className="sr-only" aria-live="polite">
+            {visibleRange.from ? `Showing Leads ${visibleRange.from} through ${visibleRange.to}. Page ${pageIndex + 1}.` : "No Leads to show."}
+          </p>
+        </nav>
       )}
 
       <LeadDetailsModal
@@ -1182,11 +2619,61 @@ export default function LeadsClient() {
         canDelete={canDeleteLeads}
         onDelete={(lead) => void deleteLead(lead)}
         getAuthHeaders={getAuthHeaders}
-        onLeadUpdate={(updated) => { setLeads(current => current.map(item => item.id === updated.id ? updated : item)); setSelectedLead(updated); showToast("success", "Lead updated"); }}
+        onLeadUpdate={(updated) => {
+          setLeads((current) =>
+            current.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          setSelectedLead(updated);
+          showToast("success", "Lead updated");
+        }}
+        onAddToCampaign={setCampaignLead}
       />
-      <AddLeadModal open={addModalOpen} saving={savingLead} error={addError} onClose={() => { if (!savingLead) setAddModalOpen(false); }} onSubmit={addLead} />
-      <UpdateClinicMetricsModal open={metricsModalOpen} onClose={()=>setMetricsModalOpen(false)} onSaved={()=>showToast("success","Monthly clinic metrics updated")}/>
-      <DestructiveConfirmDialog open={Boolean(deleteTarget)} title={`Permanently delete ${deleteTarget?.name ?? "this Lead"}?`} description="This will permanently delete the Lead and all linked Nurture Enrollment and Message Log records. This action cannot be undone." confirmLabel="Delete permanently" loading={deletingLead} onCancel={()=>{setDeleteTarget(null);setDeleteImpact(null)}} onConfirm={()=>void confirmDeleteLead()}><div className="space-y-1"><p>{deleteImpact?.nurtureEnrollments ?? "…"} Nurture Enrollment records</p><p>{deleteImpact?.messageLogs ?? "…"} Message Log records</p><p>Current campaign status: {deleteImpact?.activeCampaign ?? "Loading…"}</p></div></DestructiveConfirmDialog>
+      <AddLeadsToCampaignModal
+        open={Boolean(campaignLead)}
+        initialLeadId={campaignLead?.id}
+        onClose={() => setCampaignLead(null)}
+        onComplete={() => {
+          void load(false);
+          showToast("success", "Campaign enrollment updated");
+        }}
+      />
+      <AddLeadModal
+        open={addModalOpen}
+        saving={savingLead}
+        error={addError}
+        onClose={() => {
+          if (!savingLead) setAddModalOpen(false);
+        }}
+        onSubmit={addLead}
+      />
+      <UpdateClinicMetricsModal
+        open={metricsModalOpen}
+        onClose={() => setMetricsModalOpen(false)}
+        onSaved={() => showToast("success", "Monthly clinic metrics updated")}
+      />
+      <DestructiveConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={`Permanently delete ${deleteTarget?.name ?? "this Lead"}?`}
+        description="This will permanently delete the Lead and all linked Nurture Enrollment and Message Log records. This action cannot be undone."
+        confirmLabel="Delete permanently"
+        loading={deletingLead}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteImpact(null);
+        }}
+        onConfirm={() => void confirmDeleteLead()}
+      >
+        <div className="space-y-1">
+          <p>
+            {deleteImpact?.nurtureEnrollments ?? "…"} Nurture Enrollment records
+          </p>
+          <p>{deleteImpact?.messageLogs ?? "…"} Message Log records</p>
+          <p>
+            Current campaign status:{" "}
+            {deleteImpact?.activeCampaign ?? "Loading…"}
+          </p>
+        </div>
+      </DestructiveConfirmDialog>
     </div>
   );
 }

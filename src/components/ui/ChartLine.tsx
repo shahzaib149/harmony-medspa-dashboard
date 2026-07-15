@@ -32,32 +32,34 @@ export default function ChartLine({
 }: ChartLineProps) {
   return (
     <ResponsiveContainer width="100%" height={height} minWidth={0}>
-      <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+      <LineChart
+        data={data}
+        margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
         <XAxis
           dataKey={xKey}
-          tick={{ fontSize: 11, fill: "#6B7280" }}
+          tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fontSize: 11, fill: "#6B7280" }}
+          tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
           tickLine={false}
           axisLine={false}
         />
         <Tooltip
           contentStyle={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
+            background: "var(--chart-tooltip)",
+            color: "var(--text-primary)",
+            border: "1px solid var(--border-subtle)",
             borderRadius: "8px",
             fontSize: "12px",
             boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
           }}
         />
-        <Legend
-          wrapperStyle={{ fontSize: "12px", paddingTop: "12px" }}
-        />
+        <Legend wrapperStyle={{ fontSize: "12px", paddingTop: "12px" }} />
         {lines.map((l) => (
           <Line
             key={l.key}

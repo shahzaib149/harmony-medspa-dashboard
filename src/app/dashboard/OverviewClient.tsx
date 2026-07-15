@@ -151,7 +151,11 @@ export default function OverviewClient() {
         return;
       const created = createdByLead.get(message.recipientLeadId);
       const sent = Date.parse(message.sentAt);
-      if (!Number.isFinite(created) || !Number.isFinite(sent) || sent < created!)
+      if (
+        !Number.isFinite(created) ||
+        !Number.isFinite(sent) ||
+        sent < created!
+      )
         return;
       const current = earliestValid.get(message.recipientLeadId);
       if (current === undefined || sent < current)
@@ -160,7 +164,9 @@ export default function OverviewClient() {
     const values = monthLeads.flatMap((lead) => {
       const sent = earliestValid.get(lead.id);
       const created = createdByLead.get(lead.id);
-      return sent !== undefined && created !== undefined ? [sent - created] : [];
+      return sent !== undefined && created !== undefined
+        ? [sent - created]
+        : [];
     });
     return values.length
       ? Math.round(values.reduce((a, b) => a + b, 0) / values.length / 1000)
@@ -172,7 +178,13 @@ export default function OverviewClient() {
       const source = normalizeSource(lead);
       counts.set(source, (counts.get(source) ?? 0) + 1);
     });
-    const colors = ["#4ECDC4", "#C9A84C", "#6BAED6", "#E6AD55", "#9292A0"];
+    const colors = [
+      "var(--chart-2)",
+      "var(--chart-1)",
+      "var(--chart-3)",
+      "var(--chart-4)",
+      "var(--chart-6)",
+    ];
     return [...counts].map(([name, value], index) => ({
       name,
       value,
@@ -192,7 +204,7 @@ export default function OverviewClient() {
   if (loading)
     return (
       <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <div className="overview-kpis grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
           {[1, 2, 3, 4, 5].map((item) => (
             <div
               key={item}
@@ -210,9 +222,13 @@ export default function OverviewClient() {
           {error}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="overview-kpis grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
         <KPICard
-          title={monthMetric ? "Total Visits This Month" : "Projected Visits This Month"}
+          title={
+            monthMetric
+              ? "Total Visits This Month"
+              : "Projected Visits This Month"
+          }
           value={monthMetric ? monthMetric.totalVisits : projection.totalVisits}
           subtitle={
             monthMetric
@@ -222,7 +238,9 @@ export default function OverviewClient() {
           color="teal"
         />
         <KPICard
-          title={monthMetric ? "New Patients This Month" : "Projected New Patients"}
+          title={
+            monthMetric ? "New Patients This Month" : "Projected New Patients"
+          }
           value={monthMetric ? monthMetric.newPatients : projection.newPatients}
           subtitle={
             monthMetric
@@ -232,9 +250,9 @@ export default function OverviewClient() {
           color="green"
         />
         <KPICard
-          title="Total Leads This Month"
+          title="Recent Leads This Month"
           value={monthLeads.length}
-          subtitle="Created this month"
+          subtitle="Newest paged sample · not a total"
           color="teal"
         />
         <KPICard
@@ -249,7 +267,7 @@ export default function OverviewClient() {
           color="green"
         />
         <KPICard
-          title="Leads Converted to Booked"
+          title="Recent Leads Converted to Booked"
           value={
             monthLeads.length
               ? `${Math.round((booked / monthLeads.length) * 100)}%`
@@ -274,25 +292,31 @@ export default function OverviewClient() {
           </Panel>
           <Panel
             title="Visits vs New Patients"
-            action={metrics.length ? "Monthly history" : "Lead-based projection"}
+            action={
+              metrics.length ? "Monthly history" : "Lead-based projection"
+            }
           >
             <ChartLine
-                data={chartMetrics.map((item) => ({
-                  date: item.month,
-                  visits: item.totalVisits,
-                  newPatients: item.newPatients,
-                }))}
-                xKey="date"
-                lines={[
-                  { key: "visits", label: "Total Visits", color: "#C9A84C" },
-                  {
-                    key: "newPatients",
-                    label: "New Patients",
-                    color: "#4ECDC4",
-                  },
-                ]}
-                height={240}
-              />
+              data={chartMetrics.map((item) => ({
+                date: item.month,
+                visits: item.totalVisits,
+                newPatients: item.newPatients,
+              }))}
+              xKey="date"
+              lines={[
+                {
+                  key: "visits",
+                  label: "Total Visits",
+                  color: "var(--chart-1)",
+                },
+                {
+                  key: "newPatients",
+                  label: "New Patients",
+                  color: "var(--chart-2)",
+                },
+              ]}
+              height={240}
+            />
             {!metrics.length && (
               <div className="mt-3 text-center">
                 <Link
@@ -345,8 +369,8 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-[#C9A84C]/15 bg-[#111117] p-5">
-      <div className="mb-4 flex justify-between">
+    <section className="rounded-2xl border border-[#C9A84C]/15 bg-[#111117] p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <h2 className="font-serif text-lg text-[#F0ECE4]">{title}</h2>
         <span className="text-xs text-[#9292A0]">{action}</span>
       </div>

@@ -78,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!authConfigured) return;
+    await fetch("/api/auth/audit-session", { method: "DELETE", keepalive: true }).catch(() => undefined);
     await supabase.auth.signOut();
     clearDashboardDataCache();
     setUser(null);

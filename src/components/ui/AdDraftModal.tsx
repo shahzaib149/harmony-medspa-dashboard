@@ -149,8 +149,8 @@ export default function AdDraftModal({
           <button
             onClick={generate}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-60"
-            style={{ backgroundColor: "#1A6B6B" }}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+            style={{ backgroundColor: "var(--healthy)", color: "#fff" }}
           >
             {loading ? (
               <>

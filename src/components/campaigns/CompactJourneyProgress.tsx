@@ -1,4 +1,95 @@
 import { memo } from "react";
-const STEPS=["Day 1 SMS","Day 3 Email","Day 5 SMS","Day 8 Email","Day 12 SMS"] as const;
-function CompactJourneyProgress({currentStep,status}:{currentStep:string;status:string}){const current=STEPS.indexOf(currentStep as typeof STEPS[number]);const completed=status==="Completed",stopped=status==="Stopped";return <div className="min-w-[190px]" aria-label={completed?"Nurture completed":stopped?`Nurture stopped at ${currentStep||"unknown step"}`:`Current nurture step: ${currentStep||"unknown"}`}><div className="flex items-center">{STEPS.map((step,index)=><div key={step} className="flex flex-1 items-center last:flex-none"><span title={step} className="h-2.5 w-2.5 shrink-0 rounded-full border transition-colors motion-reduce:transition-none" style={{backgroundColor:completed||index<current?"#4ECDC4":index===current?"#C9A84C":"#111117",borderColor:stopped&&index>=current?"rgba(201,85,93,.55)":completed||index<current?"#4ECDC4":index===current?"#C9A84C":"rgba(146,146,160,.38)",boxShadow:index===current&&!stopped?"0 0 0 3px rgba(201,168,76,.12)":"none"}}/>{index<STEPS.length-1&&<span className="h-px flex-1" style={{backgroundColor:completed||index<current?"rgba(78,205,196,.6)":stopped&&index>=current?"rgba(201,85,93,.35)":"rgba(146,146,160,.2)"}}/>}</div>)}</div><p className="mt-2 text-[10px] font-bold" style={{color:stopped?"#F58A91":completed?"#4ECDC4":"#B8B8C2"}}>{completed?"Completed":stopped?`Stopped${currentStep?` · ${currentStep}`:""}`:currentStep||"Step unavailable"}</p></div>}
+
+const STEPS = [
+  "Day 1 SMS",
+  "Day 3 Email",
+  "Day 5 SMS",
+  "Day 8 Email",
+  "Day 12 SMS",
+] as const;
+
+function CompactJourneyProgress({
+  currentStep,
+  status,
+}: {
+  currentStep: string;
+  status: string;
+}) {
+  const current = STEPS.indexOf(currentStep as typeof STEPS[number]);
+  const completed = status === "Completed";
+  const stopped = status === "Stopped";
+
+  return (
+    <div
+      className="min-w-[190px]"
+      aria-label={
+        completed
+          ? "Nurture completed"
+          : stopped
+            ? `Nurture stopped at ${currentStep || "unknown step"}`
+            : `Current nurture step: ${currentStep || "unknown"}`
+      }
+    >
+      <div className="flex items-center">
+        {STEPS.map((step, index) => (
+          <div key={step} className="flex flex-1 items-center last:flex-none">
+            <span
+              title={step}
+              className="h-2.5 w-2.5 shrink-0 rounded-full border transition-colors motion-reduce:transition-none"
+              style={{
+                backgroundColor:
+                  completed || index < current
+                    ? "var(--healthy)"
+                    : index === current
+                      ? "var(--brand-primary)"
+                      : "var(--surface-2)",
+                borderColor: stopped && index >= current
+                  ? "rgba(201, 85, 93, 0.55)"
+                  : completed || index < current
+                    ? "var(--healthy)"
+                    : index === current
+                      ? "var(--brand-primary)"
+                      : "var(--border-subtle)",
+                boxShadow:
+                  index === current && !stopped
+                    ? "0 0 0 3px var(--border-subtle)"
+                    : "none",
+              }}
+            />
+            {index < STEPS.length - 1 && (
+              <span
+                className="h-px flex-1"
+                style={{
+                  backgroundColor:
+                    completed || index < current
+                      ? "color-mix(in srgb, var(--healthy) 60%, transparent)"
+                      : stopped && index >= current
+                        ? "rgba(201,85,93,0.35)"
+                        : "color-mix(in srgb, var(--border-subtle) 80%, transparent)",
+                }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <p
+        className="mt-2 text-[10px] font-bold"
+        style={{
+          color: stopped
+            ? "var(--danger)"
+            : completed
+              ? "var(--healthy)"
+              : "var(--text-secondary)",
+        }}
+      >
+        {completed
+          ? "Completed"
+          : stopped
+            ? `Stopped${currentStep ? ` · ${currentStep}` : ""}`
+            : currentStep || "Step unavailable"}
+      </p>
+    </div>
+  );
+}
+
 export default memo(CompactJourneyProgress);

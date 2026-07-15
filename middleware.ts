@@ -15,6 +15,7 @@ export const config = {
     "/google-ads-analytics/:path*",
     "/ai-insights/:path*",
     "/settings/:path*",
+    "/audit-log/:path*",
     "/google-business/:path*",
   ],
 };

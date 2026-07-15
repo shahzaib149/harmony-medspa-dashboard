@@ -30,7 +30,7 @@ export default function FunnelBar({ steps }: FunnelBarProps) {
                 style={{ width: `${pct}%`, backgroundColor: color }}
               >
                 {pct >= 15 && (
-                  <span className="text-white text-xs font-medium">{pct}%</span>
+                  <span className="text-xs font-medium" style={{ color: "#fff" }}>{pct}%</span>
                 )}
               </div>
             </div>

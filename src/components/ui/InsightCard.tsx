@@ -56,8 +56,8 @@ export default function InsightCard({ insight, onDismiss }: InsightCardProps) {
 
       <Link
         href={insight.cta_route}
-        className="mt-auto inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-        style={{ backgroundColor: "#1A6B6B" }}
+        className="mt-auto inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        style={{ backgroundColor: "var(--healthy)", color: "#fff" }}
       >
         {insight.cta_label}
       </Link>

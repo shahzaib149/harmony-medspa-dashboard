@@ -10,14 +10,14 @@ import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/da
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const GOLD        = "#C9A84C";
-const PANEL       = "#0D0D12";
-const CARD        = "#111117";
-const CARD_HOVER  = "#161620";
-const TEXT        = "#F0ECE4";
-const MUTED       = "#7A7A8A";
-const DIM         = "#5A5A6A";
-const BORDER      = "rgba(201,168,76,0.12)";
-const BORDER_SOFT = "rgba(255,255,255,0.06)";
+const PANEL       = "var(--background-subtle)";
+const CARD        = "var(--surface-1)";
+const CARD_HOVER  = "var(--surface-2)";
+const TEXT        = "var(--text-primary)";
+const MUTED       = "var(--text-muted)";
+const DIM         = "var(--text-muted)";
+const BORDER      = "var(--border-subtle)";
+const BORDER_SOFT = "var(--border-subtle)";
 const TEAL        = "#2DD4BF";
 const GREEN       = "#22C55E";
 const AMBER       = "#F59E0B";
@@ -131,7 +131,7 @@ function DeliveryBars({ sent, pending, failed, total }: { sent: number; pending:
               <span className="text-xs font-semibold" style={{ color: TEXT }}>{b.label}</span>
               <span className="text-xs font-bold" style={{ color: b.color }}>{b.count} <span style={{ color: DIM, fontWeight: 400 }}>({b.pct}%)</span></span>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(255,255,255,0.06)" }}>
+            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--border-subtle)" }}>
               <div className="h-full rounded-full transition-all duration-500"
                 style={{ width: `${Math.max(b.pct > 0 ? 3 : 0, b.pct)}%`, backgroundColor: b.color }} />
             </div>
@@ -154,7 +154,7 @@ function ChannelSplit({ email, sms, total }: { email: number; sms: number; total
       </div>
 
       {/* Stacked bar */}
-      <div className="flex h-3 rounded-full overflow-hidden gap-0.5 mb-5" style={{ backgroundColor: "rgba(255,255,255,0.06)" }}>
+      <div className="flex h-3 rounded-full overflow-hidden gap-0.5 mb-5" style={{ backgroundColor: "var(--border-subtle)" }}>
         {emailPct > 0 && <div style={{ width: `${emailPct}%`, backgroundColor: GOLD, borderRadius: "9999px 0 0 9999px" }} />}
         {smsPct > 0  && <div style={{ width: `${smsPct}%`,  backgroundColor: TEAL, borderRadius: "0 9999px 9999px 0" }} />}
       </div>
@@ -207,7 +207,7 @@ function DetailPanel({ log, onClose }: {
     <div className="fixed inset-0 z-[70]">
       <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close" />
       <aside className="absolute right-0 top-0 h-full w-full max-w-[460px] flex flex-col border-l overflow-hidden"
-        style={{ backgroundColor: "#09090D", borderColor: BORDER, boxShadow: "-24px 0 80px rgba(0,0,0,0.5)" }}>
+        style={{ backgroundColor: "var(--background)", borderColor: BORDER, boxShadow: "-24px 0 80px rgba(0,0,0,0.5)" }}>
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4 p-5 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
@@ -369,7 +369,7 @@ export default function MessageLogsClient() {
           <p className="text-[11px] font-bold uppercase tracking-[0.08em] mb-1" style={{ color: GOLD }}>
             Automation Logs
           </p>
-          <h1 className="text-2xl font-extrabold" style={{ color: "#F0ECE4" }}>Message Logs</h1>
+          <h1 className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>Message Logs</h1>
           <p className="text-sm mt-1" style={{ color: MUTED }}>Email &amp; SMS delivery records from Make.com automations</p>
         </div>
         <div className="flex items-center gap-3">
@@ -441,12 +441,12 @@ export default function MessageLogsClient() {
         <div className="rounded-2xl border overflow-hidden" style={{ borderColor: BORDER, backgroundColor: CARD }}>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex gap-4 px-5 py-4 border-b" style={{ borderColor: BORDER_SOFT }}>
-              <div className="w-9 h-9 rounded-xl animate-pulse" style={{ backgroundColor: "rgba(255,255,255,0.06)", flexShrink: 0 }} />
+              <div className="w-9 h-9 rounded-xl animate-pulse" style={{ backgroundColor: "var(--border-subtle)", flexShrink: 0 }} />
               <div className="flex-1 space-y-2">
-                <div className="h-3 w-1/3 rounded-full animate-pulse" style={{ backgroundColor: "rgba(255,255,255,0.06)" }} />
-                <div className="h-2.5 w-1/2 rounded-full animate-pulse" style={{ backgroundColor: "rgba(255,255,255,0.04)" }} />
+                <div className="h-3 w-1/3 rounded-full animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />
+                <div className="h-2.5 w-1/2 rounded-full animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />
               </div>
-              <div className="w-16 h-5 rounded-full animate-pulse" style={{ backgroundColor: "rgba(255,255,255,0.05)" }} />
+              <div className="w-16 h-5 rounded-full animate-pulse" style={{ backgroundColor: "var(--border-subtle)" }} />
             </div>
           ))}
         </div>
@@ -478,7 +478,7 @@ export default function MessageLogsClient() {
             <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
               <table className="w-full min-w-[900px] border-separate border-spacing-0">
                 <thead className="sticky top-0 z-10">
-                  <tr style={{ backgroundColor: "#0B0B10" }}>
+                  <tr style={{ backgroundColor: "var(--background-subtle)" }}>
                     {["Recipient", "Channel", "Sequence", "Message Preview", "Status", "Sent", ""].map(h => (
                       <th key={h} className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
                         style={{ color: DIM, borderColor: BORDER_SOFT }}>

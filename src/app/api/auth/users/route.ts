@@ -1,6 +1,7 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { isRole, type Profile, type Role } from "@/lib/auth/permissions";
 import { createServiceClient } from "@/lib/supabase/server";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
 
 type CreateUserBody = {
   email?: string;
@@ -16,22 +17,6 @@ type UpdateUserBody = {
   is_active?: boolean;
   password?: string;
 };
-
-async function writeAudit(
-  actorId: string,
-  action: string,
-  targetId: string,
-  metadata: Record<string, unknown> = {}
-) {
-  const service = createServiceClient();
-  await service.from("audit_log").insert({
-    actor_id: actorId,
-    action,
-    target_type: "user",
-    target_id: targetId,
-    metadata,
-  });
-}
 
 export async function GET(request: Request) {
   try {
@@ -51,7 +36,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { user: actor } = await requireRole(request, "admin");
+    const { profile: actor } = await requireRole(request, "admin");
     const body = await request.json() as CreateUserBody;
     const email = body.email?.trim().toLowerCase();
     const fullName = body.full_name?.trim() ?? "";
@@ -70,6 +55,7 @@ export async function POST(request: Request) {
     });
 
     if (createError || !created.user) {
+      await logAuditEvent({ actor, action: "action_failed", category: "users", resource: { type: "user", label: fullName || email }, summary: "User invite could not be completed", metadata: { operation: "user_invited", email }, result: "failed", request });
       return Response.json({ error: createError?.message ?? "Could not create user" }, { status: 500 });
     }
 
@@ -88,7 +74,7 @@ export async function POST(request: Request) {
 
     if (profileError) return Response.json({ error: profileError.message }, { status: 500 });
 
-    await writeAudit(actor.id, "user.created", created.user.id, { email, role });
+    await logAuditEvent({ actor, action: "user_invited", category: "users", resource: { type: "user", id: created.user.id, label: fullName || email }, summary: `Invited ${fullName || "a staff member"} as ${role}`, after: { full_name: fullName, email, role, is_active: true }, request });
     return Response.json({ user: profile }, { status: 201 });
   } catch (error) {
     return authErrorResponse(error);
@@ -97,7 +83,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { user: actor } = await requireRole(request, "admin");
+    const { profile: actor } = await requireRole(request, "admin");
     const body = await request.json() as UpdateUserBody;
     if (!body.id) return Response.json({ error: "id required" }, { status: 400 });
     if (body.id === actor.id && (body.role || body.is_active === false)) {
@@ -111,6 +97,7 @@ export async function PATCH(request: Request) {
     }
 
     const service = createServiceClient();
+    const { data: beforeProfile } = await service.from("profiles").select("id,email,full_name,role,is_active").eq("id", body.id).maybeSingle<Pick<Profile, "id" | "email" | "full_name" | "role" | "is_active">>();
     if (body.password) {
       const { error: passwordError } = await service.auth.admin.updateUserById(body.id, { password: body.password });
       if (passwordError) return Response.json({ error: passwordError.message }, { status: 500 });
@@ -130,10 +117,14 @@ export async function PATCH(request: Request) {
 
     if (updateError) return Response.json({ error: updateError.message }, { status: 500 });
 
-    await writeAudit(actor.id, "user.updated", body.id, {
-      changed: Object.keys(updates),
-      password_reset: Boolean(body.password),
-    });
+    const action = body.role !== undefined && body.role !== beforeProfile?.role
+      ? "user_role_changed"
+      : body.is_active !== undefined && body.is_active !== beforeProfile?.is_active
+        ? "user_access_changed"
+        : "user_updated";
+    const before = Object.fromEntries(Object.keys(updates).filter((key) => key !== "updated_at").map((key) => [key, beforeProfile?.[key as keyof typeof beforeProfile] ?? null]));
+    const after = Object.fromEntries(Object.keys(updates).filter((key) => key !== "updated_at").map((key) => [key, profile[key as keyof Profile] ?? null]));
+    await logAuditEvent({ actor, action, category: "users", resource: { type: "user", id: body.id, label: profile.full_name || profile.email }, summary: action === "user_role_changed" ? `Changed ${profile.full_name || "staff member"}'s role` : action === "user_access_changed" ? `${profile.is_active ? "Activated" : "Deactivated"} ${profile.full_name || "staff member"}` : `Updated ${profile.full_name || "staff member"}`, before, after, metadata: { password_changed: Boolean(body.password) }, request });
 
     return Response.json({ user: profile });
   } catch (error) {
@@ -143,7 +134,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const { user: actor } = await requireRole(request, "admin");
+    const { profile: actor } = await requireRole(request, "admin");
     const { id } = await request.json() as { id?: string };
     if (!id) return Response.json({ error: "id required" }, { status: 400 });
     if (id === actor.id) return Response.json({ error: "You cannot delete yourself" }, { status: 400 });
@@ -157,13 +148,13 @@ export async function DELETE(request: Request) {
 
     if (profileError) return Response.json({ error: profileError.message }, { status: 500 });
 
-    await writeAudit(actor.id, "user.deleted", id, {
-      email: profile?.email ?? null,
-      role: profile?.role ?? null,
-    });
-
     const { error: deleteError } = await service.auth.admin.deleteUser(id);
-    if (deleteError) return Response.json({ error: deleteError.message }, { status: 500 });
+    if (deleteError) {
+      await logAuditEvent({ actor, action: "action_failed", category: "users", resource: { type: "user", id, label: profile?.full_name || profile?.email }, summary: "User removal could not be completed", metadata: { operation: "user_removed" }, result: "failed", request });
+      return Response.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    await logAuditEvent({ actor, action: "user_removed", category: "users", resource: { type: "user", id, label: profile?.full_name || profile?.email }, summary: `Removed ${profile?.full_name || "a staff member"}`, before: { email: profile?.email ?? null, role: profile?.role ?? null, is_active: true }, request });
 
     return Response.json({ deleted: true, id });
   } catch (error) {
