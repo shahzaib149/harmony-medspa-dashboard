@@ -85,7 +85,19 @@ function FilterFields({ filters, users, onChange }: { filters: Filters; users: R
   </div>;
 }
 
-function EventDetails({ event, onClose }: { event: AuditLogRecord; onClose: () => void }) {
+function EventDetails({
+  event,
+  loading,
+  error,
+  onRetry,
+  onClose,
+}: {
+  event: AuditLogRecord;
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeRef.current?.focus();
@@ -100,9 +112,13 @@ function EventDetails({ event, onClose }: { event: AuditLogRecord; onClose: () =
       <header className="flex items-start justify-between gap-4 border-b px-5 py-4" style={{ borderColor: "var(--border-subtle)" }}><div><p className="text-[10px] font-extrabold uppercase tracking-[.18em]" style={{ color: "var(--brand-primary)" }}>Activity detail</p><h2 id="audit-event-title" className="mt-1 text-lg font-bold" style={{ color: "var(--text-primary)" }}>{label(event.action)}</h2><p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>{event.summary}</p></div><button ref={closeRef} onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-xl border focus-visible:ring-2" style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }} aria-label="Close activity details"><X size={18} /></button></header>
       <div className="overflow-y-auto p-5">
         <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">{[["Event ID", event.id], ["Timestamp", new Date(event.created_at).toLocaleString()], ["Actor", event.actor_name || event.actor_email_masked || "System"], ["Role", event.actor_role ? fieldLabel(event.actor_role) : "System"], ["Category", fieldLabel(event.category)], ["Resource", event.resource_label || event.resource_id || event.resource_type || "Not applicable"], ["Result", event.result], ["Request ID", event.request_id || "Not available"], ["Source", event.source || "Dashboard"]].map(([term, description]) => <div key={term}><dt className="text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{term}</dt><dd className="mt-1 break-words text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{description}</dd></div>)}</dl>
-        {changes.length > 0 && <section className="mt-6"><h3 className="text-sm font-extrabold" style={{ color: "var(--text-primary)" }}>Changes</h3><div className="mt-3 space-y-3">{changes.map((key) => <div key={key} className="rounded-xl border p-3" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--background-subtle)" }}><p className="text-xs font-extrabold" style={{ color: "var(--brand-primary)" }}>{fieldLabel(key)}</p><div className="mt-2 grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]"><div><p className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>Before</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm" style={{ color: "var(--text-primary)" }}>{displayValue(event.before_data?.[key])}</pre></div><ArrowRight className="hidden sm:block" size={15} style={{ color: "var(--brand-primary)" }} /><div><p className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>After</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm" style={{ color: "var(--text-primary)" }}>{displayValue(event.after_data?.[key])}</pre></div></div></div>)}</div></section>}
-        {event.metadata && Object.keys(event.metadata).length > 0 && <section className="mt-6"><h3 className="text-sm font-extrabold" style={{ color: "var(--text-primary)" }}>Safe metadata</h3><dl className="mt-3 grid gap-3 sm:grid-cols-2">{Object.entries(event.metadata).map(([key, value]) => <div key={key} className="rounded-xl p-3" style={{ backgroundColor: "var(--background-subtle)" }}><dt className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>{fieldLabel(key)}</dt><dd className="mt-1 break-words text-sm" style={{ color: "var(--text-primary)" }}>{displayValue(value)}</dd></div>)}</dl></section>}
-        <details className="mt-6 rounded-xl border p-3" style={{ borderColor: "var(--border-subtle)" }}><summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--text-muted)" }}>Technical JSON</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs" style={{ color: "var(--text-muted)" }}>{JSON.stringify(event, null, 2)}</pre></details>
+        {loading && <div className="mt-6 flex items-center gap-2 rounded-xl border p-4 text-sm font-bold" style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}><Loader2 className="animate-spin" size={16} />Loading activity details…</div>}
+        {error && <div role="alert" className="mt-6 flex items-center justify-between gap-3 rounded-xl border p-4 text-sm font-bold" style={{ borderColor: "color-mix(in srgb, var(--danger) 30%, transparent)", color: "var(--danger)" }}><span>{error}</span><button onClick={onRetry} className="rounded-lg border border-current px-3 py-2 text-xs">Retry</button></div>}
+        {!loading && !error && <>
+          {changes.length > 0 && <section className="mt-6"><h3 className="text-sm font-extrabold" style={{ color: "var(--text-primary)" }}>Changes</h3><div className="mt-3 space-y-3">{changes.map((key) => <div key={key} className="rounded-xl border p-3" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--background-subtle)" }}><p className="text-xs font-extrabold" style={{ color: "var(--brand-primary)" }}>{fieldLabel(key)}</p><div className="mt-2 grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]"><div><p className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>Before</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm" style={{ color: "var(--text-primary)" }}>{displayValue(event.before_data?.[key])}</pre></div><ArrowRight className="hidden sm:block" size={15} style={{ color: "var(--brand-primary)" }} /><div><p className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>After</p><pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm" style={{ color: "var(--text-primary)" }}>{displayValue(event.after_data?.[key])}</pre></div></div></div>)}</div></section>}
+          {event.metadata && Object.keys(event.metadata).length > 0 && <section className="mt-6"><h3 className="text-sm font-extrabold" style={{ color: "var(--text-primary)" }}>Safe metadata</h3><dl className="mt-3 grid gap-3 sm:grid-cols-2">{Object.entries(event.metadata).map(([key, value]) => <div key={key} className="rounded-xl p-3" style={{ backgroundColor: "var(--background-subtle)" }}><dt className="text-[10px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>{fieldLabel(key)}</dt><dd className="mt-1 break-words text-sm" style={{ color: "var(--text-primary)" }}>{displayValue(value)}</dd></div>)}</dl></section>}
+          <details className="mt-6 rounded-xl border p-3" style={{ borderColor: "var(--border-subtle)" }}><summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--text-muted)" }}>Technical JSON</summary><pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs" style={{ color: "var(--text-muted)" }}>{JSON.stringify(event, null, 2)}</pre></details>
+        </>}
       </div>
     </section>
   </div>;
@@ -119,7 +135,10 @@ export default function AuditLogClient() {
   const [error, setError] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<AuditLogRecord | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
   const controller = useRef<AbortController | null>(null);
+  const detailsController = useRef<AbortController | null>(null);
   const hasLoaded = useRef(false);
   const triggerRef = useRef<HTMLElement | null>(null);
   const activeCount = useMemo(() => Object.entries(filters).filter(([key, value]) => key !== "search" && Boolean(value)).length, [filters]);
@@ -138,8 +157,36 @@ export default function AuditLogClient() {
   }, [page, pageSize, queryFilters]);
   useEffect(() => { void load(); return () => controller.current?.abort(); }, [load]);
   const change = (key: keyof Filters, value: string) => { setFilters((current) => ({ ...current, [key]: value })); if (key !== "search") setPage(1); };
-  const openDetails = (event: AuditLogRecord, trigger: HTMLElement) => { triggerRef.current = trigger; setSelected(event); };
-  const closeDetails = useCallback(() => { setSelected(null); window.setTimeout(() => triggerRef.current?.focus(), 0); }, []);
+  const openDetails = useCallback(async (event: AuditLogRecord, trigger: HTMLElement) => {
+    triggerRef.current = trigger;
+    setSelected(event);
+    setDetailsLoading(true);
+    setDetailsError("");
+    detailsController.current?.abort();
+    const abort = new AbortController();
+    detailsController.current = abort;
+    try {
+      const response = await fetch(`/api/audit-logs/${event.id}`, {
+        cache: "no-store",
+        signal: AbortSignal.any([abort.signal, AbortSignal.timeout(10_000)]),
+      });
+      const body = await response.json() as { item?: AuditLogRecord; error?: string };
+      if (!response.ok || !body.item) throw new Error(body.error || "Audit activity details could not be loaded");
+      if (!abort.signal.aborted) setSelected(body.item);
+    } catch (caught) {
+      if (!(caught instanceof DOMException && caught.name === "AbortError")) {
+        setDetailsError(caught instanceof Error ? caught.message : "Audit activity details could not be loaded");
+      }
+    } finally {
+      if (detailsController.current === abort) setDetailsLoading(false);
+    }
+  }, []);
+  const closeDetails = useCallback(() => {
+    detailsController.current?.abort();
+    setSelected(null);
+    setDetailsError("");
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
   const exportCsv = () => { const params = new URLSearchParams({ format: "csv" }); Object.entries(queryFilters).forEach(([key, value]) => { if (value) params.set(key, value); }); window.location.assign(`/api/audit-logs?${params}`); };
   const summary = [{ label: "Activities today", value: data.summary.today, icon: Activity }, { label: "User access events", value: data.summary.access, icon: KeyRound }, { label: "Lead changes", value: data.summary.leadChanges, icon: Users }, { label: "Failed actions", value: data.summary.failed, icon: AlertCircle }];
 
@@ -151,6 +198,6 @@ export default function AuditLogClient() {
     <section className="relative">{refreshing && <div className="absolute right-3 top-3 z-20 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold" style={{ color: "var(--brand-primary)", backgroundColor: "var(--surface-1)", boxShadow: "var(--shadow-soft)" }}><Loader2 size={13} className="animate-spin" />Updating</div>}{!loading && !error && data.items.length === 0 ? <div className="rounded-2xl border px-6 py-20 text-center" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--surface-1)" }}><ShieldCheck className="mx-auto" style={{ color: "var(--brand-primary)" }} /><h2 className="mt-4 font-bold" style={{ color: "var(--text-primary)" }}>No activity matches these filters</h2><p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>Clear a filter or broaden the date range.</p></div> : <><div className="hidden overflow-hidden rounded-2xl border lg:block" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--surface-1)" }}><table className="w-full"><thead><tr style={{ backgroundColor: "var(--background-subtle)" }}>{["Time","User","Action","Area","Target","Result","Details"].map((heading) => <th key={heading} scope="col" className="border-b px-4 py-3 text-left text-[10px] font-extrabold uppercase tracking-wider" style={{ color: "var(--text-muted)", borderColor: "var(--border-subtle)" }}>{heading}</th>)}</tr></thead><tbody>{data.items.map((event) => { const time = dateParts(event.created_at); return <tr key={event.id} className="group"><td className="border-b px-4 py-3 text-xs tabular-nums" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>{time.date}<span className="mt-1 block" style={{ color: "var(--text-muted)" }}>{time.time}</span></td><td className="border-b px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}><div className="flex items-center gap-2"><span className="grid size-8 place-items-center rounded-full text-[10px] font-extrabold" style={{ backgroundColor: "var(--brand-primary-soft)", color: "var(--brand-primary)" }}>{initials(event.actor_name)}</span><div><p className="max-w-40 truncate text-xs font-bold" style={{ color: "var(--text-primary)" }}>{event.actor_name || event.actor_email_masked || "System"}</p><p className="text-[10px] uppercase" style={{ color: "var(--text-muted)" }}>{event.actor_role || "System"}</p></div></div></td><td className="border-b px-4 py-3 text-xs font-bold" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>{label(event.action)}</td><td className="border-b px-4 py-3 text-xs" style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}>{fieldLabel(event.category)}</td><td className="max-w-52 border-b px-4 py-3 text-xs" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}><span className="block truncate font-bold">{event.resource_label || "—"}</span><span className="mt-1 block truncate" style={{ color: "var(--text-muted)" }}>{event.summary}</span></td><td className="border-b px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}><ResultBadge result={event.result} /></td><td className="border-b px-4 py-3" style={{ borderColor: "var(--border-subtle)" }}><button onClick={(e) => openDetails(event, e.currentTarget)} className="rounded-lg px-2 py-1.5 text-xs font-bold focus-visible:ring-2" style={{ color: "var(--brand-primary)" }}>View details</button></td></tr>; })}</tbody></table></div><div className="grid gap-3 lg:hidden">{data.items.map((event) => { const time = dateParts(event.created_at); return <button key={event.id} onClick={(e) => openDetails(event, e.currentTarget)} className="w-full rounded-2xl border p-4 text-left focus-visible:ring-2" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--surface-1)" }}><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-full text-[10px] font-extrabold" style={{ backgroundColor: "var(--brand-primary-soft)", color: "var(--brand-primary)" }}>{initials(event.actor_name)}</span><div className="min-w-0"><p className="truncate text-sm font-bold" style={{ color: "var(--text-primary)" }}>{event.actor_name || event.actor_email_masked || "System"}</p><p className="mt-1 text-xs font-bold" style={{ color: "var(--brand-primary)" }}>{label(event.action)}</p></div></div><ResultBadge result={event.result} /></div><p className="mt-3 truncate text-sm" style={{ color: "var(--text-primary)" }}>{event.resource_label || event.summary}</p><div className="mt-3 flex items-center justify-between text-xs" style={{ color: "var(--text-muted)" }}><span>{time.date} · {time.time}</span><span className="inline-flex items-center gap-1 font-bold">Details<ChevronDown size={13} /></span></div></button>; })}</div></>}</section>
     {!loading && !error && <nav aria-label="Audit Log pagination" className="flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "var(--border-subtle)", backgroundColor: "var(--surface-1)" }}><p className="text-sm font-semibold tabular-nums" style={{ color: "var(--text-muted)" }}>{data.visibleFrom ? `Showing ${data.visibleFrom}–${data.visibleTo} of ${data.total}` : "Showing 0 activities"}</p><div className="flex flex-wrap items-center justify-between gap-3"><label className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>Rows <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="ml-2 h-10 rounded-xl border px-3" style={{ backgroundColor: "var(--background-subtle)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}><option>25</option><option>50</option><option>100</option></select></label><button disabled={!data.hasPreviousPage || refreshing} onClick={() => setPage((current) => current - 1)} className="h-10 rounded-xl border px-3 text-xs font-bold disabled:opacity-40" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>Previous</button><span className="text-xs font-bold tabular-nums" style={{ color: "var(--text-muted)" }}>Page {page}</span><button disabled={!data.hasNextPage || refreshing} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border px-3 text-xs font-bold disabled:opacity-40" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>Next</button></div><p className="sr-only" aria-live="polite">Showing audit activities {data.visibleFrom} through {data.visibleTo}.</p></nav>}
     {filtersOpen && <div className="fixed inset-0 z-[70] flex items-end bg-black/70 xl:hidden" role="dialog" aria-modal="true" aria-labelledby="audit-filters-title" onKeyDown={trapTab}><section className="mobile-safe-bottom max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border p-5" style={{ backgroundColor: "var(--background-subtle)", borderColor: "var(--border-subtle)" }}><header className="mb-5 flex items-center justify-between"><div><h2 id="audit-filters-title" className="font-bold" style={{ color: "var(--text-primary)" }}>Filter activity</h2><p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>{activeCount} active filters</p></div><button autoFocus onClick={() => setFiltersOpen(false)} className="grid size-10 place-items-center rounded-xl border" style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }} aria-label="Close filters"><X size={18} /></button></header><FilterFields filters={filters} users={data.users} onChange={change} /><div className="mt-5 flex gap-3"><button onClick={() => { setFilters((current) => ({ ...emptyFilters, search: current.search })); setPage(1); }} className="h-11 flex-1 rounded-xl border text-sm font-bold" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>Clear filters</button><button onClick={() => setFiltersOpen(false)} className="h-11 flex-1 rounded-xl text-sm font-extrabold" style={{ backgroundColor: "var(--brand-primary)", color: "var(--background)" }}>Show activity</button></div></section></div>}
-    {selected && <EventDetails event={selected} onClose={closeDetails} />}
+    {selected && <EventDetails event={selected} loading={detailsLoading} error={detailsError} onRetry={() => { if (triggerRef.current) void openDetails(selected, triggerRef.current); }} onClose={closeDetails} />}
   </div>;
 }

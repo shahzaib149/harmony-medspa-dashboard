@@ -584,12 +584,7 @@ select:disabled {
   .overview-kpis > :first-child {
     grid-column: 1 / -1;
   }
-  .recharts-wrapper,
-  .recharts-surface {
-    max-width: 100% !important;
-  }
   .recharts-legend-wrapper {
-    max-width: 100%;
     font-size: 11px;
   }
 }

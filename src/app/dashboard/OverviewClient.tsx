@@ -6,18 +6,13 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  BarChart3,
   CalendarDays,
   CheckCircle2,
-  CircleDollarSign,
   Clock3,
   ContactRound,
   Database,
   ExternalLink,
-  Mail,
-  Megaphone,
   MessageCircleReply,
-  MousePointerClick,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -29,24 +24,44 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import Sparkline from "@/components/overview/Sparkline";
+import { getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import type {
   AttentionItem,
   CampaignHealth,
   ClinicMetric,
-  DeliveryChannelHealth,
+  LeadFunnelStage,
+  LeadTrendPoint,
+  NurtureJourneyStep,
   OverviewMetric,
   OverviewPeriodKey,
   OverviewResponse,
   RecentActivityItem,
 } from "@/lib/overview-types";
 
-const LeadTrendChart = dynamic(
-  () => import("@/components/overview/OverviewCharts").then((module) => module.LeadTrendChart),
-  { ssr: false, loading: () => <ChartSkeleton /> },
+const ChartFallback = ({ height = 300 }: { height?: number }) => (
+  <div className="w-full animate-pulse rounded-xl bg-[var(--surface-2)]" style={{ height }} />
+);
+
+const GrowthTrendChart = dynamic(
+  () => import("@/components/overview/OverviewCharts").then((m) => m.GrowthTrendChart),
+  { ssr: false, loading: () => <ChartFallback height={340} /> },
+);
+const LeadSourceChart = dynamic(
+  () => import("@/components/overview/OverviewCharts").then((m) => m.LeadSourceChart),
+  { ssr: false, loading: () => <ChartFallback height={220} /> },
+);
+const DeliveryChart = dynamic(
+  () => import("@/components/overview/OverviewCharts").then((m) => m.DeliveryChart),
+  { ssr: false, loading: () => <ChartFallback height={240} /> },
+);
+const GoogleAdsChart = dynamic(
+  () => import("@/components/overview/OverviewCharts").then((m) => m.GoogleAdsChart),
+  { ssr: false, loading: () => <ChartFallback height={220} /> },
 );
 const ClinicMetricsChart = dynamic(
-  () => import("@/components/overview/OverviewCharts").then((module) => module.ClinicMetricsChart),
-  { ssr: false, loading: () => <ChartSkeleton /> },
+  () => import("@/components/overview/OverviewCharts").then((m) => m.ClinicMetricsChart),
+  { ssr: false, loading: () => <ChartFallback height={240} /> },
 );
 
 const currency = new Intl.NumberFormat("en-US", {
@@ -56,8 +71,19 @@ const currency = new Intl.NumberFormat("en-US", {
 });
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
-function ChartSkeleton() {
-  return <div className="h-[250px] animate-pulse rounded-xl bg-[var(--surface-2)] sm:h-[280px]" />;
+const RANGE_OPTIONS: Array<{ key: OverviewPeriodKey; label: string; full: string }> = [
+  { key: "7d", label: "7D", full: "Last 7 days" },
+  { key: "30d", label: "30D", full: "Last 30 days" },
+  { key: "90d", label: "90D", full: "Last 90 days" },
+  { key: "month", label: "Month", full: "This month" },
+];
+
+const SUPPORTED = new Set<OverviewPeriodKey>(["7d", "30d", "90d", "month"]);
+
+function rangeFromLocation(fallback: OverviewPeriodKey): OverviewPeriodKey {
+  if (typeof window === "undefined") return fallback;
+  const value = new URLSearchParams(window.location.search).get("range");
+  return SUPPORTED.has(value as OverviewPeriodKey) ? (value as OverviewPeriodKey) : fallback;
 }
 
 function formatDateTime(value: string | null) {
@@ -85,51 +111,59 @@ function formatRelative(value: string, now: number) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
-    new Date(time),
-  );
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(time));
 }
 
 function formatSpeed(value: number | null) {
-  if (value === null) return "Not available";
+  if (value === null) return "—";
   if (value < 60) return `${value}s`;
   const minutes = Math.floor(value / 60);
   const seconds = value % 60;
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-function valueOrUnavailable(metric: OverviewMetric, suffix = "") {
-  return metric.value === null ? "Not available" : `${integer.format(metric.value)}${suffix}`;
-}
-
-export default function OverviewClient() {
-  const [period, setPeriod] = useState<OverviewPeriodKey>("month");
+export default function OverviewClient({ initialRange = "30d" }: { initialRange?: OverviewPeriodKey }) {
+  const [period, setPeriod] = useState<OverviewPeriodKey>(initialRange);
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const dataRef = useRef<OverviewResponse | null>(null);
   const requestId = useRef(0);
+  const requestAbort = useRef<AbortController | null>(null);
+  const inFlightRange = useRef<OverviewPeriodKey | null>(null);
 
   const load = useCallback(async (nextPeriod: OverviewPeriodKey) => {
+    if (inFlightRange.current === nextPeriod) return;
+    requestAbort.current?.abort();
+    const controller = new AbortController();
+    requestAbort.current = controller;
+    inFlightRange.current = nextPeriod;
     const id = ++requestId.current;
     if (dataRef.current) setRefreshing(true);
     else setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/overview?period=${nextPeriod}`, {
+      const response = await fetch(`/api/overview?range=${nextPeriod}`, {
         cache: "no-store",
         credentials: "same-origin",
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
       });
-      const body = (await response.json()) as OverviewResponse & { error?: string };
-      if (!response.ok) throw new Error(body.error || "Overview data could not be loaded");
+      const body = (await response.json()) as OverviewResponse & { error?: string; message?: string };
+      if (!response.ok) throw new Error(body.message || body.error || "Overview data could not be loaded");
       if (requestId.current !== id) return;
       dataRef.current = body;
       setData(body);
+      setCachedData(`overview:${nextPeriod}`, body);
     } catch (event) {
       if (requestId.current !== id) return;
+      if (event instanceof DOMException && event.name === "AbortError") return;
       setError(event instanceof Error ? event.message : "Overview data could not be loaded");
     } finally {
+      if (requestAbort.current === controller) {
+        requestAbort.current = null;
+        inFlightRange.current = null;
+      }
       if (requestId.current === id) {
         setLoading(false);
         setRefreshing(false);
@@ -138,8 +172,37 @@ export default function OverviewClient() {
   }, []);
 
   useEffect(() => {
+    const cached = getCachedData<OverviewResponse>(`overview:${period}`);
+    if (cached) {
+      dataRef.current = cached;
+      setData(cached);
+      setLoading(false);
+    }
     void load(period);
+    return () => {
+      requestAbort.current?.abort();
+      requestAbort.current = null;
+      inFlightRange.current = null;
+    };
   }, [load, period]);
+
+  // Keep the range in the URL so refresh, back and forward all restore it.
+  const selectRange = useCallback(
+    (next: OverviewPeriodKey) => {
+      setPeriod((current) => {
+        if (current === next) return current;
+        window.history.pushState(null, "", `/dashboard?range=${next}`);
+        return next;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const onPopState = () => setPeriod(rangeFromLocation(initialRange));
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [initialRange]);
 
   useEffect(() => {
     const refresh = () => {
@@ -154,37 +217,18 @@ export default function OverviewClient() {
   }, [load, period]);
 
   const headerActions = (
-    <div className="flex items-center gap-2">
-      {data?.updatedAt && (
-        <span className="hidden items-center gap-1.5 text-xs text-[var(--text-muted)] xl:flex">
-          <span className="size-1.5 rounded-full bg-[var(--healthy)]" aria-hidden="true" />
-          Data through {formatDateTime(data.updatedAt)}
-        </span>
+    <div className="flex items-center gap-2.5">
+      {refreshing && (
+        <RefreshCw size={15} className="animate-spin text-[var(--text-muted)]" aria-label="Refreshing overview" />
       )}
-      <label className="relative">
-        <span className="sr-only">Overview date range</span>
-        <CalendarDays
-          size={15}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--brand-primary)]"
-          aria-hidden="true"
-        />
-        <select
-          value={period}
-          onChange={(event) => setPeriod(event.target.value as OverviewPeriodKey)}
-          className="h-11 min-w-[132px] appearance-none rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-0 pl-9 pr-7 text-xs font-semibold text-[var(--text-primary)]"
-        >
-          <option value="month">Current month</option>
-          <option value="30d">Last 30 days</option>
-        </select>
-      </label>
-      {refreshing && <RefreshCw size={15} className="animate-spin text-[var(--text-muted)]" aria-label="Refreshing overview" />}
+      <RangeControl value={period} onChange={selectRange} />
     </div>
   );
 
   return (
     <DashboardLayout
       title="Growth Command Center"
-      subtitle="Live patient-growth and clinic operations"
+      subtitle="Live patient-growth analytics"
       actions={headerActions}
     >
       {loading && !data ? (
@@ -192,16 +236,50 @@ export default function OverviewClient() {
       ) : !data ? (
         <OverviewErrorState message={error} onRetry={() => void load(period)} />
       ) : (
-        <OverviewContent
-          data={data}
-          refreshing={refreshing}
-          refreshError={error}
-          onRetry={() => void load(period)}
-        />
+        <OverviewContent data={data} refreshing={refreshing} refreshError={error} onRetry={() => void load(period)} />
       )}
     </DashboardLayout>
   );
 }
+
+function RangeControl({
+  value,
+  onChange,
+}: {
+  value: OverviewPeriodKey;
+  onChange: (next: OverviewPeriodKey) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Overview date range"
+      className="inline-flex items-center gap-0.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-0.5"
+    >
+      <CalendarDays size={14} className="ml-1.5 mr-0.5 hidden text-[var(--brand-primary)] sm:block" aria-hidden="true" />
+      {RANGE_OPTIONS.map((option) => {
+        const active = option.key === value;
+        return (
+          <button
+            key={option.key}
+            role="tab"
+            aria-selected={active}
+            title={option.full}
+            onClick={() => onChange(option.key)}
+            className={`min-h-9 rounded-lg px-2.5 text-xs font-bold transition-colors sm:px-3 ${
+              active
+                ? "bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Page composition ─────────────────────────────────────────────────────── */
 
 function OverviewContent({
   data,
@@ -215,197 +293,122 @@ function OverviewContent({
   onRetry: () => void;
 }) {
   const activityNow = Date.parse(data.period.to);
-  const trendActivityDays = data.leadTrend.filter(
-    (point) => point.leads > 0 || point.replied > 0 || point.booked > 0,
-  );
-  const attentionError = data.errors.leads || data.errors.campaigns || data.errors.delivery;
-  const total = data.leadSummary.total.value ?? 0;
-  const contacted = data.leadSummary.contacted.value ?? 0;
-  const replied = data.leadSummary.replied.value ?? 0;
-  const booked = data.leadSummary.booked.value ?? 0;
+  const trend = data.leadTrend;
+  const seriesFrom = (pick: (p: LeadTrendPoint) => number) => trend.map(pick);
+
+  const s = data.leadSummary;
   const kpis: Array<{
     label: string;
-    value: string;
-    context: string;
+    metric: OverviewMetric;
+    display: string;
     icon: LucideIcon;
     tone: "brand" | "teal" | "blue";
-    comparison?: number | null;
+    series?: number[];
+    seriesColor?: string;
+    invert?: boolean;
   }> = [
-    {
-      label: "Total leads",
-      value: valueOrUnavailable(data.leadSummary.total),
-      context: `${integer.format(total)} recorded in ${data.period.label}`,
-      icon: Users,
-      tone: "brand",
-      comparison: data.leadSummary.total.changePercent,
-    },
-    {
-      label: "Contacted leads",
-      value: valueOrUnavailable(data.leadSummary.contacted),
-      context: total ? `${Math.round((contacted / total) * 100)}% of leads contacted` : "No leads in this period",
-      icon: ContactRound,
-      tone: "teal",
-    },
-    {
-      label: "Replied leads",
-      value: valueOrUnavailable(data.leadSummary.replied),
-      context: contacted ? `${Math.round((replied / contacted) * 100)}% of contacted leads` : "No contacted leads yet",
-      icon: MessageCircleReply,
-      tone: "blue",
-    },
-    {
-      label: "Booked leads",
-      value: valueOrUnavailable(data.leadSummary.booked),
-      context: replied ? `${Math.round((booked / replied) * 100)}% of replies booked` : "No replies booked yet",
-      icon: UserCheck,
-      tone: "teal",
-    },
-    {
-      label: "Booking conversion",
-      value: valueOrUnavailable(data.leadSummary.bookingRate, "%"),
-      context: "Booked leads ÷ total leads",
-      icon: TrendingUp,
-      tone: "brand",
-    },
-    {
-      label: "Average speed-to-lead",
-      value: formatSpeed(data.leadSummary.averageSpeedSeconds.value),
-      context: "First successful Speed-to-Lead message",
-      icon: Clock3,
-      tone: "blue",
-    },
+    { label: "Total leads", metric: s.total, display: integer.format(s.total.value ?? 0), icon: Users, tone: "brand", series: seriesFrom((p) => p.leads), seriesColor: "var(--chart-leads)" },
+    { label: "Contacted", metric: s.contacted, display: integer.format(s.contacted.value ?? 0), icon: ContactRound, tone: "teal", series: seriesFrom((p) => p.contacted), seriesColor: "var(--chart-6)" },
+    { label: "Replied", metric: s.replied, display: integer.format(s.replied.value ?? 0), icon: MessageCircleReply, tone: "blue", series: seriesFrom((p) => p.replied), seriesColor: "var(--chart-replied)" },
+    { label: "Booked", metric: s.booked, display: integer.format(s.booked.value ?? 0), icon: UserCheck, tone: "teal", series: seriesFrom((p) => p.booked), seriesColor: "var(--chart-booked)" },
+    { label: "Booking conversion", metric: s.bookingRate, display: s.bookingRate.value === null ? "—" : `${s.bookingRate.value}%`, icon: TrendingUp, tone: "brand" },
+    { label: "Avg speed-to-lead", metric: s.averageSpeedSeconds, display: formatSpeed(s.averageSpeedSeconds.value), icon: Clock3, tone: "blue", invert: true },
   ];
 
   return (
-    <div className={`mx-auto max-w-[1680px] space-y-5 ${refreshing ? "opacity-[0.985]" : ""}`} aria-busy={refreshing}>
+    <div className={`mx-auto max-w-[1600px] transition-opacity ${refreshing ? "opacity-70" : "opacity-100"}`} aria-busy={refreshing}>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--brand-primary)]">Growth pulse</p>
+          <h2 className="overview-display mt-1 text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
+            Patient growth at a glance
+          </h2>
+        </div>
+        <span className="text-xs text-[var(--text-muted)]">
+          {data.period.label} · through {formatDateTime(data.updatedAt)}
+        </span>
+      </div>
+
       {refreshError && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] px-4 py-3 text-sm text-[var(--warning-text)]">
-          <span>{refreshError} Existing overview data is still shown.</span>
-          <button onClick={onRetry} className="min-h-11 rounded-lg px-3 font-semibold hover:bg-black/5 dark:hover:bg-white/5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] px-4 py-3 text-sm text-[var(--warning-text)]">
+          <span>{refreshError} Existing analytics are still shown.</span>
+          <button onClick={onRetry} className="min-h-9 rounded-lg px-3 font-semibold hover:bg-black/5 dark:hover:bg-white/5">
             Retry
           </button>
         </div>
       )}
 
-      <section aria-labelledby="growth-summary-title">
-        <div className="mb-3 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--brand-primary)]">Growth pulse</p>
-            <h2 id="growth-summary-title" className="overview-display mt-1 text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
-              Patient growth at a glance
-            </h2>
-          </div>
-          <span className="hidden text-xs text-[var(--text-muted)] sm:inline">{data.period.label}</span>
-        </div>
-        <div className="overview-command-kpis grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {kpis.map((item) => (
-            <GrowthKpi key={item.label} {...item} previousLabel={data.period.previousLabel} />
-          ))}
-        </div>
-      </section>
+      {/* KPI strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {kpis.map((item) => (
+          <KpiCard key={item.label} {...item} previousLabel={data.period.previousLabel} />
+        ))}
+      </div>
 
-      <div className="overview-command-grid grid min-w-0 grid-cols-12 gap-5">
-        <Panel
-          title="Attention required"
-          eyebrow="Daily operations"
-          icon={AlertTriangle}
-          className="order-[1] col-span-12 lg:order-[8] lg:col-span-5"
-        >
-          {attentionError ? (
-            <SectionError message={attentionError} onRetry={onRetry} />
+      {/* Analytical grid */}
+      <div className="mt-4 grid grid-cols-12 gap-4">
+        {/* Attention — first on mobile, tucked right on desktop */}
+        <Panel title="Attention required" eyebrow="Daily operations" icon={AlertTriangle} className="order-1 col-span-12 lg:order-none lg:col-span-6 xl:col-span-4">
+          {data.errors.leads || data.errors.campaigns || data.errors.delivery ? (
+            <SectionError message={data.errors.leads || data.errors.campaigns || data.errors.delivery!} onRetry={onRetry} />
           ) : (
-            <AttentionRequiredPanel items={data.attentionItems} />
+            <AttentionPanel items={data.attentionItems} />
           )}
         </Panel>
 
+        {/* Growth trend — hero, above the fold */}
         <Panel
-          title="Lead conversion funnel"
-          eyebrow="Where leads move—or stall"
+          title="Patient growth trend"
+          eyebrow={`New, replied and booked leads · ${data.period.label}`}
           icon={TrendingUp}
-          className="order-[2] col-span-12 lg:order-[2] lg:col-span-5"
+          className="order-2 col-span-12 lg:col-span-8 xl:col-span-8"
           error={data.errors.leads}
           onRetry={onRetry}
         >
-          <LeadConversionFunnel stages={data.leadFunnel} />
+          <GrowthTrendChart data={trend} />
         </Panel>
 
-        <Panel
-          title="Lead trend"
-          eyebrow={`${data.period.label} · cohort by lead-created date`}
-          icon={BarChart3}
-          className="order-[3] col-span-12 lg:order-[3] lg:col-span-7"
-          error={data.errors.leads}
-          onRetry={onRetry}
-        >
-          {trendActivityDays.length >= 2 ? (
-            <LeadTrendChart data={data.leadTrend} />
-          ) : trendActivityDays.length === 1 ? (
-            <LimitedTrendState point={trendActivityDays[0]} />
-          ) : (
-            <EmptyState icon={BarChart3} title="No lead history in this period" detail="Lead activity will appear here after new records arrive." />
-          )}
+        {/* Conversion funnel */}
+        <Panel title="Lead conversion funnel" eyebrow="Where leads advance or stall" icon={TrendingUp} className="order-3 col-span-12 lg:col-span-6 xl:col-span-4" error={data.errors.leads} onRetry={onRetry}>
+          <VisualFunnel stages={data.leadFunnel} previousLabel="previous stage" />
         </Panel>
 
-        <Panel
-          title="Campaign health"
-          eyebrow="Built campaigns only"
-          icon={Zap}
-          className="order-[4] col-span-12 lg:order-[5] lg:col-span-7"
-          error={data.errors.campaigns}
-          onRetry={onRetry}
-        >
-          <CampaignHealthPanel campaigns={data.campaignHealth} deliveryError={data.errors.delivery} />
+        {/* Lead sources */}
+        <Panel title="Lead source performance" eyebrow="Acquisition quality" icon={Users} className="order-6 col-span-12 lg:col-span-6 xl:col-span-4" error={data.errors.leads} onRetry={onRetry}>
+          <LeadSourceSection sources={data.sourcePerformance} periodLabel={data.period.label} />
         </Panel>
 
-        <Panel
-          title="Message delivery health"
-          eyebrow={data.period.label}
-          icon={Send}
-          className="order-[5] col-span-12 lg:order-[7] lg:col-span-5"
-          error={data.errors.delivery}
-          onRetry={onRetry}
-        >
-          <DeliveryHealthPanel channels={data.deliveryHealth.channels} total={data.deliveryHealth.totalMessages} successRate={data.deliveryHealth.successRate} />
+        {/* Campaign journey */}
+        <Panel title="Campaign journey" eyebrow="14-Day Nurture distribution" icon={Zap} className="order-4 col-span-12 lg:col-span-6 xl:col-span-4" error={data.errors.campaigns} onRetry={onRetry}>
+          <CampaignJourney journey={data.nurtureJourney} campaigns={data.campaignHealth} deliveryError={data.errors.delivery} />
         </Panel>
 
-        <Panel
-          title="Lead source performance"
-          eyebrow="Acquisition quality"
-          icon={Megaphone}
-          className="order-[6] col-span-12 lg:order-[4] lg:col-span-5"
-          error={data.errors.leads}
-          onRetry={onRetry}
-        >
-          <LeadSourcePerformance sources={data.sourcePerformance} />
+        {/* Delivery health */}
+        <Panel title="Message delivery health" eyebrow={data.period.label} icon={Send} className="order-5 col-span-12 lg:col-span-6 xl:col-span-4" error={data.errors.delivery} onRetry={onRetry}>
+          <DeliverySection delivery={data.deliveryHealth} />
         </Panel>
 
-        <Panel
-          title="Visits vs new patients"
-          eyebrow="Recorded clinic totals"
-          icon={Activity}
-          className="order-[7] col-span-12 lg:order-[6] lg:col-span-7"
-          error={data.errors.clinic}
-          onRetry={onRetry}
-        >
-          <ClinicPerformance metrics={data.clinicMetrics} />
+        {/* Clinic metrics */}
+        <Panel title="Visits & new patients" eyebrow="Recorded clinic totals" icon={Activity} className="order-7 col-span-12 lg:col-span-6 xl:col-span-4" error={data.errors.clinic} onRetry={onRetry}>
+          <ClinicSection metrics={data.clinicMetrics} />
         </Panel>
 
-        <Panel
-          title="Google Ads summary"
-          eyebrow={data.period.label}
-          icon={CircleDollarSign}
-          className="order-[8] col-span-12 lg:order-[7] lg:col-span-7"
-          error={data.errors.googleAds}
-          onRetry={onRetry}
-        >
-          <GoogleAdsPanel summary={data.googleAdsSummary} />
+        {/* Google Ads */}
+        <Panel title="Google Ads performance" eyebrow={data.period.label} icon={TrendingUp} className="order-8 col-span-12 lg:col-span-6 xl:col-span-4" error={data.errors.googleAds} onRetry={onRetry}>
+          <GoogleAdsSection summary={data.googleAdsSummary} />
         </Panel>
 
+        {/* Activity heatmap */}
+        <Panel title="Operational activity" eyebrow="Leads, campaigns and messages by day" icon={Activity} className="order-9 col-span-12 lg:col-span-6 xl:col-span-8">
+          <ActivityHeatmap days={data.activityByDay} />
+        </Panel>
+
+        {/* Recent activity — secondary */}
         <Panel
           title="Recent activity"
           eyebrow="Latest meaningful changes"
           icon={Database}
-          className="order-[9] col-span-12 lg:order-[9]"
+          className="order-10 col-span-12 xl:col-span-4"
           action={
             data.canViewAuditLog ? (
               <Link href="/audit-log" className="panel-link">
@@ -421,44 +424,59 @@ function OverviewContent({
   );
 }
 
-function GrowthKpi({
+/* ── KPI card ─────────────────────────────────────────────────────────────── */
+
+function KpiCard({
   label,
-  value,
-  context,
+  display,
+  metric,
   icon: Icon,
   tone,
-  comparison,
+  series,
+  seriesColor,
   previousLabel,
+  invert = false,
 }: {
   label: string;
-  value: string;
-  context: string;
+  display: string;
+  metric: OverviewMetric;
   icon: LucideIcon;
   tone: "brand" | "teal" | "blue";
-  comparison?: number | null;
+  series?: number[];
+  seriesColor?: string;
   previousLabel: string;
+  invert?: boolean;
 }) {
+  const change = metric.changePercent;
+  const good = change !== null && change !== undefined && (invert ? change <= 0 : change >= 0);
   return (
-    <article className="group min-w-0 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5 shadow-[var(--shadow-soft)] sm:p-4">
+    <article className="flex min-w-0 flex-col rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3.5 shadow-[var(--shadow-soft)]">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase leading-4 tracking-[0.1em] text-[var(--text-muted)]">{label}</p>
+        <p className="text-[10px] font-bold uppercase leading-4 tracking-[0.1em] text-[var(--text-muted)]">{label}</p>
         <span className={`overview-kpi-icon overview-kpi-icon--${tone}`} aria-hidden="true">
-          <Icon size={15} />
+          <Icon size={14} />
         </span>
       </div>
-      <p className={`mt-3 break-words text-2xl font-semibold leading-none tracking-[-0.035em] text-[var(--text-primary)] ${value === "Not available" ? "text-lg tracking-normal" : "sm:text-[1.75rem]"}`}>
-        {value}
+      <p className="mt-2 text-2xl font-semibold leading-none tracking-[-0.035em] text-[var(--text-primary)] tabular-nums">
+        {display}
       </p>
-      {comparison !== undefined && comparison !== null ? (
-        <p className={`mt-2 text-[11px] font-semibold ${comparison >= 0 ? "text-[var(--healthy)]" : "text-[var(--danger)]"}`}>
-          {comparison >= 0 ? "↑" : "↓"} {Math.abs(comparison)}% vs {previousLabel}
+      <div className="mt-2 flex-1">
+        {series && series.some((v) => v > 0) ? (
+          <Sparkline values={series} color={seriesColor} />
+        ) : null}
+      </div>
+      {change !== undefined && change !== null ? (
+        <p className={`mt-1.5 text-[11px] font-semibold tabular-nums ${good ? "text-[var(--healthy)]" : "text-[var(--danger)]"}`}>
+          {change >= 0 ? "↑" : "↓"} {Math.abs(change)}% <span className="font-normal text-[var(--text-muted)]">vs {previousLabel}</span>
         </p>
       ) : (
-        <p className="mt-2 text-[11px] leading-4 text-[var(--text-muted)]">{context}</p>
+        <p className="mt-1.5 text-[11px] text-[var(--text-muted)]">No prior comparison</p>
       )}
     </article>
   );
 }
+
+/* ── Panel shell ──────────────────────────────────────────────────────────── */
 
 function Panel({
   title,
@@ -480,290 +498,537 @@ function Panel({
   onRetry?: () => void;
 }) {
   return (
-    <section className={`min-w-0 overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-[var(--shadow-soft)] ${className}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-xl bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]" aria-hidden="true">
-            <Icon size={16} />
+    <section className={`flex min-w-0 flex-col overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-[var(--shadow-soft)] ${className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3.5 sm:px-5">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]" aria-hidden="true">
+            <Icon size={15} />
           </span>
           <div className="min-w-0">
-            <h2 className="overview-display text-lg font-semibold leading-6 text-[var(--text-primary)] sm:text-xl">{title}</h2>
+            <h2 className="overview-display text-base font-semibold leading-5 text-[var(--text-primary)]">{title}</h2>
             <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{eyebrow}</p>
           </div>
         </div>
         {action}
       </div>
-      <div className="p-4 sm:p-5">{error ? <SectionError message={error} onRetry={onRetry} /> : children}</div>
+      <div className="flex-1 p-4 sm:p-5">{error ? <SectionError message={error} onRetry={onRetry} /> : children}</div>
     </section>
   );
 }
 
-function LeadConversionFunnel({ stages }: { stages: OverviewResponse["leadFunnel"] }) {
-  if (!stages.length) return <EmptyState icon={TrendingUp} title="No funnel data available" detail="Lead stages will appear after records are available." />;
-  const max = Math.max(...stages.map((stage) => stage.count), 1);
+/* ── Lead conversion funnel — real horizontal bars ────────────────────────── */
+
+const FUNNEL_COLORS = ["var(--chart-leads)", "var(--chart-6)", "var(--chart-replied)", "var(--chart-booked)"];
+
+function VisualFunnel({ stages, previousLabel }: { stages: LeadFunnelStage[]; previousLabel: string }) {
+  if (!stages.length) {
+    return <CompactEmpty icon={TrendingUp} title="No funnel data yet" detail="Lead stages appear once records arrive." />;
+  }
+  const first = stages[0]?.count ?? 0;
   return (
-    <div className="harmony-journey-line" role="list" aria-label="Lead conversion stages">
-      {stages.map((stage, index) => (
-        <div key={stage.key} className="harmony-journey-stage" role="listitem">
-          <div className="harmony-journey-marker" aria-hidden="true">
-            <span style={{ transform: `scale(${Math.max(0.42, stage.count / max)})` }} />
-          </div>
-          <div className="min-w-0 flex-1 md:text-center">
-            <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--text-muted)]">{stage.label}</p>
-            <p className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-[var(--text-primary)]">{integer.format(stage.count)}</p>
+    <div className="flex h-full flex-col justify-between gap-4" role="list" aria-label="Lead conversion stages">
+      {stages.map((stage, index) => {
+        const width = first ? Math.max(2, Math.round((stage.count / first) * 100)) : 0;
+        return (
+          <div key={stage.key} role="listitem">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-xs font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">{stage.label}</span>
+              <span className="flex items-baseline gap-2">
+                <span className="text-xl font-semibold tabular-nums text-[var(--text-primary)]">{integer.format(stage.count)}</span>
+                <span className="text-[11px] text-[var(--text-muted)]">{stage.percentOfFirst}%</span>
+              </span>
+            </div>
+            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <div className="h-full rounded-full transition-all" style={{ width: `${width}%`, background: FUNNEL_COLORS[index] }} />
+            </div>
             {index > 0 && (
               <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
-                {stage.conversionFromPrevious === null ? "No prior-stage volume" : `${stage.conversionFromPrevious}% advanced`}
-                {stage.dropOffFromPrevious ? ` · ${stage.dropOffFromPrevious} drop-off` : ""}
+                {stage.conversionFromPrevious === null ? `No ${previousLabel} volume` : `${stage.conversionFromPrevious}% advanced`}
+                {stage.dropOffFromPrevious ? ` · ${integer.format(stage.dropOffFromPrevious)} drop-off` : ""}
               </p>
             )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function LimitedTrendState({ point }: { point: OverviewResponse["leadTrend"][number] }) {
-  return (
-    <div className="rounded-2xl bg-[var(--surface-2)] p-4 sm:p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--brand-primary)]">Limited history</p>
-      <p className="mt-2 text-sm text-[var(--text-secondary)]">A trend needs activity on at least two dates. Current data is concentrated on {point.label}.</p>
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        {[["New leads", point.leads], ["Replied", point.replied], ["Booked", point.booked]].map(([label, value]) => (
-          <div key={String(label)} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-3 text-center">
-            <p className="text-lg font-semibold text-[var(--text-primary)]">{value}</p>
-            <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{label}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+/* ── Lead source performance ──────────────────────────────────────────────── */
 
-function LeadSourcePerformance({ sources }: { sources: OverviewResponse["sourcePerformance"] }) {
-  if (!sources.length) return <EmptyState icon={Megaphone} title="No source data in this period" detail="Acquisition sources will appear as new leads arrive." />;
+function LeadSourceSection({ sources, periodLabel }: { sources: OverviewResponse["sourcePerformance"]; periodLabel: string }) {
+  if (!sources.length) {
+    return <CompactEmpty icon={Users} title="No source data in this period" detail="Acquisition sources appear as new leads arrive." />;
+  }
   if (sources.length === 1) {
     const source = sources[0];
     return (
-      <div className="rounded-2xl bg-[var(--surface-2)] p-4 sm:p-5">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-primary)]">Only lead source</p>
-        <p className="overview-display mt-2 text-2xl font-semibold text-[var(--text-primary)]">{source.source}</p>
-        <div className="mt-5 grid grid-cols-3 gap-3">
-          <SourceStat label="Leads" value={source.leads} />
-          <SourceStat label="Booked" value={source.booked} />
-          <SourceStat label="Conversion" value={`${source.conversionRate}%`} />
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="overview-display truncate text-lg font-semibold text-[var(--text-primary)]" title={source.source}>{source.source}</p>
+          <span className="shrink-0 text-xs text-[var(--text-muted)]">only source</span>
         </div>
-        <p className="mt-4 text-xs leading-5 text-[var(--text-muted)]">A chart is hidden because one source accounts for {source.share}% of lead volume.</p>
+        <div className="mt-3 h-8 overflow-hidden rounded-lg bg-[var(--surface-2)]">
+          <div className="flex h-full items-center rounded-lg bg-[var(--chart-leads)] px-3" style={{ width: "100%" }}>
+            <span className="text-xs font-bold text-[var(--primary-foreground)]">{integer.format(source.leads)} leads</span>
+          </div>
+        </div>
+        <dl className="mt-4 grid grid-cols-3 gap-3">
+          <SourceStat label="Replied" value={integer.format(source.replied)} />
+          <SourceStat label="Booked" value={integer.format(source.booked)} />
+          <SourceStat label="Booking rate" value={`${source.conversionRate}%`} />
+        </dl>
+        <p className="mt-3 text-[11px] leading-4 text-[var(--text-muted)]">
+          One source accounts for all lead volume in {periodLabel}.
+        </p>
       </div>
     );
   }
-  const max = Math.max(...sources.map((source) => source.leads), 1);
   return (
-    <div className="space-y-4">
-      {sources.map((source) => (
-        <div key={source.source}>
-          <div className="flex items-baseline justify-between gap-3 text-xs">
-            <span className="truncate font-semibold text-[var(--text-primary)]">{source.source}</span>
-            <span className="shrink-0 text-[var(--text-muted)]">{source.leads} leads · {source.booked} booked · {source.conversionRate}%</span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-2)]">
-            <div className="h-full rounded-full bg-[var(--chart-leads)]" style={{ width: `${Math.max(4, (source.leads / max) * 100)}%` }} />
-          </div>
+    <div>
+      <LeadSourceChart sources={sources} />
+      <div className="mt-2 flex items-center gap-4 text-[11px] text-[var(--text-muted)]">
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full bg-[var(--chart-booked)]" /> Booked</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full bg-[var(--chart-leads)]" /> Not booked</span>
+      </div>
+      <table className="mt-3 w-full border-t border-[var(--border-subtle)] text-xs">
+        <thead>
+          <tr className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-muted)]">
+            <th className="py-2 text-left font-semibold">Source</th>
+            <th className="py-2 text-right font-semibold">Leads</th>
+            <th className="py-2 text-right font-semibold">Replied</th>
+            <th className="py-2 text-right font-semibold">Booked</th>
+            <th className="py-2 text-right font-semibold">Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sources.slice(0, 6).map((s) => (
+            <tr key={s.source} className="border-t border-[var(--border-subtle)]">
+              <td className="max-w-0 truncate py-1.5 pr-2 font-medium text-[var(--text-primary)]" title={s.source}>{s.source}</td>
+              <td className="py-1.5 text-right tabular-nums text-[var(--text-secondary)]">{integer.format(s.leads)}</td>
+              <td className="py-1.5 text-right tabular-nums text-[var(--text-secondary)]">{integer.format(s.replied)}</td>
+              <td className="py-1.5 text-right tabular-nums text-[var(--text-secondary)]">{integer.format(s.booked)}</td>
+              <td className="py-1.5 text-right tabular-nums font-semibold text-[var(--text-primary)]">{s.conversionRate}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SourceStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dd className="text-lg font-semibold tabular-nums text-[var(--text-primary)]">{value}</dd>
+      <dt className="mt-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</dt>
+    </div>
+  );
+}
+
+/* ── Campaign journey ─────────────────────────────────────────────────────── */
+
+function CampaignJourney({
+  journey,
+  campaigns,
+  deliveryError,
+}: {
+  journey: NurtureJourneyStep[];
+  campaigns: CampaignHealth[];
+  deliveryError?: string;
+}) {
+  const speed = campaigns.find((c) => c.slug === "speed-to-lead");
+  const nurture = campaigns.find((c) => c.slug === "14-day-nurture");
+  const enrolled = nurture?.leadsProcessed ?? 0;
+  const steps = journey.filter((j) => j.key !== "completed" && j.key !== "stopped");
+  const completed = journey.find((j) => j.key === "completed");
+  const stopped = journey.find((j) => j.key === "stopped");
+  const maxReached = Math.max(1, ...journey.map((j) => j.reached));
+
+  return (
+    <div>
+      {speed && (
+        <div className="mb-4 grid grid-cols-5 gap-1 rounded-xl bg-[var(--surface-2)] px-2 py-3">
+          <SpeedStat label="Leads" value={integer.format(speed.leadsProcessed)} />
+          <SpeedStat label="SMS" value={integer.format(speed.smsSent)} />
+          <SpeedStat label="Email" value={integer.format(speed.emailsSent)} />
+          <SpeedStat label="Failed" value={integer.format(speed.failedMessages)} tone={speed.failedMessages ? "danger" : undefined} />
+          <SpeedStat label="Speed" value={formatSpeed(speed.averageFirstContactSeconds)} />
         </div>
-      ))}
-    </div>
-  );
-}
+      )}
 
-function SourceStat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <p className="text-xl font-semibold text-[var(--text-primary)]">{value}</p>
-      <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</p>
-    </div>
-  );
-}
+      {deliveryError && (
+        <p className="mb-3 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] p-2.5 text-[11px] text-[var(--warning-text)]">
+          Delivery metrics unavailable; enrollment distribution is still shown.
+        </p>
+      )}
 
-function CampaignHealthPanel({ campaigns, deliveryError }: { campaigns: CampaignHealth[]; deliveryError?: string }) {
-  if (!campaigns.length) return <EmptyState icon={Zap} title="No built campaigns available" detail="Only active or built campaigns appear here." />;
-  return (
-    <div className="space-y-3">
-      {deliveryError && <p className="rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3 text-xs text-[var(--warning-text)]">Delivery metrics are unavailable; campaign enrollment data is still shown.</p>}
-      {campaigns.map((campaign) => (
-        <article key={campaign.slug} className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                {campaign.slug === "speed-to-lead" ? <Zap size={15} className="text-[var(--brand-primary)]" /> : <Mail size={15} className="text-[var(--healthy)]" />}
-                <h3 className="font-semibold text-[var(--text-primary)]">{campaign.name}</h3>
-              </div>
-              <p className="mt-1 text-[11px] text-[var(--text-muted)]">Recent activity {formatDateTime(campaign.lastActivityAt)}</p>
-            </div>
-            <StatusPill status={campaign.status} />
+      {enrolled === 0 ? (
+        <CompactEmpty icon={Zap} title="No enrollments in this period" detail="Leads appear here as they enter 14-Day Nurture." />
+      ) : (
+        <>
+          <p className="mb-2.5 text-[11px] text-[var(--text-muted)]">{integer.format(enrolled)} enrolled leads · active by step</p>
+          <ol className="space-y-2" aria-label="14-Day Nurture journey by step">
+            {steps.map((step) => (
+              <li key={step.key} className="flex items-center gap-3">
+                <span className="w-20 shrink-0 text-[11px] font-semibold text-[var(--text-secondary)]">{step.step}</span>
+                <div className="h-5 flex-1 overflow-hidden rounded-md bg-[var(--surface-2)]">
+                  <div
+                    className="flex h-full items-center rounded-md bg-[var(--chart-booked)] px-2"
+                    style={{ width: `${Math.max(step.reached ? 6 : 0, Math.round((step.reached / maxReached) * 100))}%` }}
+                  >
+                    {step.active > 0 && <span className="text-[10px] font-bold text-[var(--primary-foreground)]">{step.active}</span>}
+                  </div>
+                </div>
+                <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-muted)]">{step.percentage}%</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <JourneyOutcome label="Completed" value={completed?.reached ?? 0} tone="success" />
+            <JourneyOutcome label="Stopped" value={stopped?.reached ?? 0} tone={stopped?.reached ? "danger" : "muted"} />
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-            <CampaignMetric label="Active leads" value={campaign.slug === "speed-to-lead" ? "Automatic" : campaign.activeLeads} />
-            <CampaignMetric label="Messages" value={campaign.messagesSent} />
-            <CampaignMetric label="Replies" value={campaign.replies} />
-            <CampaignMetric label="Booked" value={campaign.booked} />
-            <CampaignMetric label="Delivery" value={campaign.deliverySuccessRate === null ? "Not available" : `${campaign.deliverySuccessRate}%`} />
-            <CampaignMetric label="Failed" value={campaign.failedMessages} />
-            <div className="col-span-2 sm:col-span-2">
-              <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-muted)]">Next due activity</p>
-              <p className="mt-1 text-xs font-semibold text-[var(--text-primary)]">{campaign.slug === "speed-to-lead" ? "Triggered by each new lead" : formatDateTime(campaign.nextDueAt)}</p>
-            </div>
-          </div>
-          <Link href={`/campaigns/${campaign.slug}`} className="panel-link mt-4 w-fit">
-            View campaign <ArrowRight size={14} />
-          </Link>
-        </article>
-      ))}
+        </>
+      )}
+
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1">
+        <Link href="/campaigns/speed-to-lead" className="panel-link">Speed-to-Lead <ArrowRight size={13} /></Link>
+        <Link href="/campaigns/14-day-nurture" className="panel-link">14-Day Nurture <ArrowRight size={13} /></Link>
+      </div>
     </div>
   );
 }
 
-function CampaignMetric({ label, value }: { label: string; value: string | number }) {
+function SpeedStat({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
-    <div>
-      <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</p>
-      <p className={`mt-1 font-semibold text-[var(--text-primary)] ${value === "Not available" ? "text-xs" : "text-sm"}`}>{value}</p>
+    <div className="min-w-0 text-center">
+      <p className={`truncate text-[15px] font-semibold tabular-nums ${tone === "danger" ? "text-[var(--danger)]" : "text-[var(--text-primary)]"}`}>{value}</p>
+      <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.04em] text-[var(--text-muted)]">{label}</p>
     </div>
   );
 }
 
-function StatusPill({ status }: { status: CampaignHealth["status"] }) {
-  const healthy = status === "Healthy" || status === "Active";
+function JourneyOutcome({ label, value, tone }: { label: string; value: number; tone: "success" | "danger" | "muted" }) {
+  const styles =
+    tone === "success"
+      ? "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success-text)]"
+      : tone === "danger"
+        ? "border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger-text)]"
+        : "border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--text-secondary)]";
   return (
-    <span className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] ${healthy ? "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success-text)]" : "border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning-text)]"}`}>
-      {healthy ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />} {status}
-    </span>
+    <div className={`flex items-center justify-between rounded-xl border px-3 py-2 ${styles}`}>
+      <span className="text-[11px] font-bold uppercase tracking-[0.08em]">{label}</span>
+      <span className="text-lg font-semibold tabular-nums">{integer.format(value)}</span>
+    </div>
   );
 }
 
-function DeliveryHealthPanel({ channels, total, successRate }: { channels: DeliveryChannelHealth[]; total: number; successRate: number | null }) {
-  if (!total) {
-    return <EmptyState icon={Send} title="No Message Log records in this period" detail="Delivery status is not available until SMS or email records are written to Message Log." action={<Link href="/message-logs" className="panel-link">View Message Log <ArrowRight size={14} /></Link>} />;
+/* ── Delivery ─────────────────────────────────────────────────────────────── */
+
+function DeliverySection({ delivery }: { delivery: OverviewResponse["deliveryHealth"] }) {
+  const sms = delivery.channels.find((c) => c.channel === "SMS");
+  const email = delivery.channels.find((c) => c.channel === "Email");
+  if (!delivery.totalMessages) {
+    return (
+      <div>
+        <div className="mb-3 flex h-24 items-end gap-1.5 rounded-xl bg-[var(--surface-2)] px-4 pb-3" aria-hidden="true">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="flex-1 rounded-sm bg-[var(--border-subtle)]" style={{ height: "6%" }} />
+          ))}
+        </div>
+        <CompactEmpty
+          icon={Send}
+          title="No campaign messages in this period"
+          detail="Delivery appears once SMS or email records reach the Message Log."
+          action={<Link href="/message-logs" className="panel-link">View Conversations <ArrowRight size={13} /></Link>}
+        />
+      </div>
+    );
   }
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-4">
-        <div>
-          <p className="text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">{successRate === null ? "Not available" : `${successRate}%`}</p>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">Overall known-status delivery success</p>
-        </div>
-        <ShieldCheck size={28} className="text-[var(--healthy)]" aria-hidden="true" />
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <DeliveryStat label="SMS success" value={sms?.successRate === null || sms?.successRate === undefined ? "—" : `${sms.successRate}%`} />
+        <DeliveryStat label="Email success" value={email?.successRate === null || email?.successRate === undefined ? "—" : `${email.successRate}%`} />
+        <DeliveryStat label="Total sent" value={integer.format(delivery.successful + delivery.failed + delivery.pending + delivery.unknown)} />
+        <DeliveryStat label="Failed" value={integer.format(delivery.failed)} tone={delivery.failed ? "danger" : undefined} />
       </div>
-      <div className="mt-5 space-y-3">
-        {channels.map((channel) => (
-          <div key={channel.channel} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3.5">
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">{channel.channel === "SMS" ? <MessageCircleReply size={15} /> : <Mail size={15} />} {channel.channel}</span>
-              <span className="text-xs text-[var(--text-muted)]">{channel.sent} sent</span>
-            </div>
-            <DeliveryBar channel={channel} />
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[var(--text-muted)]">
-              <span>{channel.successful} successful</span><span>{channel.failed} failed</span><span>{channel.pending} pending</span>{channel.unknown > 0 && <span>{channel.unknown} status unavailable</span>}
-            </div>
-          </div>
-        ))}
+      <DeliveryChart data={delivery.trend} />
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full bg-[var(--chart-sms)]" /> SMS</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full bg-[var(--chart-email)]" /> Email</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block size-2.5 rounded-full bg-[var(--chart-warning)]" /> Failed</span>
       </div>
-      <Link href="/message-logs" className="panel-link mt-4 w-fit">View campaign messages <ArrowRight size={14} /></Link>
     </div>
   );
 }
 
-function DeliveryBar({ channel }: { channel: DeliveryChannelHealth }) {
-  if (!channel.sent) return <div className="mt-3 h-2 rounded-full bg-[var(--border-subtle)]" aria-label={`No ${channel.channel} messages`} />;
-  const pieces = [[channel.successful, "var(--chart-success)"], [channel.failed, "var(--chart-warning)"], [channel.pending, "var(--chart-email)"], [channel.unknown, "var(--chart-axis)"]] as const;
+function DeliveryStat({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
   return (
-    <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-[var(--border-subtle)]" aria-label={`${channel.successful} successful, ${channel.failed} failed, ${channel.pending} pending, ${channel.unknown} status unavailable`}>
-      {pieces.map(([count, color], index) => count > 0 && <span key={index} style={{ width: `${(count / channel.sent) * 100}%`, background: color }} />)}
+    <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2">
+      <p className={`text-lg font-semibold tabular-nums ${tone === "danger" ? "text-[var(--danger)]" : "text-[var(--text-primary)]"}`}>{value}</p>
+      <p className="mt-0.5 text-[10px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{label}</p>
     </div>
   );
 }
 
-function ClinicPerformance({ metrics }: { metrics: ClinicMetric[] }) {
+/* ── Clinic metrics ───────────────────────────────────────────────────────── */
+
+function ClinicSection({ metrics }: { metrics: ClinicMetric[] }) {
   if (!metrics.length) {
-    return <EmptyState icon={Activity} title="Clinic totals are not available" detail="No Clinic Metrics rows exist yet. Lead-based projections are intentionally not shown as clinic totals." action={<Link href="/leads" className="panel-link">Update clinic totals <ArrowRight size={14} /></Link>} />;
+    return (
+      <CompactEmpty
+        icon={Activity}
+        title="No clinic totals recorded"
+        detail="Add monthly visits and new patients to track clinic growth."
+        action={<Link href="/leads" className="panel-link">Update clinic totals <ArrowRight size={13} /></Link>}
+      />
+    );
   }
-  if (metrics.length === 1) return <CurrentMonthClinic metric={metrics[0]} />;
+  if (metrics.length === 1) return <SingleMonthClinic metric={metrics[0]} />;
   return <ClinicMetricsChart data={metrics} />;
 }
 
-function CurrentMonthClinic({ metric }: { metric: ClinicMetric }) {
-  const ratio = metric.totalVisits ? Math.min(100, (metric.newPatients / metric.totalVisits) * 100) : 0;
+function SingleMonthClinic({ metric }: { metric: ClinicMetric }) {
+  const share = metric.totalVisits ? Math.min(100, Math.round((metric.newPatients / metric.totalVisits) * 100)) : 0;
   const label = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${metric.month}-01T00:00:00.000Z`));
+  const maxBar = Math.max(metric.totalVisits, 1);
   return (
-    <div className="rounded-2xl bg-[var(--surface-2)] p-4 sm:p-5">
-      <p className="text-xs font-semibold text-[var(--brand-primary)]">Current month comparison · {label}</p>
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <div><p className="text-3xl font-semibold text-[var(--text-primary)]">{metric.totalVisits}</p><p className="mt-1 text-xs text-[var(--text-muted)]">Total visits</p></div>
-        <div><p className="text-3xl font-semibold text-[var(--text-primary)]">{metric.newPatients}</p><p className="mt-1 text-xs text-[var(--text-muted)]">New patients</p></div>
+    <div>
+      <p className="text-[11px] font-semibold text-[var(--brand-primary)]">{label} · single recorded month</p>
+      <div className="mt-4 space-y-4">
+        {[
+          { label: "Total visits", value: metric.totalVisits, color: "var(--chart-visits)" },
+          { label: "New patients", value: metric.newPatients, color: "var(--chart-new-patients)" },
+        ].map((row) => (
+          <div key={row.label}>
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-semibold text-[var(--text-secondary)]">{row.label}</span>
+              <span className="text-xl font-semibold tabular-nums text-[var(--text-primary)]">{integer.format(row.value)}</span>
+            </div>
+            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
+              <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.round((row.value / maxBar) * 100))}%`, background: row.color }} />
+            </div>
+          </div>
+        ))}
       </div>
-      <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--border-subtle)]"><div className="h-full rounded-full bg-[var(--chart-new-patients)]" style={{ width: `${ratio}%` }} /></div>
-      <p className="mt-2 text-[11px] text-[var(--text-muted)]">New patients represent {Math.round(ratio)}% of recorded visits.</p>
+      <p className="mt-4 text-[11px] text-[var(--text-muted)]">New patients are {share}% of recorded visits.</p>
     </div>
   );
 }
 
-function GoogleAdsPanel({ summary }: { summary: OverviewResponse["googleAdsSummary"] }) {
-  if (!summary) return <EmptyState icon={CircleDollarSign} title="Google Ads data unavailable" detail="Lead and campaign information is still available." />;
-  if (!summary.spend && !summary.impressions && !summary.clicks) return <EmptyState icon={CircleDollarSign} title="No Google Ads activity in this period" detail="The latest synced analytics do not contain activity for this range." action={<Link href="/google-ads-analytics" className="panel-link">Open Google Ads <ExternalLink size={13} /></Link>} />;
-  const metrics = [
-    ["Spend", currency.format(summary.spend), CircleDollarSign],
-    ["Impressions", integer.format(summary.impressions), Megaphone],
-    ["Clicks", integer.format(summary.clicks), MousePointerClick],
-    ["CTR", summary.ctr === null ? "Not available" : `${summary.ctr.toFixed(2)}%`, TrendingUp],
-    ["Conversions", integer.format(summary.conversions), UserCheck],
-    ["Attributed leads", integer.format(summary.attributedLeads), Users],
-    ["Cost per lead", summary.costPerLead === null ? "Not available" : currency.format(summary.costPerLead), CircleDollarSign],
-    ["ROAS", summary.roas === null ? "Not available" : `${summary.roas.toFixed(2)}×`, TrendingUp],
-  ] as const;
+/* ── Google Ads ───────────────────────────────────────────────────────────── */
+
+function GoogleAdsSection({ summary }: { summary: OverviewResponse["googleAdsSummary"] }) {
+  if (!summary) {
+    return <CompactEmpty icon={TrendingUp} title="Google Ads unavailable" detail="Lead and campaign analytics remain available." />;
+  }
+  const hasActivity = summary.spend > 0 || summary.clicks > 0 || summary.impressions > 0;
+  if (!hasActivity) {
+    return (
+      <CompactEmpty
+        icon={TrendingUp}
+        title="No advertising activity in this period"
+        detail="Synced analytics show no spend or clicks for this range."
+        action={<Link href="/google-ads-analytics" className="panel-link">Open Google Ads <ExternalLink size={13} /></Link>}
+      />
+    );
+  }
+  const metrics: Array<[string, string]> = [
+    ["Spend", currency.format(summary.spend)],
+    ["Clicks", integer.format(summary.clicks)],
+    ["CTR", summary.ctr === null ? "—" : `${summary.ctr.toFixed(2)}%`],
+    ["Avg CPC", summary.averageCpc === null ? "—" : currency.format(summary.averageCpc)],
+    ["Conversions", integer.format(summary.conversions)],
+    ["Cost / conv.", summary.costPerConversion === null ? "—" : currency.format(summary.costPerConversion)],
+  ];
   return (
     <div>
-      {summary.attentionMessage && <div className="mb-4 flex items-start gap-2 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3 text-xs leading-5 text-[var(--warning-text)]"><AlertTriangle size={15} className="mt-0.5 shrink-0" />{summary.attentionMessage}</div>}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-        {metrics.map(([label, value, Icon]) => (
+      {summary.attentionMessage && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] p-2.5 text-[11px] leading-4 text-[var(--warning-text)]">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          {summary.attentionMessage}
+        </div>
+      )}
+      <GoogleAdsChart daily={summary.daily} />
+      <dl className="mt-4 grid grid-cols-3 gap-x-3 gap-y-3">
+        {metrics.map(([label, value]) => (
           <div key={label} className="min-w-0">
-            <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-muted)]"><Icon size={12} /> {label}</p>
-            <p className={`mt-1.5 break-words font-semibold text-[var(--text-primary)] ${value === "Not available" ? "text-xs" : "text-base"}`}>{value}</p>
+            <dd className="truncate text-sm font-semibold text-[var(--text-primary)]" title={value}>{value}</dd>
+            <dt className="mt-0.5 text-[10px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{label}</dt>
           </div>
         ))}
-      </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <AdsHighlight label="Top campaign" value={summary.topCampaign} />
-        <AdsHighlight label="Top creative" value={summary.topCreative} />
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] text-[var(--text-muted)]">Latest sync {formatDateTime(summary.latestSyncAt)}</p>
+      </dl>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-[11px] text-[var(--text-muted)]">Latest sync {formatDateTime(summary.latestSyncAt)}</span>
         <Link href="/google-ads-analytics" className="panel-link">Open Google Ads <ExternalLink size={13} /></Link>
       </div>
     </div>
   );
 }
 
-function AdsHighlight({ label, value }: { label: string; value: string | null }) {
-  return <div className="rounded-xl bg-[var(--surface-2)] p-3"><p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</p><p className="mt-1.5 truncate text-sm font-semibold text-[var(--text-primary)]" title={value ?? undefined}>{value || "Not available"}</p></div>;
-}
+/* ── Activity heatmap — dependency-free calendar grid ─────────────────────── */
 
-function AttentionRequiredPanel({ items }: { items: AttentionItem[] }) {
-  if (!items.length) {
-    return <div className="flex min-h-52 flex-col items-center justify-center text-center"><span className="grid size-12 place-items-center rounded-full bg-[var(--success-bg)] text-[var(--success-text)]"><CheckCircle2 size={22} /></span><h3 className="overview-display mt-4 text-lg font-semibold text-[var(--text-primary)]">Everything looks healthy</h3><p className="mt-1 max-w-xs text-xs leading-5 text-[var(--text-muted)]">No failed messages, overdue steps, disconnected enrollments, or incomplete lead contact details were found.</p></div>;
+function ActivityHeatmap({ days }: { days: OverviewResponse["activityByDay"] }) {
+  const total = days.reduce((sum, day) => sum + day.count, 0);
+  if (!days.length || total === 0) {
+    return <CompactEmpty icon={Activity} title="No operational activity recorded" detail="Lead, campaign and message events appear here as they occur." />;
   }
+  const max = Math.max(...days.map((d) => d.count), 1);
+  const level = (count: number) => {
+    if (count === 0) return 0;
+    const ratio = count / max;
+    if (ratio <= 0.25) return 1;
+    if (ratio <= 0.5) return 2;
+    if (ratio <= 0.75) return 3;
+    return 4;
+  };
+  const levelColor = (lvl: number) =>
+    lvl === 0
+      ? "var(--surface-2)"
+      : `color-mix(in srgb, var(--brand-primary) ${lvl * 22 + 12}%, var(--surface-2))`;
+  const firstWeekday = (() => {
+    const d = new Date(`${days[0].date}T00:00:00`);
+    return (d.getDay() + 6) % 7; // Monday = 0
+  })();
+  const busiest = days.reduce((a, b) => (b.count > a.count ? b : a), days[0]);
+  const activeDays = days.filter((d) => d.count > 0).length;
+  const weekdayTotals = new Array(7).fill(0);
+  days.forEach((d) => {
+    const wd = (new Date(`${d.date}T00:00:00`).getDay() + 6) % 7;
+    weekdayTotals[wd] += d.count;
+  });
+  const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const peakWeekday = WD[weekdayTotals.indexOf(Math.max(...weekdayTotals))];
+
   return (
-    <div className="space-y-3">
-      {items.map((item) => (
-        <article key={item.id} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3.5">
-          <div className="flex items-start gap-3">
-            <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full ${item.severity === "critical" ? "bg-[var(--danger-bg)] text-[var(--danger-text)]" : "bg-[var(--warning-bg)] text-[var(--warning-text)]"}`}><AlertTriangle size={15} /></span>
-            <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</h3><p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">{item.detail}</p><Link href={item.href} className="panel-link mt-2 w-fit">{item.actionLabel} <ArrowRight size={13} /></Link></div>
+    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0">
+        <div className="flex items-start gap-2 overflow-x-auto pb-1">
+          <div className="grid shrink-0 gap-[4px] pt-[2px] text-[9px] text-[var(--text-muted)]" style={{ gridTemplateRows: "repeat(7, 15px)" }}>
+            {["", "Mon", "", "Wed", "", "Fri", ""].map((wlabel, i) => (
+              <span key={i} className="flex h-[15px] items-center leading-none">{wlabel}</span>
+            ))}
           </div>
-        </article>
-      ))}
+          <div
+            className="grid grid-flow-col gap-[4px]"
+            style={{ gridTemplateRows: "repeat(7, 15px)" }}
+            role="img"
+            aria-label={`Activity heatmap. ${total} total events across ${days.length} days. Busiest day ${busiest.label} with ${busiest.count} events.`}
+          >
+            {days.map((day, index) => {
+              const lvl = level(day.count);
+              return (
+                <span
+                  key={day.date}
+                  title={`${day.label}: ${day.count} ${day.count === 1 ? "event" : "events"}`}
+                  className="size-[15px] rounded-[3px]"
+                  style={{
+                    background: levelColor(lvl),
+                    ...(index === 0 ? { gridRowStart: firstWeekday + 1 } : {}),
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+          Less
+          {[0, 1, 2, 3, 4].map((lvl) => (
+            <span key={lvl} className="size-3 rounded-[3px]" style={{ background: levelColor(lvl) }} />
+          ))}
+          More
+        </div>
+      </div>
+      <dl className="grid grid-cols-2 gap-3 lg:w-56 lg:shrink-0 lg:grid-cols-2">
+        <HeatStat label="Total events" value={integer.format(total)} />
+        <HeatStat label="Active days" value={`${activeDays}/${days.length}`} />
+        <HeatStat label="Busiest day" value={`${busiest.count}`} sub={busiest.label} />
+        <HeatStat label="Peak weekday" value={peakWeekday} />
+      </dl>
     </div>
   );
 }
+
+function HeatStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
+      <dd className="text-lg font-semibold tabular-nums text-[var(--text-primary)]">{value}</dd>
+      <dt className="mt-0.5 text-[10px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{label}</dt>
+      {sub && <p className="mt-0.5 truncate text-[10px] text-[var(--text-muted)]">{sub}</p>}
+    </div>
+  );
+}
+
+/* ── Attention ────────────────────────────────────────────────────────────── */
+
+const MONITORED_SIGNALS: Array<{ label: string; ids: string[] }> = [
+  { label: "SMS delivery", ids: ["failed-sms"] },
+  { label: "Email delivery", ids: ["failed-email"] },
+  { label: "Enrollment integrity", ids: ["disconnected"] },
+  { label: "Campaign timing", ids: ["overdue-enrollment"] },
+  { label: "Lead response", ids: ["overdue-lead"] },
+  { label: "Contact details", ids: ["missing-phone", "missing-email", "duplicates"] },
+];
+
+function AttentionPanel({ items }: { items: AttentionItem[] }) {
+  const flagged = new Set(items.map((item) => item.id));
+  return (
+    <div className="flex h-full flex-col gap-4">
+      {items.length ? (
+        <div className="space-y-2.5">
+          {items.slice(0, 4).map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="flex items-start gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3 transition-colors hover:bg-[var(--surface-hover)]"
+            >
+              <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${item.severity === "critical" ? "bg-[var(--danger-bg)] text-[var(--danger-text)]" : "bg-[var(--warning-bg)] text-[var(--warning-text)]"}`}>
+                <AlertTriangle size={14} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{item.detail}</p>
+              </div>
+              <ArrowRight size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--success-border)] bg-[var(--success-bg)] p-3.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--surface-1)] text-[var(--success-text)]">
+            <CheckCircle2 size={18} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-[var(--success-text)]">Everything looks healthy</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-secondary)]">No failed messages, overdue steps, or disconnected enrollments.</p>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-muted)]">Monitored signals</p>
+        <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {MONITORED_SIGNALS.map((signal) => {
+            const warn = signal.ids.some((id) => flagged.has(id));
+            return (
+              <li key={signal.label} className="flex items-center gap-2 rounded-lg bg-[var(--surface-2)] px-2.5 py-2">
+                {warn ? (
+                  <AlertTriangle size={13} className="shrink-0 text-[var(--warning-text)]" />
+                ) : (
+                  <CheckCircle2 size={13} className="shrink-0 text-[var(--success-text)]" />
+                )}
+                <span className="truncate text-[11px] font-medium text-[var(--text-secondary)]">{signal.label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/* ── Recent activity ──────────────────────────────────────────────────────── */
 
 const activityIcons: Record<RecentActivityItem["category"], LucideIcon> = {
   lead: Users,
@@ -774,37 +1039,123 @@ const activityIcons: Record<RecentActivityItem["category"], LucideIcon> = {
 };
 
 function RecentActivityFeed({ items, now }: { items: RecentActivityItem[]; now: number }) {
-  if (!items.length) return <EmptyState icon={Database} title="No recent activity" detail="Meaningful lead, campaign, message, and clinic updates will appear here." />;
+  if (!items.length) {
+    return <CompactEmpty icon={Database} title="No recent activity" detail="Lead, campaign and message updates appear here." />;
+  }
   return (
-    <ol className="grid gap-x-6 lg:grid-cols-2">
-      {items.map((item) => {
+    <ol className="space-y-1">
+      {items.slice(0, 6).map((item) => {
         const Icon = activityIcons[item.category];
-        const content = <><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--surface-2)] text-[var(--brand-primary)]"><Icon size={16} /></span><div className="min-w-0 flex-1"><p className="text-sm font-medium leading-5 text-[var(--text-primary)]">{item.title}</p><p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--text-muted)]"><span>{item.actor}</span>{item.resource && <><span aria-hidden="true">·</span><span>{item.resource}</span></>}<span aria-hidden="true">·</span><time dateTime={item.occurredAt}>{formatRelative(item.occurredAt, now)}</time></p></div></>;
-        return <li key={item.id} className="border-b border-[var(--border-subtle)] py-3 first:pt-0 last:border-0 lg:[&:nth-last-child(-n+2)]:border-0">{item.href ? <Link href={item.href} className="flex min-h-11 items-start gap-3 rounded-xl p-1.5 transition-colors hover:bg-[var(--surface-hover)]">{content}</Link> : <div className="flex min-h-11 items-start gap-3 p-1.5">{content}</div>}</li>;
+        const body = (
+          <>
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[var(--surface-2)] text-[var(--brand-primary)]">
+              <Icon size={14} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium leading-5 text-[var(--text-primary)]">{item.title}</p>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--text-muted)]">
+                <span className="truncate">{item.actor}</span>
+                <span aria-hidden="true">·</span>
+                <time dateTime={item.occurredAt}>{formatRelative(item.occurredAt, now)}</time>
+              </p>
+            </div>
+          </>
+        );
+        return (
+          <li key={item.id}>
+            {item.href ? (
+              <Link href={item.href} className="flex items-center gap-3 rounded-xl p-1.5 transition-colors hover:bg-[var(--surface-hover)]">{body}</Link>
+            ) : (
+              <div className="flex items-center gap-3 p-1.5">{body}</div>
+            )}
+          </li>
+        );
       })}
     </ol>
   );
 }
 
-function EmptyState({ icon: Icon, title, detail, action }: { icon: LucideIcon; title: string; detail: string; action?: React.ReactNode }) {
-  return <div className="flex min-h-52 flex-col items-center justify-center px-4 text-center"><span className="grid size-11 place-items-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-2)] text-[var(--brand-primary)]"><Icon size={19} /></span><h3 className="overview-display mt-4 text-base font-semibold text-[var(--text-primary)]">{title}</h3><p className="mt-1 max-w-sm text-xs leading-5 text-[var(--text-muted)]">{detail}</p>{action && <div className="mt-4">{action}</div>}</div>;
+/* ── Shared states ────────────────────────────────────────────────────────── */
+
+function CompactEmpty({
+  icon: Icon,
+  title,
+  detail,
+  action,
+}: {
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--surface-2)] p-4">
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--surface-1)] text-[var(--brand-primary)]">
+        <Icon size={17} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{detail}</p>
+        {action && <div className="mt-2">{action}</div>}
+      </div>
+    </div>
+  );
 }
 
 function SectionError({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return <div className="flex min-h-44 flex-col items-center justify-center rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] px-5 text-center"><AlertTriangle size={20} className="text-[var(--warning-text)]" /><p className="mt-3 text-sm font-semibold text-[var(--warning-text)]">{message}</p><p className="mt-1 text-xs text-[var(--warning-text)]">Other Overview sections remain available.</p>{onRetry && <button onClick={onRetry} className="mt-4 min-h-11 rounded-xl border border-[var(--warning-border)] px-4 text-xs font-bold text-[var(--warning-text)] hover:bg-black/5 dark:hover:bg-white/5">Retry section data</button>}</div>;
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-bg)] p-4">
+      <div className="flex items-start gap-2.5">
+        <AlertTriangle size={17} className="mt-0.5 shrink-0 text-[var(--warning-text)]" />
+        <div>
+          <p className="text-sm font-semibold text-[var(--warning-text)]">{message}</p>
+          <p className="mt-0.5 text-[11px] text-[var(--warning-text)]">Other analytics remain available.</p>
+        </div>
+      </div>
+      {onRetry && (
+        <button onClick={onRetry} className="min-h-9 rounded-lg border border-[var(--warning-border)] px-3 text-xs font-bold text-[var(--warning-text)] hover:bg-black/5 dark:hover:bg-white/5">
+          Retry section
+        </button>
+      )}
+    </div>
+  );
 }
 
 function OverviewSkeleton() {
   return (
-    <div className="mx-auto max-w-[1680px] space-y-5" aria-label="Loading Growth Command Center" role="status">
-      <div className="space-y-2"><div className="h-3 w-24 animate-pulse rounded bg-[var(--surface-2)]" /><div className="h-7 w-64 animate-pulse rounded bg-[var(--surface-2)]" /></div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{Array.from({ length: 6 }).map((_, index) => <div key={index} className="h-32 animate-pulse rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)]" />)}</div>
-      <div className="grid grid-cols-12 gap-5"><div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] lg:col-span-5" /><div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] lg:col-span-7" /><div className="col-span-12 h-80 animate-pulse rounded-[20px] bg-[var(--surface-1)] lg:col-span-5" /><div className="col-span-12 h-80 animate-pulse rounded-[20px] bg-[var(--surface-1)] lg:col-span-7" /><div className="col-span-12 h-64 animate-pulse rounded-[20px] bg-[var(--surface-1)]" /></div>
-      <span className="sr-only">Loading lead, campaign, delivery, clinic, advertising, and activity data.</span>
+    <div className="mx-auto max-w-[1600px]" aria-label="Loading Growth Command Center" role="status">
+      <div className="space-y-2">
+        <div className="h-3 w-24 animate-pulse rounded bg-[var(--surface-2)]" />
+        <div className="h-7 w-64 animate-pulse rounded bg-[var(--surface-2)]" />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-28 animate-pulse rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)]" />
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-12 gap-4">
+        <div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] xl:col-span-4" />
+        <div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] xl:col-span-8" />
+        <div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] xl:col-span-4" />
+        <div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] xl:col-span-4" />
+        <div className="col-span-12 h-72 animate-pulse rounded-[20px] bg-[var(--surface-1)] xl:col-span-4" />
+      </div>
+      <span className="sr-only">Loading lead, campaign, delivery, clinic and advertising analytics.</span>
     </div>
   );
 }
 
 function OverviewErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div className="mx-auto flex min-h-[55vh] max-w-xl flex-col items-center justify-center text-center"><span className="grid size-14 place-items-center rounded-full bg-[var(--danger-bg)] text-[var(--danger-text)]"><AlertTriangle size={24} /></span><h2 className="overview-display mt-5 text-2xl font-semibold text-[var(--text-primary)]">The Overview could not be loaded</h2><p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{message || "The dashboard data request did not complete."}</p><button onClick={onRetry} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand-primary)] px-5 text-sm font-bold text-[var(--primary-foreground)]"><RefreshCw size={15} /> Retry Overview</button></div>;
+  return (
+    <div className="mx-auto flex min-h-[55vh] max-w-xl flex-col items-center justify-center text-center">
+      <span className="grid size-14 place-items-center rounded-full bg-[var(--danger-bg)] text-[var(--danger-text)]">
+        <AlertTriangle size={24} />
+      </span>
+      <h2 className="overview-display mt-5 text-2xl font-semibold text-[var(--text-primary)]">The Overview could not be loaded</h2>
+      <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">{message || "The dashboard data request did not complete."}</p>
+      <button onClick={onRetry} className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand-primary)] px-5 text-sm font-bold text-[var(--primary-foreground)]">
+        <RefreshCw size={15} /> Retry Overview
+      </button>
+    </div>
+  );
 }

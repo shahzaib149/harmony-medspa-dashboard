@@ -47,6 +47,10 @@ import {
   normalizeLeadView,
   type LeadView,
 } from "@/lib/leads/view";
+import type {
+  LeadSummaryMetrics,
+  LeadViewCounts,
+} from "@/lib/leads/summary";
 
 const AddLeadsToCampaignModal = dynamic(() => import("@/components/campaigns/AddLeadsToCampaignModal"));
 
@@ -117,7 +121,7 @@ type DateFilter = "all" | "today" | "7" | "30";
 type SentFilter = "all" | "sent" | "not_sent";
 
 const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string }> = [
-  { value: "leads", label: "Leads", empty: "No active Leads found" },
+  { value: "all", label: "All Leads", empty: "No Leads found" },
   { value: "replied", label: "Replied", empty: "No replied Leads yet" },
   { value: "booked", label: "Booked", empty: "No booked Leads yet" },
 ];
@@ -167,15 +171,6 @@ function fullDate(iso: string) {
   });
 }
 
-function withinDateRange(iso: string, range: DateFilter) {
-  if (range === "all") return true;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return false;
-  const now = new Date();
-  if (range === "today") return date.toDateString() === now.toDateString();
-  return now.getTime() - date.getTime() <= Number(range) * 86400000;
-}
-
 function initials(name: string) {
   return (
     name
@@ -190,11 +185,6 @@ function initials(name: string) {
 
 function sourceLabel(source: string) {
   return source || "Unknown";
-}
-
-function trendLabel(count: number, total: number) {
-  if (!total) return "0%";
-  return `${Math.round((count / total) * 100)}%`;
 }
 
 function lastContacted(lead: Lead) {
@@ -237,7 +227,11 @@ function StatusPill({ status }: { status: string }) {
 
 function DeliveryPill({ label, value }: { label: string; value: string }) {
   const sent = isSent(value);
-  const color = sent ? "#22C55E" : value ? "#F59E0B" : DIM;
+  const color = sent
+    ? "var(--success-text)"
+    : value
+      ? "var(--warning-text)"
+      : DIM;
   return (
     <span
       aria-label={`${label}: ${value || "not sent"}`}
@@ -245,8 +239,10 @@ function DeliveryPill({ label, value }: { label: string; value: string }) {
       style={{
         color,
         backgroundColor: sent
-          ? "rgba(34,197,94,0.10)"
-          : "rgba(255,255,255,0.035)",
+          ? "var(--success-bg)"
+          : value
+            ? "var(--warning-bg)"
+            : "var(--surface-2)",
       }}
     >
       <span
@@ -301,7 +297,7 @@ function StatCard({
   color = GOLD,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   meta: string;
   color?: string;
 }) {
@@ -309,11 +305,11 @@ function StatCard({
     <div
       className="min-w-0 rounded-2xl border px-4 py-3"
       style={{
-        background: `linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), ${CARD}`,
+        backgroundColor: CARD,
         borderColor: BORDER,
       }}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <p
           className="truncate text-[10px] font-bold uppercase tracking-[0.08em]"
           style={{ color: DIM }}
@@ -322,14 +318,15 @@ function StatCard({
         </p>
         <span
           className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-          style={{ color, backgroundColor: `${color}18` }}
+          style={{ color, backgroundColor: "var(--surface-2)" }}
         >
           {meta}
         </span>
       </div>
       <p
-        className="mt-2 text-[30px] font-extrabold leading-none"
+        className="mt-2 w-full truncate text-[24px] font-extrabold leading-none sm:text-[30px]"
         style={{ color: TEXT }}
+        title={String(value)}
       >
         {value}
       </p>
@@ -337,21 +334,139 @@ function StatCard({
   );
 }
 
+function SummarySkeleton() {
+  return (
+    <div
+      className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-6"
+      aria-label="Loading Lead summary"
+      role="status"
+    >
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-[92px] animate-pulse rounded-2xl border bg-[var(--surface-1)] sm:h-[100px]"
+          style={{ borderColor: BORDER }}
+        />
+      ))}
+      <span className="sr-only">Loading real Lead summary metrics.</span>
+    </div>
+  );
+}
+
+type SummaryCardData = {
+  label: string;
+  value: number | string;
+  meta: string;
+  color: string;
+};
+
+function summaryCardsFor(
+  view: LeadView,
+  summary: LeadSummaryMetrics | null,
+): SummaryCardData[] {
+  const unavailable = (labels: string[]): SummaryCardData[] =>
+    labels.map((label, index) => ({
+      label,
+      value: "—",
+      meta: "Not available",
+      color: [
+        "var(--brand-primary)",
+        "var(--info)",
+        "var(--warning)",
+        "var(--chart-replied)",
+        "var(--success)",
+        "var(--neutral-text)",
+      ][index],
+    }));
+
+  if (!summary) {
+    if (view === "replied") {
+      return unavailable([
+        "Total Replied",
+        "Received Today",
+        "Booked from Replied",
+        "Not Booked Yet",
+        "Top Source",
+        "Duplicates",
+      ]);
+    }
+    if (view === "booked") {
+      return unavailable([
+        "Total Booked",
+        "Received Today",
+        "Replied + Booked",
+        "Not Replied",
+        "Top Source",
+        "Duplicates",
+      ]);
+    }
+    return unavailable([
+      "Total Leads",
+      "New Today",
+      "Contacted",
+      "Replied",
+      "Booked",
+      "Duplicates",
+    ]);
+  }
+
+  if (view === "replied") {
+    return [
+      { label: "Total Replied", value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
+      { label: "Received Today", value: summary.newToday, meta: "Lead Created At today", color: "var(--info)" },
+      { label: "Booked from Replied", value: summary.booked, meta: "also shown in Booked", color: "var(--success)" },
+      { label: "Not Booked Yet", value: summary.notBooked, meta: "replied, not booked", color: "var(--warning)" },
+      { label: "Top Source", value: summary.topSource ?? "—", meta: summary.topSource ? `${summary.topSourceCount} replied Leads` : "No source data", color: "var(--chart-replied)" },
+      { label: "Duplicates", value: summary.duplicates, meta: "matching records", color: "var(--neutral-text)" },
+    ];
+  }
+
+  if (view === "booked") {
+    return [
+      { label: "Total Booked", value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
+      { label: "Received Today", value: summary.newToday, meta: "Lead Created At today", color: "var(--info)" },
+      { label: "Replied + Booked", value: summary.replied, meta: "also shown in Replied", color: "var(--chart-replied)" },
+      { label: "Not Replied", value: summary.notReplied, meta: "booked, not replied", color: "var(--warning)" },
+      { label: "Top Source", value: summary.topSource ?? "—", meta: summary.topSource ? `${summary.topSourceCount} booked Leads` : "No source data", color: "var(--success)" },
+      { label: "Duplicates", value: summary.duplicates, meta: "matching records", color: "var(--neutral-text)" },
+    ];
+  }
+
+  return [
+    { label: "Total Leads", value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
+    { label: "New Today", value: summary.newToday, meta: "received today", color: "var(--info)" },
+    { label: "Contacted", value: summary.contacted, meta: "status: Contacted", color: "var(--warning)" },
+    { label: "Replied", value: summary.replied, meta: "shown in Replied", color: "var(--chart-replied)" },
+    { label: "Booked", value: summary.booked, meta: "shown in Booked", color: "var(--success)" },
+    { label: "Duplicates", value: summary.duplicates, meta: "matching records", color: "var(--neutral-text)" },
+  ];
+}
+
+type LatestLead = Pick<Lead, "id" | "name" | "source" | "status" | "createdAt">;
+
+type LeadSummaryApiResponse = {
+  summary?: LeadSummaryMetrics | null;
+  viewCounts?: LeadViewCounts | null;
+  latestLead?: LatestLead | null;
+  configured?: boolean;
+  error?: string;
+};
+
 function LeadTicker({
   lead,
   loading,
-  viewLabel,
+  error,
 }: {
-  lead: Lead | null;
+  lead: LatestLead | null;
   loading: boolean;
-  viewLabel: string;
+  error: boolean;
 }) {
   return (
     <div
       className="relative overflow-visible rounded-2xl border px-4 py-3"
       style={{
-        background: `linear-gradient(135deg, rgba(201,168,76,0.12), rgba(45,212,191,0.045) 45%, rgba(255,255,255,0.018)), ${PANEL}`,
-        borderColor: "rgba(201,168,76,0.22)",
+        background: `linear-gradient(135deg, var(--brand-primary-soft), transparent 60%), ${PANEL}`,
+        borderColor: "var(--border-subtle)",
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -371,33 +486,38 @@ function LeadTicker({
               className="text-[10px] font-bold uppercase tracking-[0.1em]"
               style={{ color: GOLD }}
             >
-              Latest in {viewLabel}
+              Latest in Leads
             </p>
             <p className="truncate text-sm font-bold" style={{ color: TEXT }}>
               {lead ? (
                 `${lead.name || "Unnamed lead"} - ${sourceLabel(lead.source)}`
               ) : loading ? (
                 <span
-                  className="inline-block h-4 w-40 animate-pulse rounded bg-white/10"
+                  className="inline-block h-4 w-40 animate-pulse rounded bg-[var(--surface-2)]"
                   aria-label="Loading latest Lead"
                 />
+              ) : error ? (
+                "Latest Lead unavailable"
               ) : (
                 "No Leads yet"
               )}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {lead && <StatusPill status={lead.status} />}
           <div
             className="flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold"
-            style={{ color: MUTED, backgroundColor: "rgba(0,0,0,0.18)" }}
+            style={{ color: MUTED, backgroundColor: "var(--surface-1)" }}
           >
             <Clock3 size={13} />
             {lead
               ? timeAgo(lead.createdAt)
               : loading
                 ? "Loading…"
-                : "No activity"}
+                : error
+                  ? "Not available"
+                  : "No activity"}
           </div>
         </div>
       </div>
@@ -1046,7 +1166,7 @@ function AddLeadModal({
 
   if (!open) return null;
   const fieldStyle = {
-    backgroundColor: "rgba(255,255,255,0.035)",
+    backgroundColor: "var(--input-bg)",
     borderColor: BORDER_SOFT,
     color: TEXT,
   };
@@ -1083,9 +1203,9 @@ function AddLeadModal({
         className="relative flex h-dvh max-h-dvh w-full max-w-[590px] flex-col overflow-hidden border sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl"
         style={{
           background:
-            "linear-gradient(145deg, rgba(201,168,76,.08), transparent 34%), #0D0D12",
-          borderColor: "rgba(201,168,76,.25)",
-          boxShadow: "0 35px 110px rgba(0,0,0,.7)",
+            "linear-gradient(145deg, var(--brand-primary-soft), transparent 34%), var(--surface-raised)",
+          borderColor: "var(--border-strong)",
+          boxShadow: "var(--shadow-modal)",
         }}
       >
         <div
@@ -1169,16 +1289,16 @@ function AddLeadModal({
                     setErrors({ ...errors, [item.key]: undefined });
                   }}
                   placeholder={item.placeholder}
-                  className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10"
+                  className="h-11 w-full rounded-xl border px-3 text-sm outline-none transition placeholder:text-[var(--text-muted)] focus-visible:border-[var(--focus)] focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
                   style={{
                     ...fieldStyle,
                     borderColor: errors[item.key]
-                      ? "rgba(248,113,113,.55)"
+                      ? "var(--danger-border)"
                       : BORDER_SOFT,
                   }}
                 />
                 {errors[item.key] && (
-                  <span className="mt-1 block text-xs text-[#F87171]">
+                  <span className="mt-1 block text-xs text-[var(--danger-text)]">
                     {errors[item.key]}
                   </span>
                 )}
@@ -1198,16 +1318,16 @@ function AddLeadModal({
               onChange={(e) => setForm({ ...form, message: e.target.value })}
               rows={4}
               placeholder="Add context, treatment interest, or follow-up notes..."
-              className="w-full resize-none rounded-xl border px-3 py-3 text-sm outline-none focus:border-[#C9A84C]/60 focus:ring-2 focus:ring-[#C9A84C]/10"
+              className="w-full resize-none rounded-xl border px-3 py-3 text-sm outline-none transition placeholder:text-[var(--text-muted)] focus-visible:border-[var(--focus)] focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
               style={fieldStyle}
             />
           </label>
           {error && (
             <div
-              className="flex items-start gap-2 rounded-xl border p-3 text-sm text-[#F87171]"
+              className="flex items-start gap-2 rounded-xl border p-3 text-sm text-[var(--danger-text)]"
               style={{
-                backgroundColor: "rgba(248,113,113,.08)",
-                borderColor: "rgba(248,113,113,.25)",
+                backgroundColor: "var(--danger-bg)",
+                borderColor: "var(--danger-border)",
               }}
             >
               <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -1215,15 +1335,15 @@ function AddLeadModal({
             </div>
           )}
           <div
-            className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-2 border-t bg-[#0D0D12] px-4 pb-1 pt-4 min-[380px]:flex-row min-[380px]:justify-end sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pt-5"
-            style={{ borderColor: BORDER }}
+            className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-2 border-t px-4 pb-1 pt-4 min-[380px]:flex-row min-[380px]:justify-end sm:static sm:mx-0 sm:px-0 sm:pt-5"
+            style={{ borderColor: BORDER, backgroundColor: "var(--surface-raised)" }}
           >
             <button
               type="button"
               onClick={onClose}
               disabled={saving}
               className="min-h-11 rounded-xl border px-4 py-2.5 text-sm font-bold disabled:opacity-40"
-              style={{ color: MUTED, borderColor: BORDER_SOFT }}
+              style={{ color: TEXT, borderColor: BORDER_SOFT, backgroundColor: CARD }}
             >
               Cancel
             </button>
@@ -1232,8 +1352,8 @@ function AddLeadModal({
               disabled={saving}
               className="flex min-h-11 min-w-[126px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-extrabold disabled:cursor-not-allowed disabled:opacity-60"
               style={{
-                color: "#08080B",
-                background: "linear-gradient(135deg, #E0C36B, #C9A84C)",
+                color: "var(--primary-foreground)",
+                backgroundColor: "var(--brand-primary)",
               }}
             >
               {saving ? (
@@ -1279,15 +1399,39 @@ export default function LeadsClient() {
   const campaignFilter = searchParams.get("campaign")?.trim() || "all";
   const campaignStatusFilter = searchParams.get("campaignStatus")?.trim() || "all";
   const campaignStepFilter = searchParams.get("campaignStep")?.trim() || "all";
+  const filterQuery = useMemo(() => {
+    const params = new URLSearchParams({ view: activeView });
+    if (searchQuery) params.set("search", searchQuery);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (sourceFilter !== "all") params.set("source", sourceFilter);
+    if (smsFilter !== "all") params.set("smsStatus", smsFilter);
+    if (emailFilter !== "all") params.set("emailStatus", emailFilter);
+    if (campaignFilter !== "all") params.set("campaign", campaignFilter);
+    if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
+    if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
+    const now = new Date();
+    if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
+    if (dateFilter === "7" || dateFilter === "30") {
+      const from = new Date(now);
+      from.setDate(from.getDate() - Number(dateFilter));
+      params.set("dateFrom", from.toISOString().slice(0, 10));
+    }
+    return params.toString();
+  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, searchQuery, smsFilter, sourceFilter, statusFilter]);
   const cachedLeads = useDashboardCachedData<{ leads?: Lead[]; view?: LeadView; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number }>(
     DATA_CACHE_KEYS.leads,
   );
-  const useCachedFirstPage = pageSize === 20 && currentPage === 1 && activeView === "leads" && cachedLeads?.view === "leads" && !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all";
+  const useCachedFirstPage = pageSize === 20 && currentPage === 1 && activeView === "all" && cachedLeads?.view === "all" && !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all";
   const [leads, setLeads] = useState<Lead[]>(() => useCachedFirstPage ? cachedLeads?.leads ?? [] : []);
-  const [latestLeadOverall, setLatestLeadOverall] = useState<Lead | null>(() => useCachedFirstPage ? cachedLeads?.leads?.[0] ?? null : null);
   const [loading, setLoading] = useState(() => !useCachedFirstPage);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leadSummary, setLeadSummary] = useState<LeadSummaryMetrics | null>(null);
+  const [viewCounts, setViewCounts] = useState<LeadViewCounts | null>(null);
+  const [latestLeadOverall, setLatestLeadOverall] = useState<LatestLead | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryRefreshing, setSummaryRefreshing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [search, setSearch] = useState(searchQuery);
   const [cursorHistory, setCursorHistory] = useState<Array<string | null>>(() => {
     const history = Array<string | null>(currentPage).fill(null);
@@ -1297,6 +1441,8 @@ export default function LeadsClient() {
   const [nextCursor, setNextCursor] = useState<string | null>(cachedLeads?.nextCursor ?? null);
   const [visibleRange, setVisibleRange] = useState({ from: cachedLeads?.visibleFrom ?? (leads.length ? 1 : 0), to: cachedLeads?.visibleTo ?? leads.length });
   const requestRef = useRef<AbortController | null>(null);
+  const summaryRequestRef = useRef<AbortController | null>(null);
+  const hasLoadedRowsRef = useRef(useCachedFirstPage);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1342,13 +1488,11 @@ export default function LeadsClient() {
   }, [activeView, router, searchParams]);
 
   function setFilterParam(key: string, value: string) {
-    setLoading(true);
     setCursorHistory([null]);
     updateQuery({ [key]: value });
   }
 
   function clearFilters(clearSearch = false) {
-    setLoading(true);
     setCursorHistory([null]);
     updateQuery({
       campaign: null,
@@ -1373,7 +1517,6 @@ export default function LeadsClient() {
   useEffect(() => {
     if (search.trim() === searchQuery) return;
     const timer = window.setTimeout(() => {
-      setLoading(true);
       setCursorHistory([null]);
       updateQuery({ search: search.trim() || null });
     }, 300);
@@ -1417,23 +1560,11 @@ export default function LeadsClient() {
     else setRefreshing(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ view: activeView, pageSize: String(pageSize), page: String(pageNumber), sort: "newest" });
+      const params = new URLSearchParams(filterQuery);
+      params.set("pageSize", String(pageSize));
+      params.set("page", String(pageNumber));
+      params.set("sort", "newest");
       if (cursor) params.set("cursor", cursor);
-      if (searchQuery) params.set("search", searchQuery);
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (sourceFilter !== "all") params.set("source", sourceFilter);
-      if (smsFilter !== "all") params.set("smsStatus", smsFilter);
-      if (emailFilter !== "all") params.set("emailStatus", emailFilter);
-      if (campaignFilter !== "all") params.set("campaign", campaignFilter);
-      if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
-      if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
-      const now = new Date();
-      if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
-      if (dateFilter === "7" || dateFilter === "30") {
-        const from = new Date(now);
-        from.setDate(from.getDate() - Number(dateFilter));
-        params.set("dateFrom", from.toISOString().slice(0, 10));
-      }
       const res = await fetch(`/api/airtable/leads?${params}`, {
         cache: "no-store",
         signal: controller.signal,
@@ -1442,20 +1573,67 @@ export default function LeadsClient() {
       if (!res.ok || data.error)
         throw new Error(data.error ?? "Could not load leads");
       setLeads(data.leads ?? []);
-      if (pageNumber === 1) setLatestLeadOverall(data.leads?.[0] ?? null);
       setNextCursor(data.nextCursor ?? null);
       setVisibleRange({ from: data.visibleFrom ?? 0, to: data.visibleTo ?? 0 });
-      if (pageNumber === 1 && pageSize === 20 && activeView === "leads" && !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all") setCachedData(DATA_CACHE_KEYS.leads, data);
+      if (pageNumber === 1 && pageSize === 20 && activeView === "all" && !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all") setCachedData(DATA_CACHE_KEYS.leads, data);
       return true;
     } catch (event) {
       if (event instanceof DOMException && event.name === "AbortError") return false;
       setError(String(event));
       return false;
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestRef.current === controller) {
+        hasLoadedRowsRef.current = true;
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, pageSize, searchQuery, setLeads, smsFilter, sourceFilter, statusFilter]);
+  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, filterQuery, pageSize, searchQuery, setLeads, smsFilter, sourceFilter, statusFilter]);
+
+  const loadSummary = useCallback(async (showLoading = true) => {
+    summaryRequestRef.current?.abort();
+    const controller = new AbortController();
+    summaryRequestRef.current = controller;
+    if (showLoading) {
+      setSummaryLoading(true);
+      setLeadSummary(null);
+      setViewCounts(null);
+    } else {
+      setSummaryRefreshing(true);
+    }
+    setSummaryError(null);
+    try {
+      const response = await fetch(`/api/airtable/leads/summary?${filterQuery}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const data = (await response.json()) as LeadSummaryApiResponse;
+      if (!response.ok || data.error) {
+        throw new Error(data.error ?? "Lead summary could not be loaded.");
+      }
+      if (data.configured === false || !data.summary || !data.viewCounts) {
+        throw new Error("Airtable Lead data is not available.");
+      }
+      setLeadSummary(data.summary);
+      setViewCounts(data.viewCounts);
+      setLatestLeadOverall(data.latestLead ?? null);
+      return true;
+    } catch (event) {
+      if (event instanceof DOMException && event.name === "AbortError") return false;
+      setLeadSummary(null);
+      setViewCounts(null);
+      setLatestLeadOverall(null);
+      setSummaryError(
+        event instanceof Error ? event.message : "Lead summary could not be loaded.",
+      );
+      return false;
+    } finally {
+      if (summaryRequestRef.current === controller) {
+        setSummaryLoading(false);
+        setSummaryRefreshing(false);
+      }
+    }
+  }, [filterQuery]);
 
   useEffect(() => {
     setCursorHistory((current) => {
@@ -1463,25 +1641,35 @@ export default function LeadsClient() {
       next[pageIndex] = currentCursor;
       return next;
     });
-    void load(!useCachedFirstPage, currentCursor, currentPage);
+    void load(!hasLoadedRowsRef.current, currentCursor, currentPage);
     return () => requestRef.current?.abort();
   }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, currentCursor, currentPage, dateFilter, emailFilter, pageSize, searchQuery, smsFilter, sourceFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const refresh = () => void load(false, currentCursor, currentPage);
+    void loadSummary(true);
+    return () => summaryRequestRef.current?.abort();
+  }, [loadSummary]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void Promise.all([
+        load(false, currentCursor, currentPage),
+        loadSummary(false),
+      ]);
+    };
     window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
     return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
-  }, [currentCursor, currentPage, load]);
+  }, [currentCursor, currentPage, load, loadSummary]);
 
   const duplicateKeys = useMemo(() => {
     const emailCounts = new Map<string, number>();
     const phoneCounts = new Map<string, number>();
-    for (const lead of leads) {
+    leads.forEach((lead) => {
       const email = normalize(lead.email);
       const phone = normalizePhone(lead.phone);
       if (email) emailCounts.set(email, (emailCounts.get(email) ?? 0) + 1);
       if (phone) phoneCounts.set(phone, (phoneCounts.get(phone) ?? 0) + 1);
-    }
+    });
     return { emailCounts, phoneCounts };
   }, [leads]);
 
@@ -1490,6 +1678,8 @@ export default function LeadsClient() {
       const email = normalize(lead.email);
       const phone = normalizePhone(lead.phone);
       return Boolean(
+        lead.duplicate ||
+        lead.status.toLowerCase() === "duplicate" ||
         (email && (duplicateKeys.emailCounts.get(email) ?? 0) > 1) ||
         (phone && (duplicateKeys.phoneCounts.get(phone) ?? 0) > 1),
       );
@@ -1511,15 +1701,6 @@ export default function LeadsClient() {
   }, [leads, sourceFilter]);
 
   const filtered = leads;
-
-  const todayCount = leads.filter((lead) =>
-    withinDateRange(lead.createdAt, "today"),
-  ).length;
-  const contactedCount = leads.filter(
-    (lead) => lead.status === "Contacted",
-  ).length;
-  const bookedCount = leads.filter((lead) => lead.status === "Booked").length;
-  const duplicateCount = leads.filter(isDuplicateLead).length;
   const filterChips = [
     campaignFilter !== "all" ? { key: "campaign", label: `Campaign: ${campaignFilter === "speed-to-lead" ? "Speed-to-Lead" : campaignFilter === "14-day-nurture" ? "14-Day Nurture" : "None"}` } : null,
     campaignStatusFilter !== "all" ? { key: "campaignStatus", label: `Campaign status: ${campaignStatusFilter}` } : null,
@@ -1562,7 +1743,7 @@ export default function LeadsClient() {
       const data = await res.json().catch(() => ({})) as { error?: string; lead?: Lead };
       if (!res.ok || data.error) throw new Error(data.error ?? "Could not update status");
       applyLeadUpdate(data.lead ?? { ...lead, status });
-      await load(false, currentCursor, currentPage);
+      await reloadRowsAndSummary();
     } catch (event) {
       applyLeadUpdate(lead);
       await load(false, currentCursor, currentPage);
@@ -1575,9 +1756,20 @@ export default function LeadsClient() {
     window.setTimeout(() => setToast(null), 4000);
   }
 
+  async function reloadRowsAndSummary(
+    cursor: string | null = currentCursor,
+    pageNumber = currentPage,
+  ) {
+    const [rowsLoaded] = await Promise.all([
+      load(false, cursor, pageNumber),
+      loadSummary(false),
+    ]);
+    return rowsLoaded;
+  }
+
   async function refreshLeads() {
     if (refreshing) return;
-    const refreshed = await load(false, currentCursor, currentPage);
+    const refreshed = await reloadRowsAndSummary();
     showToast(
       refreshed ? "success" : "error",
       refreshed ? "Leads refreshed." : "Could not refresh Leads.",
@@ -1600,8 +1792,12 @@ export default function LeadsClient() {
       setAddModalOpen(false);
       showToast("success", "Lead added successfully.");
       setCursorHistory([null]);
-      if (currentPage > 1 || currentCursor) updateQuery({});
-      else await load(false, null, 1);
+      if (currentPage > 1 || currentCursor) {
+        void loadSummary(false);
+        updateQuery({});
+      } else {
+        await reloadRowsAndSummary(null, 1);
+      }
     } catch (event) {
       setAddError(
         event instanceof Error ? event.message : "Could not create lead",
@@ -1676,8 +1872,12 @@ export default function LeadsClient() {
         `${data.created ?? imported.length} leads imported successfully.`,
       );
       setCursorHistory([null]);
-      if (currentPage > 1 || currentCursor) updateQuery({});
-      else await load(false, null, 1);
+      if (currentPage > 1 || currentCursor) {
+        void loadSummary(false);
+        updateQuery({});
+      } else {
+        await reloadRowsAndSummary(null, 1);
+      }
     } catch (event) {
       showToast(
         "error",
@@ -1705,7 +1905,7 @@ export default function LeadsClient() {
       if (!res.ok || data.error)
         throw new Error(data.error ?? "Could not update replied status");
       applyLeadUpdate(data.lead ?? optimisticLead);
-      await load(false, currentCursor, currentPage);
+      await reloadRowsAndSummary();
     } catch (event) {
       applyLeadUpdate(lead);
       await load(false, currentCursor, currentPage);
@@ -1776,9 +1976,10 @@ export default function LeadsClient() {
     if (leads.length === 1 && pageIndex > 0) {
       const previousIndex = pageIndex - 1;
       const previousCursor = cursorHistory[previousIndex] ?? null;
+      void loadSummary(false);
       updateQuery({ cursor: previousCursor, page: String(previousIndex + 1) }, { push: true, resetPagination: false });
     } else {
-      await load(false, currentCursor, currentPage);
+      await reloadRowsAndSummary();
     }
   }
 
@@ -1819,8 +2020,8 @@ export default function LeadsClient() {
       />
       <LeadTicker
         lead={latestLeadOverall}
-        loading={loading || refreshing}
-        viewLabel={activeViewOption.label}
+        loading={summaryLoading}
+        error={Boolean(summaryError)}
       />
 
       {toast && (
@@ -1851,51 +2052,18 @@ export default function LeadsClient() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        <StatCard
-          label="Leads on this page"
-          value={leads.length}
-          meta={visibleRange.from ? `${visibleRange.from}–${visibleRange.to} visible` : "No visible rows"}
-          color={GOLD}
-        />
-        <StatCard
-          label="New today"
-          value={todayCount}
-          meta={`${trendLabel(todayCount, leads.length)} of page`}
-          color="#60A5FA"
-        />
-        <StatCard
-          label="Contacted"
-          value={contactedCount}
-          meta={`${trendLabel(contactedCount, leads.length)} of page`}
-          color="#F59E0B"
-        />
-        <StatCard
-          label="Booked"
-          value={bookedCount}
-          meta={`${trendLabel(bookedCount, leads.length)} of page`}
-          color="#22C55E"
-        />
-        <StatCard
-          label="Duplicates"
-          value={duplicateCount}
-          meta="on this page"
-          color="#A1A1AA"
-        />
-      </div>
-
       <div
         className="relative rounded-2xl border p-3 sm:p-4"
         style={{
-          background: `linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), ${PANEL}`,
+          backgroundColor: PANEL,
           borderColor: BORDER,
         }}
       >
-        <div className="overflow-x-auto pb-1">
+        <div className="pb-1">
           <div
             role="tablist"
             aria-label="Lead views"
-            className="grid min-w-[300px] grid-cols-3 gap-1 rounded-xl border p-1"
+            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1"
             style={{ borderColor: BORDER, backgroundColor: CARD }}
           >
             {VIEW_OPTIONS.map((option) => {
@@ -1908,27 +2076,68 @@ export default function LeadsClient() {
                   aria-selected={active}
                   onClick={() => {
                     if (active) return;
-                    setLoading(true);
                     setCursorHistory([null]);
                     updateQuery({ view: option.value }, { push: true });
                   }}
-                  className="relative min-h-10 rounded-lg px-3 text-sm font-bold outline-none transition focus-visible:ring-2"
+                  className="relative min-h-10 rounded-lg px-1.5 text-xs font-bold outline-none transition focus-visible:ring-2 sm:px-3 sm:text-sm"
                   style={{
                     color: active ? "var(--brand-primary-strong)" : MUTED,
                     backgroundColor: active ? "var(--brand-primary-soft)" : "transparent",
                   }}
                 >
-                  <span className="inline-flex items-center gap-2">
+                  <span className="inline-flex max-w-full items-center gap-1 sm:gap-2">
                     <span
-                      className="size-1.5 rounded-full"
+                      className="hidden size-1.5 rounded-full sm:inline-block"
                       style={{ backgroundColor: active ? GOLD : "var(--border-strong)" }}
                     />
-                    {option.label}
+                    <span className="truncate">{option.label}</span>
+                    {viewCounts && (
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums"
+                        style={{ backgroundColor: "var(--surface-2)", color: MUTED }}
+                      >
+                        {viewCounts[option.value]}
+                      </span>
+                    )}
                   </span>
                 </button>
               );
             })}
           </div>
+          {activeView === "all" && (
+            <p className="mt-2 text-[11px] leading-4" style={{ color: MUTED }}>
+              All Leads includes replied and booked Leads.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3" aria-busy={summaryLoading || summaryRefreshing}>
+          {summaryError && (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-xl border p-3 text-xs"
+              role="alert"
+              style={{
+                backgroundColor: "var(--warning-bg)",
+                borderColor: "var(--warning-border)",
+                color: "var(--warning-text)",
+              }}
+            >
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold">Lead summary could not be loaded.</p>
+                <p className="mt-0.5 opacity-80">{summaryError}</p>
+              </div>
+            </div>
+          )}
+          {summaryLoading ? (
+            <SummarySkeleton />
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {summaryCardsFor(activeView, leadSummary).map((card) => (
+                <StatCard key={card.label} {...card} />
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
@@ -2739,7 +2948,9 @@ export default function LeadsClient() {
           style={{ borderColor: BORDER, backgroundColor: CARD }}
         >
           <p className="text-sm font-semibold tabular-nums" style={{ color: MUTED }}>
-            {visibleRange.from ? `Showing ${visibleRange.from}–${visibleRange.to}` : "Showing 0 leads"}
+            {visibleRange.from
+              ? `Showing ${visibleRange.from}–${visibleRange.to}${leadSummary ? ` of ${leadSummary.total}` : ""} leads`
+              : "Showing 0 leads"}
           </p>
           <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
             <label className="flex items-center gap-2 text-xs font-bold" style={{ color: MUTED }}>
@@ -2794,7 +3005,7 @@ export default function LeadsClient() {
         onClose={() => setSelectedLead(null)}
         onStatusChange={(updated) => {
           applyLeadUpdate(updated);
-          void load(false, currentCursor, currentPage);
+          void reloadRowsAndSummary();
         }}
         canUpdate={canUpdateLeads}
         canDelete={canDeleteLeads}
@@ -2806,6 +3017,7 @@ export default function LeadsClient() {
           );
           setSelectedLead(updated);
           showToast("success", "Lead updated");
+          void reloadRowsAndSummary();
         }}
         onAddToCampaign={role === "admin" ? setCampaignLead : undefined}
       />
@@ -2814,7 +3026,7 @@ export default function LeadsClient() {
         initialLeadId={campaignLead?.id}
         onClose={() => setCampaignLead(null)}
         onComplete={() => {
-          void load(false);
+          void reloadRowsAndSummary(null, 1);
           showToast("success", "Campaign enrollment updated");
         }}
       />}

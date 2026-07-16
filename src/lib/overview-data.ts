@@ -91,6 +91,37 @@ type Period = {
   previousLabel: string;
 };
 
+function selectFields(fields: string[]) {
+  const params = new URLSearchParams();
+  fields.forEach((field) => params.append("fields[]", field));
+  return params;
+}
+
+const OVERVIEW_FIELDS = {
+  leads: [
+    "Name",
+    "Email",
+    "Phone",
+    "Status",
+    "Source",
+    "Replied",
+    "Lead Created At",
+    "Last Contacted At",
+    "Email Sent Status",
+    "SMS Sent Status",
+  ],
+  enrollments: ["Lead", "Status", "Current Step", "Next Send At", "Last Sent At", "Created At"],
+  messages: [
+    "Recipient Lead",
+    "Channel",
+    "Sequence",
+    "Sequence Step",
+    "Delivery Status",
+    "Sent At",
+  ],
+  clinic: ["Month", "Total Visits", "New Patients", "Updated At"],
+} as const;
+
 function periodFor(key: OverviewPeriodKey): Period {
   const now = DateTime.now().setZone(ZONE);
   if (key !== "month") {
@@ -838,10 +869,17 @@ export async function getOverviewData(
   const auditPromise = auditActivity(request, period);
   const [leadResult, enrollmentResult, messageResult, clinicResult, adsResult, creativeResult] =
     await Promise.allSettled([
-      airtable ? listRecords("Leads") : unavailable(),
-      airtable ? listRecords("Nurture Enrollments") : unavailable(),
-      airtable ? listRecords("Message Log") : unavailable(),
-      airtable ? listRecords(process.env.AIRTABLE_CLINIC_METRICS_TABLE_ID?.trim() || "Clinic Metrics") : unavailable(),
+      airtable ? listRecords("Leads", selectFields([...OVERVIEW_FIELDS.leads])) : unavailable(),
+      airtable
+        ? listRecords("Nurture Enrollments", selectFields([...OVERVIEW_FIELDS.enrollments]))
+        : unavailable(),
+      airtable ? listRecords("Message Log", selectFields([...OVERVIEW_FIELDS.messages])) : unavailable(),
+      airtable
+        ? listRecords(
+            process.env.AIRTABLE_CLINIC_METRICS_TABLE_ID?.trim() || "Clinic Metrics",
+            selectFields([...OVERVIEW_FIELDS.clinic]),
+          )
+        : unavailable(),
       airtable && process.env.AIRTABLE_BASE_ID
         ? fetchAllRecords("Google Ads Campaign Analytics")
         : unavailable(),

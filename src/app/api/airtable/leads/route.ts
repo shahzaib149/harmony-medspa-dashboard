@@ -3,7 +3,8 @@ import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from 
 import type { LeadCampaignSummary } from "@/lib/types/campaigns";
 import { normalizeUsPhone } from "@/lib/airtable/leads-base";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
-import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
+import { normalizeLeadView } from "@/lib/leads/view";
+import { buildLeadFormula } from "@/lib/leads/query";
 
 const TABLE_NAME = "Leads";
 const BASE_ID    = AIRTABLE_LEADS_BASE_ID;
@@ -30,6 +31,7 @@ export interface Lead {
   replied: boolean;
   notes: string;
   lastContactedAt: string;
+  duplicate: boolean;
   campaigns: LeadCampaignSummary[];
 }
 
@@ -64,48 +66,6 @@ function campaignSummaries(fields: Record<string, unknown>): LeadCampaignSummary
 
 const PAGE_SIZES = new Set([20, 30, 50]);
 
-function formulaString(value: string) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').slice(0, 150);
-}
-
-function leadFormula(searchParams: URLSearchParams) {
-  const filters: string[] = [leadViewFormula(normalizeLeadView(searchParams.get("view")))];
-  const search = searchParams.get("search")?.trim();
-  if (search) {
-    const term = formulaString(search.toLowerCase());
-    filters.push(`OR(FIND("${term}",LOWER({Name}&""))>0,FIND("${term}",LOWER({Email}&""))>0,FIND("${term}",LOWER({Phone}&""))>0,FIND("${term}",LOWER({Source}&""))>0)`);
-  }
-  const recordId = searchParams.get("recordId")?.trim();
-  if (recordId && /^rec[a-zA-Z0-9]+$/.test(recordId)) filters.push(`RECORD_ID()="${recordId}"`);
-  const exact = (param: string, field: string) => {
-    const value = searchParams.get(param)?.trim();
-    if (value && value.toLowerCase() !== "all") filters.push(`{${field}}="${formulaString(value)}"`);
-  };
-  const status = searchParams.get("status")?.trim();
-  if (status && status.toLowerCase() !== "all") filters.push(status === "Duplicate" ? `OR({Status}="Duplicate",{Duplicate Flag}=TRUE())` : `{Status}="${formulaString(status)}"`);
-  exact("source", "Source");
-  const delivery = (param: string, field: string) => {
-    const value = searchParams.get(param);
-    if (value === "sent") filters.push(`OR(LOWER({${field}}&"")="sent",LOWER({${field}}&"")="delivered")`);
-    if (value === "not_sent") filters.push(`AND(LOWER({${field}}&"")!="sent",LOWER({${field}}&"")!="delivered")`);
-  };
-  delivery("emailStatus", "Email Sent Status");
-  delivery("smsStatus", "SMS Sent Status");
-  const replied = searchParams.get("replied");
-  if (replied === "true" || replied === "false") filters.push(`{Replied}=${replied === "true" ? "TRUE()" : "FALSE()"}`);
-  const campaign = searchParams.get("campaign")?.trim();
-  if (campaign === "speed-to-lead") filters.push(`OR(LOWER({Email Sent Status}&"")="sent",LOWER({Email Sent Status}&"")="delivered",LOWER({SMS Sent Status}&"")="sent",LOWER({SMS Sent Status}&"")="delivered")`);
-  if (campaign === "14-day-nurture") filters.push(`COUNTA({Nurture Enrollments})>0`);
-  if (campaign === "none") filters.push(`AND(COUNTA({Nurture Enrollments})=0,LOWER({Email Sent Status}&"")!="sent",LOWER({Email Sent Status}&"")!="delivered",LOWER({SMS Sent Status}&"")!="sent",LOWER({SMS Sent Status}&"")!="delivered")`);
-  exact("campaignStatus", "Nurture Status");
-  exact("campaignStep", "Nurture Current Step");
-  const dateFrom = searchParams.get("dateFrom");
-  const dateTo = searchParams.get("dateTo");
-  if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) filters.push(`IS_AFTER({Lead Created At},DATEADD(DATETIME_PARSE("${dateFrom}"),-1,'seconds'))`);
-  if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) filters.push(`IS_BEFORE({Lead Created At},DATEADD(DATETIME_PARSE("${dateTo}"),1,'days'))`);
-  return filters.length > 1 ? `AND(${filters.join(",")})` : filters[0];
-}
-
 function mapLead(r: AirtableRecord): Lead {
   return {
     id: r.id,
@@ -126,6 +86,7 @@ function mapLead(r: AirtableRecord): Lead {
     replied: r.fields.Replied === true,
     notes: str(r.fields, "Notes"),
     lastContactedAt: str(r.fields, "Last Contacted At"),
+    duplicate: r.fields["Duplicate Flag"] === true || str(r.fields, "Status").toLowerCase() === "duplicate",
     campaigns: campaignSummaries(r.fields),
   };
 }
@@ -159,7 +120,7 @@ export async function GET(request: Request) {
     pageSize: String(pageSize),
   });
   if (cursor) params.set("offset", cursor);
-  const formula = leadFormula(searchParams);
+  const formula = buildLeadFormula(searchParams);
   if (formula) params.set("filterByFormula", formula);
 
   let data: { records: AirtableRecord[]; offset?: string };

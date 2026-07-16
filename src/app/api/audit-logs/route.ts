@@ -60,6 +60,14 @@ async function exactCount(column?: string, value?: string, since?: string) {
   return count ?? 0;
 }
 
+async function safeExactCount(column?: string, value?: string, since?: string) {
+  try {
+    return await exactCount(column, value, since);
+  } catch {
+    return 0;
+  }
+}
+
 export async function GET(request: Request) {
   let auth: Awaited<ReturnType<typeof requireRole>>;
   try {
@@ -93,38 +101,54 @@ export async function GET(request: Request) {
   const limit = format === "csv" ? 5000 : pageSize;
   const from = format === "csv" ? 0 : (page - 1) * pageSize;
   const to = from + limit - 1;
+  const listColumns = format === "csv"
+    ? "id,created_at,actor_user_id,actor_name,actor_email_masked,actor_role,action,category,resource_type,resource_id,resource_label,summary,before_data,after_data,metadata,result,request_id,source,user_agent,ip_hash"
+    : "id,created_at,actor_user_id,actor_name,actor_email_masked,actor_role,action,category,resource_type,resource_id,resource_label,summary,result,request_id,source";
   let query = service
     .from("audit_logs")
-    .select("id,created_at,actor_user_id,actor_name,actor_email_masked,actor_role,action,category,resource_type,resource_id,resource_label,summary,before_data,after_data,metadata,result,request_id,source,user_agent,ip_hash", { count: "exact" })
+    .select(listColumns, { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
   query = applyFilters(query, options);
-  const { data, count, error } = await query;
-  if (error) return Response.json({ error: "Audit activity could not be loaded" }, { status: 500 });
-  const items = (data ?? []).map((item) => ({
-    ...item,
-    before_data: sanitizeAuditData(item.before_data),
-    after_data: sanitizeAuditData(item.after_data),
-    metadata: sanitizeAuditData(item.metadata),
-  })) as AuditLogRecord[];
-
   if (format === "csv") {
+    const { data, error } = await query;
+    if (error) return Response.json({ error: "Audit activity could not be loaded" }, { status: 500 });
+    const rows = (data ?? []) as unknown as AuditLogRecord[];
+    const items = rows.map((item) => ({
+      ...item,
+      before_data: sanitizeAuditData(item.before_data),
+      after_data: sanitizeAuditData(item.after_data),
+      metadata: sanitizeAuditData(item.metadata),
+    })) as AuditLogRecord[];
     const header = ["Time", "Actor", "Role", "Action", "Category", "Resource", "Result", "Summary", "Request ID"];
-    const rows = items.map((item) => [item.created_at, item.actor_name || item.actor_email_masked || "System", item.actor_role, item.action, item.category, item.resource_label || item.resource_id, item.result, item.summary, item.request_id]);
-    const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const csvRows = items.map((item) => [item.created_at, item.actor_name || item.actor_email_masked || "System", item.actor_role, item.action, item.category, item.resource_label || item.resource_id, item.result, item.summary, item.request_id]);
+    const csv = [header, ...csvRows].map((row) => row.map(csvCell).join(",")).join("\r\n");
     await logAuditEvent({ actor: auth.profile, action: "audit_logs_exported", category: "exports", summary: `Exported ${items.length} audit activities`, metadata: { exported_rows: items.length, filters: options }, request });
     return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="harmony-audit-log-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" } });
   }
 
   const startOfToday = new Date();
   startOfToday.setUTCHours(0, 0, 0, 0);
-  const [today, access, leadChanges, failed] = await Promise.all([
-    exactCount(undefined, undefined, startOfToday.toISOString()),
-    exactCount("category", "authentication"),
-    exactCount("category", "leads"),
-    exactCount("result", "failed"),
-  ]).catch(() => [0, 0, 0, 0]);
-  const { data: profiles } = await service.from("profiles").select("id,full_name,email,role").eq("is_active", true).order("full_name");
+  const [listResult, today, access, leadChanges, failed, profilesResult] = await Promise.all([
+    query,
+    safeExactCount(undefined, undefined, startOfToday.toISOString()),
+    safeExactCount("category", "authentication"),
+    safeExactCount("category", "leads"),
+    safeExactCount("result", "failed"),
+    service.from("profiles").select("id,full_name,email,role").eq("is_active", true).order("full_name"),
+  ]);
+  const { data, count, error } = listResult;
+  if (error) return Response.json({ error: "Audit activity could not be loaded" }, { status: 500 });
+  const rows = (data ?? []) as unknown as AuditLogRecord[];
+  const items = rows.map((item) => ({
+    ...item,
+    before_data: null,
+    after_data: null,
+    metadata: null,
+    user_agent: null,
+    ip_hash: null,
+  })) as AuditLogRecord[];
+  const profiles = profilesResult.data;
 
   return Response.json({
     items,
