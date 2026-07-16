@@ -1,55 +1,74 @@
 # Harmony MedSpa Dashboard - Project Overview
 
+Last updated: July 16, 2026
+
 ## What This Project Is
 
-Harmony MedSpa Dashboard is a private growth and operations dashboard for Harmony MedSpa. It brings together lead management, Google Ads performance, Airtable-backed marketing data, message delivery logs, no-book nurture tracking, AI ad support, pending ad approvals, and integration health checks into one internal web app.
+Harmony MedSpa Dashboard is a private growth and operations dashboard for Harmony MedSpa. It combines lead management, campaign enrollment, email and SMS activity, Google Ads reporting, clinic metrics, AI-assisted ad workflows, staff access, audit history, and integration health in one responsive application.
 
-The goal of the project is to help the clinic and marketing team understand what is happening across their growth systems without jumping between Airtable, Google Ads, Google Business Profile, Make.com, Supabase, and separate lead forms.
+The dashboard is intended to answer practical operational questions:
 
-In simple terms, this app is a command center for:
+- How many leads arrived, replied, and booked?
+- Which leads still need action?
+- Which campaigns are active and where are their leads in the journey?
+- Are automated email and SMS messages being delivered?
+- Which lead sources and ads are performing?
+- Are clinic visits and new-patient totals improving?
+- Who changed data or account access, and when?
+- Are Airtable, Supabase, Google, Anthropic, and the lead webhook configured correctly?
 
-- Tracking medspa leads.
-- Reviewing Google Ads performance.
-- Managing incoming lead form submissions.
-- Reviewing email and SMS automation logs.
-- Tracking the 14-day no-book nurture sequence.
-- Checking whether external integrations are connected.
-- Reviewing AI-generated ad ideas.
-- Approving pending ads created by automation.
-- Supporting future automations such as nurture, rebooking, referrals, and patient reactivation.
+## Current Architecture
 
-## Business Purpose
+The application uses different systems for different responsibilities.
 
-The dashboard is built for a medspa business that depends on fast lead response, paid ads, local reputation, and automated follow-up.
+### Airtable
 
-The main business problems it is designed to solve are:
+Airtable is the primary live operational and reporting data source. It currently stores and serves:
 
-- Staff need to see new leads quickly.
-- Marketing needs to know which Google Ads campaigns, ad groups, creatives, and keywords are performing.
-- The business needs visibility into whether lead automation is working.
-- Staff need visibility into message delivery outcomes from Make.com automations.
-- No-book leads need a clear nurture sequence view so the team can see who is active, stopped, completed, or overdue.
-- The clinic needs a simple settings area to confirm API keys and integrations are healthy.
-- Generated ads and AI suggestions need a place to be reviewed before being used.
-- Future growth workflows need a foundation, including no-book nurture, dormant patient reactivation, rebooking reminders, and referral tracking.
+- Leads.
+- Message Log records.
+- Nurture Enrollments.
+- Clinic Metrics.
+- Google Ads campaign, ad-group, creative, and keyword reporting.
+- Pending ad-review and ad-preview records.
+
+`AIRTABLE_LEADS_BASE_ID` is used for lead operations, message history, nurture enrollment, campaigns, and clinic metrics. `AIRTABLE_BASE_ID` is used for Google Ads reporting and pending ads.
+
+### Supabase
+
+Supabase is now an active part of the application rather than only future scaffolding. It provides:
+
+- Email/password authentication.
+- Staff profiles and the `admin`, `editor`, and `viewer` roles.
+- Server-side role enforcement.
+- The `public.audit_logs` activity table.
+- Server-only campaign-enrollment idempotency claims.
+
+The broader schema in `supabase/migrations/001_initial_schema.sql` still contains planned database-backed workflows, but active leads, messages, nurture activity, clinic metrics, and Google Ads reporting continue to use Airtable.
+
+### Make.com
+
+The public lead form sends submissions to a Make.com webhook. Make.com is expected to handle downstream automation such as writing Airtable records, notifying staff, and triggering SMS or email workflows.
+
+### Google and Anthropic
+
+Google APIs support Google Ads operations and the partially implemented Google Business Profile area. Anthropic powers AI ad suggestions, quick-ad generation, ad drafting, and Google Business reply/post drafting.
 
 ## Tech Stack
 
-The project is a Next.js application using the App Router.
-
-Core technologies:
-
-- Next.js `16.2.9`
-- React `19.2.4`
-- TypeScript
-- Tailwind CSS `4`
-- Recharts for charts
-- Lucide React for icons
-- Airtable API for live marketing and lead data
-- Google APIs for Google Ads and Google Business Profile
-- Anthropic API for AI-generated content
-- Supabase for planned database-backed workflows
-- Make.com webhook for public lead form submissions
+- Next.js `16.2.9` with the App Router.
+- React `19.2.4`.
+- TypeScript.
+- Tailwind CSS `4`.
+- Supabase JS and Supabase SSR.
+- Airtable REST API.
+- Google APIs and Google Ads REST endpoints.
+- Anthropic SDK.
+- Recharts.
+- Lucide React.
+- Luxon for campaign scheduling and time-zone handling.
+- Papa Parse for CSV workflows.
+- Node's built-in test runner through `tsx`.
 
 Main package scripts:
 
@@ -58,37 +77,165 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+npm test
 ```
 
-## Current Application Pages
+## Authentication, Roles, and Security
+
+When Supabase is configured, middleware protects the internal dashboard routes and redirects signed-out users to `/login`. A successful login returns the user to the requested route or `/dashboard`.
+
+The current roles are:
+
+- `admin`: full operational access, staff management, settings, and Audit Log access.
+- `editor`: view and update operational data, delete leads, manage campaign enrollment, and approve ads.
+- `viewer`: read-only dashboard and advertising access.
+
+Route handlers enforce minimum roles on sensitive operations. UI permission gates improve the experience, but server-side checks remain the authority.
+
+Security-related behavior includes:
+
+- Inactive profiles are denied access.
+- Admins cannot deactivate, demote, or delete their own account through staff management.
+- Supabase service-role credentials are kept server-side.
+- Audit Log inserts are server-only; authenticated dashboard users have no direct insert, update, or delete permission on `public.audit_logs`.
+- Audit payloads are sanitized, emails are masked, and optional IP hashing uses `AUDIT_IP_HASH_SALT`.
+- Login, logout, staff changes, password changes, lead mutations, campaign actions, clinic-metric updates, exports, ad actions, and failures can be audited.
+
+If Supabase public configuration is absent, middleware can render pages in local/demo mode, but protected mutation APIs still require valid authentication and role checks.
+
+## Main Navigation
+
+The current sidebar links to:
+
+- Overview.
+- Google Ads.
+- Leads.
+- Campaigns.
+- Audit Log, for admins only.
+- Settings.
+
+Google Business Profile remains hidden from the sidebar until its API access is ready. Older direct Message Logs and Nurture pages remain in the codebase, but the primary workflow is now consolidated under Campaigns.
+
+The layout is responsive, includes a mobile navigation drawer, preloads common dashboard data on navigation intent, and supports light, dark, and system theme preferences. Theme preference is stored locally on the device; light is the default.
+
+## Current Pages
 
 ### `/`
 
-The root page redirects users into the dashboard experience.
+Redirects to `/dashboard`.
+
+### `/login`
+
+Supabase email/password sign-in for dashboard staff. Sign-in and sign-out activity is recorded in the audit system.
 
 ### `/dashboard`
 
-The Overview dashboard gives a high-level snapshot of business and automation performance.
+The Growth Command Center is a live, period-aware overview. Supported ranges are:
 
-It includes:
+- Last 7 days.
+- Last 30 days.
+- Last 90 days.
+- This month.
 
-- Monthly visits.
-- New patients.
-- Total leads.
-- Average speed-to-lead.
-- Booked lead conversion rate.
-- Lead source breakdown chart.
-- Visits vs new patients chart.
-- Active automation status.
-- AI insight preview.
+The selected range is stored in the URL. The page refreshes when revisited and when the browser becomes visible, while short-lived client caching reduces unnecessary navigation delays.
 
-Some overview data currently uses mock data from `src/lib/mock-data.ts`.
+The overview includes:
+
+- Total, contacted, replied, and booked lead KPIs.
+- Booking conversion and average speed-to-lead.
+- Patient-growth trend charts.
+- Lead conversion funnel.
+- Lead-source performance.
+- 14-Day Nurture journey distribution.
+- Message delivery health.
+- Visits and new-patient totals.
+- Google Ads performance.
+- Operational activity by day.
+- Recent activity.
+- Attention signals for delivery failures, disconnected or overdue enrollments, overdue leads, missing contact details, and duplicates.
+
+Each data section handles its own unavailable or empty state so one integration failure does not make the entire overview unusable.
+
+### `/leads`
+
+The Leads page is a live Airtable-backed operational workspace.
+
+It now supports:
+
+- Server-side Airtable filtering and cursor pagination.
+- Page sizes of 20, 30, or 50.
+- All Leads, Replied, and Booked views.
+- Live summary metrics independent of the visible page.
+- Search by name, email, or phone.
+- Status, source, date, email delivery, SMS delivery, campaign, campaign status, and campaign-step filters.
+- Newest/oldest sorting.
+- Direct URLs that preserve filters, pagination state, and the selected lead.
+- Responsive desktop tables and mobile cards.
+- Lead detail, campaign membership, and communication history.
+- Inline status changes and replied-state updates.
+- Editing name, email, phone, source, message, and notes.
+- Manual lead creation.
+- CSV import, limited to 500 leads per request and written in Airtable-supported batches.
+- Filter-aware CSV export, capped at 10,000 records.
+- Duplicate detection using Airtable flags plus normalized email and phone matching.
+- Delete-impact checks before removal.
+- Clinic Metrics updates for monthly visits and new patients.
+- Adding eligible leads to the 14-Day Nurture campaign.
+
+Supported lead statuses are:
+
+- New.
+- Contacted.
+- Booked.
+- Duplicate.
+- Failed.
+- Not Interested.
+
+When Airtable is not configured, read endpoints return a safe empty/unconfigured response. Mutations require Airtable plus an authenticated editor or admin.
+
+### `/campaigns`
+
+Campaigns is the central automation-management area. It currently defines two live campaigns:
+
+- Speed-to-Lead: automatic immediate email and SMS response for new website leads.
+- 14-Day Nurture: manual multi-step follow-up for leads who have not booked or replied.
+
+Campaign cards show status, channels, total leads, active/completed counts, messages sent, campaign-specific metrics, and recent activity.
+
+### `/campaigns/[campaignSlug]`
+
+Campaign detail pages provide Overview, Leads, and Conversations tabs.
+
+The Speed-to-Lead detail view reports processed leads, delivery activity, booked/replied outcomes, and related conversations.
+
+The 14-Day Nurture detail view supports:
+
+- Enrollment metrics and the step funnel.
+- Search, status, and current-step filtering.
+- Responsive enrollment views.
+- Scheduled bulk enrollment of existing leads.
+- Creation and enrollment of new leads in the same workflow.
+- CSV-based enrollment import.
+- Time-zone-aware scheduling in `America/New_York`.
+- Duplicate and ineligible-lead handling.
+- Safe retry/idempotency claims backed by Supabase, with an in-memory fallback.
+- Manual stop actions while retaining reporting history.
+- Detection, review, reconnection, or removal of disconnected enrollment records.
+- Conversation grouping and message-delivery history.
+
+The nurture sequence steps are:
+
+- Day 1 SMS.
+- Day 3 Email.
+- Day 5 SMS.
+- Day 8 Email.
+- Day 12 SMS.
 
 ### `/google-ads-analytics`
 
-This is the main Google Ads analytics area. It reads Airtable-backed Google Ads reporting data through `/api/airtable`.
+The Google Ads workspace combines Airtable-backed reporting with live Google Ads actions and AI assistance.
 
-It includes tabs for:
+Tabs include:
 
 - Campaigns.
 - Ad Groups.
@@ -97,356 +244,122 @@ It includes tabs for:
 - AI Suggestions.
 - Pending Review.
 
-The page supports date windows such as 7, 14, 30, and 90 days. It calculates campaign-level summary metrics including spend, clicks, conversions, ROAS, and latest sync dates.
+Reporting supports 7-, 14-, 30-, and 90-day windows and shows metrics such as spend, impressions, clicks, conversions, CPL, ROAS, status, and synchronization times. Pending ads can be reviewed, and AI tools can generate suggestions and draft ad content.
 
-The Airtable tables used by this area include:
+`/google-ads-analytics/creative-detail` provides creative overview, copy assets, performance signals, and daily performance details for a selected ad.
 
-- `Google Ads Campaign Analytics`
-- `Google Ads Ad Group Analytics`
-- `Google Ads Ad Creative Analytics`
-- `Google Ads Keyword Performance`
-- `Google Ad Preview`
+`/google-ads` redirects to this page, and `/ai-insights` redirects to its AI Suggestions tab.
 
-### `/google-ads-analytics/creative-detail`
+### `/audit-log`
 
-This page shows detail for an individual creative/ad. It pulls creative performance and ad copy data from Airtable so users can inspect headlines, descriptions, URLs, and related ad details.
+The Audit Log is an admin-only, Supabase-backed activity viewer.
 
-### `/leads`
+It provides:
 
-The Leads page is a live Airtable-backed lead management interface.
+- Server pagination with page sizes of 25, 50, or 100.
+- Search across actor, action, resource, and summary.
+- Date, user, role, category, action, result, and resource-type filters.
+- Today, authentication, lead-change, and failed-action summaries.
+- A separate detail request for sanitized before/after data and metadata.
+- CSV export of up to 5,000 matching entries.
 
-It shows:
-
-- Lead list.
-- Status filtering.
-- Date filtering.
-- Sent/not-sent filtering.
-- Search.
-- Lead stats.
-- Last received lead indicator.
-- Lead detail slide-over.
-- Duplicate detection.
-- Email and SMS status.
-- Status update actions.
-
-Lead statuses include:
-
-- New
-- Contacted
-- Booked
-- Duplicate
-- Failed
-- Not Interested
-
-Lead data comes from the Airtable `Leads` table through `/api/airtable/leads`.
-
-If Airtable is not configured in local development, the read-only `GET` endpoint returns an empty lead list instead of crashing the page. Status updates and deletes still require real Airtable configuration and the proper authenticated role.
-
-### `/message-logs`
-
-The Message Logs page is a live Airtable-backed view of email and SMS delivery activity from Make.com automations.
-
-It shows:
-
-- Total message count.
-- Delivery rate.
-- Failed and pending counts.
-- Delivery breakdown.
-- Email vs SMS channel split.
-- Search by recipient, message, or Mandrill ID.
-- Channel, status, and date filters.
-- Message detail slide-over.
-- Linked lead summaries.
-- Mandrill message IDs.
-- Failure reasons when captured.
-
-Message log data comes from the Airtable `Message Log` table through `/api/airtable/message-logs`. The route also resolves linked records from the Airtable `Leads` table so the UI can show recipient names, email addresses, phone numbers, and lead status.
-
-This is a read-only dashboard surface. It can load without an active Supabase browser session, while mutation routes elsewhere remain protected.
-
-### `/nurture`
-
-The No-Book Nurture page tracks the "System 2: 14-Day No-Book Nurture Sequence" workflow for leads who submitted interest but have not booked.
-
-It shows:
-
-- Active sequences.
-- Completed sequences.
-- Stopped sequences.
-- Conversion rate.
-- Average days to book.
-- A step-level nurture funnel.
-- Search by lead name, phone, or email.
-- Status and sequence step filters.
-- Sort controls.
-- Desktop table and mobile cards.
-- Enrollment detail panel.
-- Message timeline per enrollment.
-
-Nurture enrollment data comes from the Airtable `Nurture Enrollments` table through `/api/airtable/nurture`. The route resolves linked `Leads` records for lead name, phone, email, source, status, treatment interest, reply status, and booking date. The detail panel loads related `Message Log` records through `/api/airtable/nurture/[id]/messages`.
-
-The supported nurture steps are:
-
-- Day 1 SMS.
-- Day 3 Email.
-- Day 5 SMS.
-- Day 8 Email.
-- Day 12 SMS.
-
-If Airtable is not configured in local development, the read-only nurture endpoints return empty lists instead of showing red missing-key errors.
-
-### `/lead`
-
-This is the public lead capture form. It is designed for ad traffic or website traffic.
-
-It collects:
-
-- Name.
-- Phone.
-- Email.
-- Treatment interest.
-- Message.
-- UTM source.
-- UTM campaign.
-- UTM medium.
-- Page URL.
-
-On submit, it posts the lead payload to `NEXT_PUBLIC_MAKE_WEBHOOK_URL` if configured. After successful submission, the user is redirected to the PatientNow booking URL.
-
-It includes validation for email and US phone numbers, plus a honeypot field to silently discard bot submissions.
+The active table is `public.audit_logs` from `supabase/migrations/002_audit_logs.sql`. The singular `public.audit_log` in `supabase/auth_full_setup.sql` is legacy setup schema and is not the table read by the current Audit Log page.
 
 ### `/settings`
 
-The Settings page is an internal admin page for operational configuration and integration health.
+Settings now focuses on authenticated account and staff management.
 
-It includes:
+All users can:
 
-- System health summary.
-- Integration status cards.
-- App URL display.
-- Security status.
-- Clinic profile fields.
-- Staff/account access list.
-- Staff invite UI.
-- Automation toggles.
+- Choose light, dark, or system appearance.
+- View their profile and role.
+- Update their display name.
+- Change their password.
+- Review account creation and last-sign-in information.
 
-Settings for staff, clinic profile, and automations are stored in browser `localStorage` for now. Integration health is checked server-side through `/api/settings/status`.
+Admins can also:
 
-### `/google-business`
+- Search and review staff accounts.
+- Add staff with an initial password and role.
+- Edit display name and role.
+- Activate or deactivate access.
+- Reset a staff member's password.
+- Delete staff accounts.
 
-The Google Business Profile page exists in the codebase, but it is currently hidden from the sidebar until Google Business Profile API access is fully ready.
+Staff accounts and profiles are managed through Supabase Auth and `public.profiles`, not browser `localStorage`.
 
-It supports:
+### `/lead`
 
-- Review listing.
-- Average rating display.
-- Review reply drafting.
-- Posting review replies.
-- Local insights.
-- GBP post draft generation.
-- GBP post publishing.
+This is the public lead-capture form used by ad or website traffic. It collects contact details, treatment interest, message text, UTM values, and page URL.
 
-More details are documented in `docs/google-business-profile.md`.
+The form validates email and US phone numbers and includes a honeypot field for bots. It posts to `NEXT_PUBLIC_MAKE_WEBHOOK_URL`, then redirects successful submissions to `NEXT_PUBLIC_PATIENTNOW_BOOKING_URL`.
 
-## Main API Routes
+### Supporting and Hidden Pages
 
-### Airtable Routes
+- `/message-logs` still provides the standalone Airtable-backed delivery-log interface.
+- `/nurture` still provides the earlier standalone nurture view.
+- `/message-log` redirects to the 14-Day Nurture Conversations tab.
+- `/settings/users` redirects to `/settings`.
+- `/google-business` exists but is hidden from navigation pending API readiness.
 
-`/api/airtable`
+## Important API Areas
 
-Fetches Google Ads analytics records from Airtable. It supports table query values such as:
+### Overview
 
-- `campaigns`
-- `ad-groups`
-- `creatives`
-- `keywords`
-- `ad-preview`
+- `GET /api/overview`: builds the live overview response for `7d`, `30d`, `90d`, or `month`.
 
-The route maps Airtable fields into frontend-friendly objects and calculates grouped summaries where needed.
+### Leads and Clinic Metrics
 
-`/api/airtable/leads`
+- `GET /api/airtable/leads`: filtered, sorted, cursor-paginated leads.
+- `POST /api/airtable/leads`: create one lead or import a CSV batch.
+- `PATCH /api/airtable/leads`: update lead fields, status, or replied state.
+- `DELETE /api/airtable/leads`: delete a lead.
+- `GET /api/airtable/leads/summary`: full filtered summary and view counts.
+- `GET /api/airtable/leads/export`: filtered CSV export.
+- `GET /api/airtable/leads/[id]/messages`: communication timeline for one lead.
+- `GET /api/airtable/leads/[id]/delete-impact`: linked-record checks before deletion.
+- `DELETE /api/airtable/leads/[id]`: coordinated lead deletion.
+- `GET|POST /api/airtable/clinic-metrics`: read or upsert monthly clinic totals.
 
-Fetches, updates, and deletes live leads from the Airtable `Leads` table.
+### Campaigns and Messages
 
-Supported methods:
+- `GET /api/airtable/campaigns`: campaign summaries.
+- `GET /api/airtable/campaigns/[campaignSlug]`: campaign detail, leads, and messages.
+- `GET /api/airtable/nurture-enrollments`: enrollment records.
+- `POST /api/airtable/nurture-enrollments/bulk-enroll`: validated, scheduled, idempotent enrollment.
+- `POST /api/airtable/nurture-enrollments/import`: enrollment import.
+- `PATCH|DELETE /api/airtable/nurture-enrollments/[recordId]`: stop, reconnect, update, or remove enrollments.
+- `GET /api/airtable/message-logs`: filtered message-delivery records.
 
-- `GET` fetches leads.
-- `PATCH` updates a lead status.
-- `DELETE` deletes a lead.
+### Authentication and Audit
 
-This route uses `AIRTABLE_LEADS_BASE_ID`, falling back to the known Leads base if the env var is missing.
+- `GET|POST|PATCH|DELETE /api/auth/users`: admin staff management.
+- `POST|DELETE /api/auth/audit-session`: login and logout activity.
+- `POST /api/audit-actions`: account-security audit events.
+- `GET /api/audit-logs`: admin-only list, summary, filtering, pagination, and CSV export.
+- `GET /api/audit-logs/[id]`: sanitized event detail.
 
-`GET` returns an empty lead list when Airtable is not configured locally, so the page can still render. `PATCH` and `DELETE` require Airtable configuration and an authenticated role.
+### Google Ads and AI
 
-`/api/airtable/message-logs`
+- `/api/airtable?table=campaigns|ad-groups|creatives|keywords|ad-preview`.
+- `/api/airtable/pending-ads`.
+- `/api/google-ads/campaigns`.
+- `/api/google-ads/keywords`.
+- `/api/google-ads/campaign-status`.
+- `/api/google-ads/create-ad`.
+- `/api/google-ads/sync`.
+- `/api/ai-suggestions`.
+- `/api/ai-quick-ads`.
+- `/api/draft-ad`.
 
-Fetches email and SMS delivery records from the Airtable `Message Log` table and resolves linked lead information from the `Leads` table.
+### Integration Health and Google Business
 
-Supported filters include:
-
-- `channel`
-- `status`
-- `dateRange`
-- `search`
-
-This route is read-only and returns an empty list when Airtable is not configured locally.
-
-`/api/airtable/nurture`
-
-Fetches 14-day nurture sequence enrollments from the Airtable `Nurture Enrollments` table and resolves linked lead information from the `Leads` table.
-
-Supported filters include:
-
-- `status`
-- `step`
-- `search`
-
-This route is read-only and returns an empty list when Airtable is not configured locally.
-
-`/api/airtable/nurture/[id]/messages`
-
-Fetches the message timeline for one nurture enrollment by resolving the linked lead and reading matching `Message Log` records for the `14-Day Nurture` sequence.
-
-`/api/airtable/pending-ads`
-
-Fetches pending ads from Airtable for review. It filters records where `status` is `Pending Review`.
-
-### Settings Route
-
-`/api/settings/status`
-
-Checks whether key integrations are configured and reachable.
-
-It checks:
-
-- Airtable.
-- Google Ads.
-- Google Business Profile.
-- Anthropic AI.
-- Supabase.
-- Lead form webhook.
-
-This endpoint does not expose secret values. It only reports which required variables are configured, missing, connected, or failing.
-
-### Google Ads Routes
-
-The project contains API routes for Google Ads authentication, campaigns, keywords, campaign status, ad creation, debugging, and sync.
-
-Important routes include:
-
-- `/api/auth/google`
-- `/api/auth/google/callback`
-- `/api/google-ads/campaigns`
-- `/api/google-ads/keywords`
-- `/api/google-ads/campaign-status`
-- `/api/google-ads/create-ad`
-- `/api/google-ads/sync`
-- `/api/google-ads/debug`
-
-These routes use Google Ads credentials and refresh tokens from environment variables.
-
-### Google Business Profile Routes
-
-The project contains routes for Google Business Profile auth, reviews, insights, posts, reply drafting, and debugging.
-
-Important routes include:
-
-- `/api/google-business/auth`
-- `/api/google-business/auth/callback`
-- `/api/google-business/reviews`
-- `/api/google-business/insights`
-- `/api/google-business/posts`
-- `/api/google-business/draft-reply`
-- `/api/google-business/debug`
-
-Some Google Business Profile features depend on API access and the correct account/location IDs.
-
-### AI Routes
-
-The project uses the Anthropic API for AI-powered content support.
-
-Important routes include:
-
-- `/api/ai-suggestions`
-- `/api/ai-quick-ads`
-- `/api/draft-ad`
-- `/api/google-business/draft-reply`
-- `/api/google-business/posts`
-
-These routes require `ANTHROPIC_API_KEY`.
-
-## Important Data Sources
-
-### Airtable
-
-Airtable is currently the most important live data source in the app.
-
-It stores:
-
-- Leads.
-- Message logs.
-- Nurture enrollments.
-- Google Ads campaign analytics.
-- Google Ads ad group analytics.
-- Google Ads creative analytics.
-- Google Ads keyword performance.
-- Pending ad review records.
-- Ad preview/copy records.
-
-There are separate Airtable bases in use:
-
-- `AIRTABLE_LEADS_BASE_ID` is used for Leads, Message Log, and Nurture Enrollments.
-- `AIRTABLE_BASE_ID` is used for Google Ads analytics and pending ads.
-
-This separation matters because a single Airtable API key may have access to one base but not another. A `403` from Airtable usually means the key does not have access to the base/table being requested, not necessarily that the key format is wrong.
-
-### Make.com
-
-The public lead form submits to a Make.com webhook if `NEXT_PUBLIC_MAKE_WEBHOOK_URL` is configured.
-
-Make.com is expected to receive the lead payload and handle downstream automation such as:
-
-- Creating/updating Airtable records.
-- Sending staff alerts.
-- Triggering SMS or email flows.
-- Updating delivery status fields.
-
-### Google Ads
-
-Google Ads is used for live campaign-related functionality and/or syncing ad performance into Airtable.
-
-The dashboard currently displays performance primarily through Airtable-backed reporting tables.
-
-### Google Business Profile
-
-Google Business Profile is planned or partially implemented for:
-
-- Reviews.
-- Local insights.
-- Review replies.
-- GBP posts.
-
-The sidebar hides this section until GBP API access is ready.
-
-### Supabase
-
-Supabase is scaffolded for future or expanded workflows. The migration file includes tables for:
-
-- Leads.
-- Lead touches.
-- Google Ads snapshots.
-- Dormant patients.
-- Nurture enrollments.
-- Rebooking reminders.
-- Referrals.
-- AI insights.
-- Settings.
-
-At the moment, several active workflows use Airtable instead of Supabase.
+- `GET /api/settings/status`: reports configuration and connectivity without returning secrets.
+- Google Business routes cover OAuth, reviews, insights, posts, reply drafting, and diagnostics. See `docs/google-business-profile.md`.
 
 ## Environment Variables
 
-The app expects these environment variables depending on which features are enabled.
+Use a Next.js-recognized local file such as `.env.local`. Never commit real credentials.
 
 ### Airtable
 
@@ -454,7 +367,21 @@ The app expects these environment variables depending on which features are enab
 AIRTABLE_API_KEY=
 AIRTABLE_LEADS_BASE_ID=
 AIRTABLE_BASE_ID=
+AIRTABLE_CLINIC_METRICS_TABLE_ID=
 ```
+
+`AIRTABLE_CLINIC_METRICS_TABLE_ID` is optional and defaults to `Clinic Metrics`.
+
+### Supabase and Audit
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+AUDIT_IP_HASH_SALT=
+```
+
+`AUDIT_IP_HASH_SALT` is optional but recommended when request IP hashes should be recorded consistently.
 
 ### Google Ads
 
@@ -468,6 +395,8 @@ GOOGLE_ADS_MCC_ID=
 GOOGLE_ADS_API_VERSION=
 ```
 
+`GOOGLE_ADS_MCC_ID` is optional. `GOOGLE_ADS_API_VERSION` has a code default.
+
 ### Google Business Profile
 
 ```bash
@@ -476,23 +405,15 @@ GOOGLE_BUSINESS_LOCATION_ID=
 GOOGLE_BUSINESS_REFRESH_TOKEN=
 ```
 
-If `GOOGLE_BUSINESS_REFRESH_TOKEN` is not configured, some code can use `GOOGLE_ADS_REFRESH_TOKEN` as a fallback.
+Google Business can fall back to `GOOGLE_ADS_REFRESH_TOKEN` when its dedicated refresh token is absent.
 
-### Anthropic AI
+### AI
 
 ```bash
 ANTHROPIC_API_KEY=
 ```
 
-### Supabase
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-```
-
-### Public App and Lead Form
+### App and Public Lead Form
 
 ```bash
 NEXT_PUBLIC_APP_URL=
@@ -500,188 +421,88 @@ NEXT_PUBLIC_MAKE_WEBHOOK_URL=
 NEXT_PUBLIC_PATIENTNOW_BOOKING_URL=
 ```
 
-Environment files must use a Next.js-recognized filename such as `.env.local`. A downloaded file named `env.download` will not be loaded by Next.js until it is copied or renamed to `.env.local`.
+Restart the development server after changing server-side environment variables.
 
-## Local Development
+## Supabase Setup Files
 
-Install dependencies:
+- `supabase/auth_full_setup.sql`: profiles, profile triggers, role helpers, legacy audit table, and related RLS setup.
+- `supabase/migrations/001_initial_schema.sql`: broader planned operational schema.
+- `supabase/migrations/002_audit_logs.sql`: current append-only Audit Log table and admin read policy.
+- `supabase/migrations/003_campaign_enrollment_claims.sql`: server-only enrollment idempotency records.
+
+Apply the relevant SQL to the intended Supabase project before using authentication, staff management, Audit Log, or persistent enrollment retry protection.
+
+## Local Development and Verification
+
+Install and run:
 
 ```bash
 npm install
-```
-
-Run the dev server:
-
-```bash
 npm run dev
 ```
 
-Open:
+Open `http://localhost:3000`.
+
+Verification commands:
 
 ```bash
-http://localhost:3000
-```
-
-Run lint:
-
-```bash
+npm test
 npm run lint
-```
-
-Build for production:
-
-```bash
 npm run build
 ```
 
-Start production build:
+The test suite currently covers:
 
-```bash
-npm run start
-```
+- Airtable batch sizing.
+- Campaign enrollment idempotency.
+- Nurture schedule and time-zone validation.
+- Campaign display helpers.
+- Lead view membership.
+- Lead summary aggregation and duplicate counting.
 
 ## Project Structure
 
-Important folders:
-
 ```text
-src/app
+src/app                 App Router pages and route handlers
+src/components          Shared layout, campaign, lead, theme, and UI components
+src/contexts            Supabase authentication context/provider
+src/lib/airtable        Airtable clients, batching, mapping, and configuration
+src/lib/audit           Audit event logging, typing, and sanitization
+src/lib/auth            Roles, permissions, and server authorization
+src/lib/campaigns       Campaign registry, data aggregation, scheduling, idempotency
+src/lib/leads           Lead query, view, and summary helpers
+src/lib/supabase        Browser, server, middleware, and configuration clients
+docs                    Integration notes
+supabase                SQL setup and migrations
+tests                   Node/TypeScript tests
+public                  Static assets
 ```
 
-Contains App Router pages and API routes.
+## Current Operational Notes
 
-```text
-src/components
-```
+- Airtable remains the source of truth for live leads, messages, nurture enrollments, clinic metrics, and reporting tables.
+- Supabase is the source of truth for authentication profiles, current audit records, and persistent campaign-enrollment claims.
+- The application uses `public.audit_logs`; do not confuse it with the legacy singular `public.audit_log` table.
+- Read-only Airtable routes generally degrade to empty/unconfigured responses in local development.
+- Operational writes require real Airtable configuration and an authenticated editor or admin.
+- Audit Log and staff administration require an admin.
+- Google Business is implemented but intentionally hidden from the primary navigation.
+- Theme preference is the only important dashboard preference stored in browser `localStorage`.
+- The dashboard is designed for desktop and mobile layouts.
+- Local environment changes require restarting `next dev`.
+- Follow the installed Next.js documentation under `node_modules/next/dist/docs/` when changing framework-specific conventions.
+- Do not commit `.env.local`, downloaded environment files, API keys, OAuth tokens, or Supabase service-role credentials.
 
-Contains shared UI and layout components.
+## Future Areas
 
-```text
-src/lib
-```
+`FUTURE_PAGES.md` describes additional or partially scaffolded workflows, including:
 
-Contains integration clients, shared types, mock data, and helper code.
-
-```text
-docs
-```
-
-Contains supporting integration notes.
-
-```text
-supabase/migrations
-```
-
-Contains SQL schema for planned Supabase-backed data.
-
-```text
-public
-```
-
-Contains static assets such as Harmony logo files.
-
-## Main Layout and Navigation
-
-The app uses a dashboard layout with a dark luxury visual style.
-
-The sidebar currently links to:
-
-- Overview
-- Google Ads
-- Leads
-- Message Logs
-- No-Book Nurture
-- Settings
-
-Google Business Profile is present in code but hidden from navigation until API access is granted.
-
-The visual direction uses:
-
-- Dark background.
-- Gold accents.
-- Teal highlights.
-- Compact operational dashboard panels.
-- Lucide icons.
-- Recharts for analytics visuals.
-
-## How Lead Flow Works
-
-1. A visitor opens `/lead`.
-2. The form captures contact information, treatment interest, and UTM values.
-3. The form posts to the Make.com webhook.
-4. Make.com handles automation and writes/updates Airtable.
-5. The internal `/leads` page reads live records from Airtable.
-6. Staff can view, filter, and update lead statuses.
-7. Email/SMS status fields show whether follow-up automation has run.
-8. `/message-logs` shows the underlying email and SMS delivery records.
-9. `/nurture` tracks no-book leads through the 14-day conversion sequence.
-
-## How Google Ads Reporting Works
-
-1. Google Ads performance data is synced into Airtable.
-2. `/api/airtable` reads the relevant Airtable reporting tables.
-3. The API route normalizes fields and aggregates campaign/ad group/keyword data.
-4. `/google-ads-analytics` displays the results in tabs.
-5. AI Suggestions and Pending Review sit inside the same Google Ads workflow.
-
-## How Settings Health Checks Work
-
-The Settings page calls `/api/settings/status`.
-
-The endpoint checks if required environment variables are present and, where possible, makes lightweight API calls to verify access.
-
-For Airtable, it checks the Leads table using `AIRTABLE_LEADS_BASE_ID`.
-
-For Supabase, it checks whether the Supabase REST endpoint can be reached with the configured anon key.
-
-For Google Ads and Google Business Profile, it checks whether the required OAuth and account/location values are configured.
-
-## Current Known Notes
-
-- Airtable is the active source for leads and Google Ads analytics.
-- Airtable is also the active source for message logs and the no-book nurture dashboard.
-- Supabase schema exists, but not every active page currently reads from Supabase.
-- Read-only Airtable dashboard routes degrade to empty lists when Airtable is missing in local development.
-- Write actions such as lead status updates and deletes still require real Airtable configuration and authenticated permissions.
-- Settings profile/staff/automation values are currently stored in browser localStorage.
-- Google Business Profile code exists, but the nav item is hidden until API access is ready.
-- Some dashboard overview data still comes from mock data.
-- Local env changes require restarting `next dev` before server-side routes see new values.
-- The project is using Next.js `16.2.9`; follow the local Next docs under `node_modules/next/dist/docs/` before changing Next-specific conventions.
-- Do not commit `.env.local`, `env.download`, or real API secrets.
-
-## Future Feature Areas
-
-`FUTURE_PAGES.md` describes additional pages and workflows that can be restored or expanded later.
-
-Planned or partially scaffolded areas include:
-
-- Dormant patient reactivation.
-- Rebooking engine.
-- Referral engine.
-- More Supabase-backed operational data.
-- Expanded AI insights.
-
-## Who This Project Is For
-
-Primary users:
-
-- Clinic owner.
-- Front desk team.
-- Marketing manager.
-- Agency/operator managing ads and automation.
-
-The app is meant to be practical and operational. It should help the team answer questions like:
-
-- How many leads came in recently?
-- Which leads still need follow-up?
-- Are SMS and email automations running?
-- Which ads are spending and converting?
-- Which creatives or keywords need attention?
-- Are our API integrations healthy?
-- What generated ads need approval?
+- Dormant-patient reactivation.
+- Rebooking reminders.
+- Referral campaigns.
+- Expanded Supabase-backed operational data.
+- Broader AI insight workflows.
 
 ## Summary
 
-Harmony MedSpa Dashboard is an internal growth operations system. It connects marketing data, lead workflows, automation status, and AI-assisted ad operations into one Next.js dashboard. Its current strongest live integrations are Airtable, Make.com, Google Ads, and Anthropic AI, with Supabase and Google Business Profile prepared for deeper future use.
-
+Harmony MedSpa Dashboard is now a secured, responsive operations platform rather than only a reporting prototype. Airtable supplies the live clinic and marketing records, Supabase provides identity, role enforcement, audit history, and enrollment coordination, and the UI unifies lead handling, campaign journeys, communications, advertising analysis, clinic metrics, and staff administration.

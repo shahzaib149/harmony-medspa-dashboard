@@ -38,7 +38,7 @@ const permissions: Record<Role, PermissionAction[]> = {
     "manage:users",
     "toggle:automations",
   ],
-  editor: ["view:leads", "update:leads", "delete:leads", "view:ads", "approve:ads"],
+  editor: ["view:leads", "update:leads", "delete:leads", "view:ads"],
   viewer: ["view:leads", "view:ads"],
 };
 

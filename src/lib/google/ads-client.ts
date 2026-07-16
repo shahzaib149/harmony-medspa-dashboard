@@ -1,4 +1,4 @@
-const API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? "v19";
+const API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? "v21";
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
 async function getAccessToken(): Promise<string> {
@@ -19,8 +19,18 @@ async function getAccessToken(): Promise<string> {
     throw new Error(`Token exchange failed: ${data.error} — ${data.error_description}`);
   }
 
-  console.log("[Google Ads] Access token obtained, length:", data.access_token.length);
   return data.access_token;
+}
+
+function requestHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+    "Content-Type": "application/json",
+    ...(process.env.GOOGLE_ADS_MCC_ID
+      ? { "login-customer-id": process.env.GOOGLE_ADS_MCC_ID.replace(/-/g, "") }
+      : {}),
+  };
 }
 
 async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
@@ -28,17 +38,9 @@ async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
   const token = await getAccessToken();
 
   const url = `${BASE_URL}/customers/${customerId}/googleAds:search`;
-  console.log("[Google Ads] POST", url);
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-      "Content-Type": "application/json",
-      ...(process.env.GOOGLE_ADS_MCC_ID
-        ? { "login-customer-id": process.env.GOOGLE_ADS_MCC_ID }
-        : {}),
-    },
+    headers: requestHeaders(token),
     body: JSON.stringify({ query }),
   });
 
@@ -241,11 +243,7 @@ export async function addKeyword(adGroupId: string, text: string, matchType: "BR
 
   const res = await fetch(`${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-      "Content-Type": "application/json",
-    },
+    headers: requestHeaders(token),
     body: JSON.stringify({
       operations: [{
         create: {
@@ -271,11 +269,7 @@ export async function addNegativeKeyword(campaignId: string, text: string) {
 
   const res = await fetch(`${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-      "Content-Type": "application/json",
-    },
+    headers: requestHeaders(token),
     body: JSON.stringify({
       operations: [{
         create: {
@@ -295,43 +289,220 @@ export async function addNegativeKeyword(campaignId: string, text: string) {
 
 // ─── Create Responsive Search Ad ─────────────────────────────────────────────
 
-export async function createResponsiveSearchAd(params: {
+export type GoogleAdTextAsset = {
+  text: string;
+  pinnedField?: "HEADLINE_1" | "HEADLINE_2" | "HEADLINE_3" | "DESCRIPTION_1" | "DESCRIPTION_2" | null;
+};
+
+export class GoogleAdsWriteError extends Error {
+  requestId: string | null;
+
+  constructor(message: string, requestId: string | null = null) {
+    super(message);
+    this.name = "GoogleAdsWriteError";
+    this.requestId = requestId;
+  }
+}
+
+export async function fetchConversionTrackingSummary() {
+  const rows = await adsQuery(`
+    SELECT conversion_action.id, conversion_action.name, conversion_action.status,
+      conversion_action.type, conversion_action.category, conversion_action.primary_for_goal
+    FROM conversion_action
+    WHERE conversion_action.status = 'ENABLED'
+    ORDER BY conversion_action.name
+  `);
+  const actions = rows.map((row) => {
+    const action = row.conversionAction as Record<string, unknown>;
+    return {
+      id: String(action.id),
+      name: String(action.name),
+      type: String(action.type),
+      category: String(action.category),
+      primaryForGoal: Boolean(action.primaryForGoal),
+    };
+  });
+  return {
+    configured: actions.length > 0,
+    enabledActionCount: actions.length,
+    primaryActionCount: actions.filter((action) => action.primaryForGoal).length,
+    actions,
+    leadUrlVerified: false,
+  };
+}
+
+export async function addKeywordsBatch(
+  adGroupId: string,
+  keywords: Array<{ text: string; matchType: "BROAD" | "PHRASE" | "EXACT" }>,
+) {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const operations = keywords.map((keyword) => ({
+    create: {
+      adGroup: `customers/${customerId}/adGroups/${adGroupId}`,
+      status: "ENABLED",
+      keyword,
+    },
+  }));
+  const mutate = async (validateOnly: boolean) => {
+    const token = await getAccessToken();
+    const response = await fetch(`${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`, {
+      method: "POST",
+      headers: requestHeaders(token),
+      body: JSON.stringify({ operations, validateOnly, partialFailure: false }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new GoogleAdsWriteError(data?.error?.message || `Google Ads rejected the keywords (${response.status}).`);
+    }
+  };
+  await mutate(true);
+  await mutate(false);
+}
+
+export async function addNegativeKeywordsBatch(campaignId: string, keywords: string[]) {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const operations = keywords.map((text) => ({
+    create: {
+      campaign: `customers/${customerId}/campaigns/${campaignId}`,
+      negative: true,
+      keyword: { text, matchType: "BROAD" },
+    },
+  }));
+  const mutate = async (validateOnly: boolean) => {
+    const token = await getAccessToken();
+    const response = await fetch(`${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`, {
+      method: "POST",
+      headers: requestHeaders(token),
+      body: JSON.stringify({ operations, validateOnly, partialFailure: false }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new GoogleAdsWriteError(data?.error?.message || `Google Ads rejected the negatives (${response.status}).`);
+    }
+  };
+  await mutate(true);
+  await mutate(false);
+}
+
+function escapeGaql(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+export async function resolveSearchAdTarget(campaignName: string, adGroupName: string) {
+  const rows = await adsQuery(`
+    SELECT campaign.id, campaign.name, ad_group.id, ad_group.name
+    FROM ad_group
+    WHERE campaign.name = '${escapeGaql(campaignName)}'
+      AND ad_group.name = '${escapeGaql(adGroupName)}'
+      AND campaign.status != 'REMOVED'
+      AND ad_group.status != 'REMOVED'
+    LIMIT 2
+  `);
+  if (rows.length === 0) throw new GoogleAdsWriteError("The selected campaign and ad group were not found in Google Ads.");
+  if (rows.length > 1) throw new GoogleAdsWriteError("More than one matching ad group was found. Use a unique campaign and ad group.");
+  const campaign = rows[0].campaign as Record<string, unknown>;
+  const adGroup = rows[0].adGroup as Record<string, unknown>;
+  return {
+    campaignId: String(campaign.id),
+    campaignName: String(campaign.name),
+    adGroupId: String(adGroup.id),
+    adGroupName: String(adGroup.name),
+  };
+}
+
+type CreateRsaParams = {
   adGroupId: string;
-  headlines: string[];
-  descriptions: string[];
+  headlines: GoogleAdTextAsset[];
+  descriptions: GoogleAdTextAsset[];
   finalUrl: string;
-}) {
+  path1?: string;
+  path2?: string;
+};
+
+function rsaOperation(params: CreateRsaParams) {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const mapAsset = (asset: GoogleAdTextAsset) => ({
+    text: asset.text,
+    ...(asset.pinnedField ? { pinnedField: asset.pinnedField } : {}),
+  });
+  return {
+    create: {
+      adGroup: `customers/${customerId}/adGroups/${params.adGroupId}`,
+      status: "PAUSED" as const,
+      ad: {
+        finalUrls: [params.finalUrl],
+        responsiveSearchAd: {
+          headlines: params.headlines.map(mapAsset),
+          descriptions: params.descriptions.map(mapAsset),
+          ...(params.path1 ? { path1: params.path1 } : {}),
+          ...(params.path2 ? { path2: params.path2 } : {}),
+        },
+      },
+    },
+  };
+}
+
+async function mutateResponsiveSearchAd(params: CreateRsaParams, validateOnly: boolean) {
   const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
   const token = await getAccessToken();
-
-  const res = await fetch(`${BASE_URL}/customers/${customerId}/adGroupAds:mutate`, {
+  const response = await fetch(`${BASE_URL}/customers/${customerId}/adGroupAds:mutate`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-      "Content-Type": "application/json",
-    },
+    headers: requestHeaders(token),
     body: JSON.stringify({
-      operations: [{
-        create: {
-          adGroup: `customers/${customerId}/adGroups/${params.adGroupId}`,
-          status: "PAUSED",
-          ad: {
-            finalUrls: [params.finalUrl],
-            responsiveSearchAd: {
-              headlines: params.headlines.map((text) => ({ text })),
-              descriptions: params.descriptions.map((text) => ({ text })),
-            },
-          },
-        },
-      }],
+      operations: [rsaOperation(params)],
+      validateOnly,
+      partialFailure: false,
+      responseContentType: "RESOURCE_NAME_ONLY",
     }),
   });
-
-  if (!res.ok) {
-    const err = await res.json() as { error?: { message: string } };
-    throw new Error(err?.error?.message ?? `Failed to create ad (${res.status})`);
+  const requestId = response.headers.get("request-id") || response.headers.get("x-request-id");
+  const data = await response.json().catch(() => null) as {
+    results?: Array<{ resourceName?: string }>;
+    error?: { message?: string };
+  } | null;
+  if (!response.ok) {
+    throw new GoogleAdsWriteError(
+      data?.error?.message || `Google Ads rejected the ad request (${response.status}).`,
+      requestId,
+    );
   }
+  return { resourceName: data?.results?.[0]?.resourceName ?? "", requestId };
+}
+
+export async function createResponsiveSearchAd(params: CreateRsaParams) {
+  await mutateResponsiveSearchAd(params, true);
+  const result = await mutateResponsiveSearchAd(params, false);
+  if (!result.resourceName) {
+    throw new GoogleAdsWriteError("Google Ads did not return the created ad resource name.", result.requestId);
+  }
+  return result;
+}
+
+export async function verifyPausedSearchAd(resourceName: string) {
+  let rows: Record<string, unknown>[] = [];
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    rows = await adsQuery(`
+      SELECT ad_group_ad.resource_name, ad_group_ad.status, ad_group_ad.ad.id,
+        ad_group_ad.ad.final_urls, campaign.name, ad_group.name
+      FROM ad_group_ad
+      WHERE ad_group_ad.resource_name = '${escapeGaql(resourceName)}'
+      LIMIT 1
+    `);
+    if (rows.length === 1) break;
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+  }
+  if (rows.length !== 1) throw new GoogleAdsWriteError("The created ad could not be verified in Google Ads.");
+  const adGroupAd = rows[0].adGroupAd as Record<string, unknown>;
+  const ad = adGroupAd.ad as Record<string, unknown>;
+  if (String(adGroupAd.status) !== "PAUSED") {
+    throw new GoogleAdsWriteError("Google Ads returned the created ad with an unexpected status.");
+  }
+  return {
+    resourceName: String(adGroupAd.resourceName || resourceName),
+    adId: String(ad.id || resourceName.split("~").pop() || ""),
+    status: "PAUSED" as const,
+    finalUrls: Array.isArray(ad.finalUrls) ? ad.finalUrls.map(String) : [],
+  };
 }
 
 // ─── Campaign Status ──────────────────────────────────────────────────────────
@@ -342,11 +513,7 @@ export async function setCampaignStatus(campaignId: string, status: "ENABLED" | 
 
   const res = await fetch(`${BASE_URL}/customers/${customerId}/campaigns:mutate`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
-      "Content-Type": "application/json",
-    },
+    headers: requestHeaders(token),
     body: JSON.stringify({
       operations: [{
         update: {

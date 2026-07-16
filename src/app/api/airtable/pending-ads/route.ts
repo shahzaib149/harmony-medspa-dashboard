@@ -1,122 +1,175 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import {
+  getPendingAd,
+  listPendingAds,
+  reviewPackageFields,
+  updatePendingAd,
+} from "@/lib/airtable/pending-ads";
+import { parseReviewPackage, type PendingAd } from "@/lib/google/pending-ads";
 
-const BASE_ID  = process.env.AIRTABLE_BASE_ID ?? "appGumYdPTtL5GW6M";
-const TABLE_ID = "tbl8XpPEGCr720IUi";
-const API_KEY  = process.env.AIRTABLE_API_KEY!;
+export type { PendingAd } from "@/lib/google/pending-ads";
 
-export interface PendingAd {
-  id: string;
-  ad_resource_name: string;
-  business_name: string;
-  campaign_name: string;
-  ad_group_name: string;
-  headline1: string;
-  headline2: string;
-  headline3: string;
-  description1: string;
-  description2: string;
-  path1: string;
-  path2: string;
-  final_url: string;
-  status: string;
-  created_at: string;
-}
-
-function str(fields: Record<string, unknown>, ...keys: string[]): string {
-  for (const k of keys) {
-    const v = fields[k];
-    if (v !== undefined && v !== null && v !== "") return String(v);
-  }
-  return "";
+function actorLabel(actor: { full_name: string | null; email: string | null }) {
+  return actor.full_name?.trim() || actor.email || "Dashboard admin";
 }
 
 export async function GET() {
-  if (!API_KEY) {
-    return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+  try {
+    const ads = await listPendingAds();
+    return Response.json({ ads, count: ads.length });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Pending ads could not be loaded." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  let actor;
+  try {
+    ({ profile: actor } = await requireRole(request, "viewer"));
+  } catch (error) {
+    return authErrorResponse(error);
   }
 
-  const params = new URLSearchParams({
-    filterByFormula: `{status}="Pending Review"`,
-    "sort[0][field]":     "created_at",
-    "sort[0][direction]": "desc",
-    pageSize: "50",
-  });
-
-  const res = await fetch(
-    `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}?${params}`,
-    {
-      headers: { Authorization: `Bearer ${API_KEY}` },
-      next: { revalidate: 30 },
-    }
-  );
-
-  if (!res.ok) {
-    const raw = await res.text().catch(() => "");
-    let detail = "";
-    try {
-      const parsed = JSON.parse(raw) as { error?: { message?: string; type?: string } };
-      detail = parsed?.error?.message ?? parsed?.error?.type ?? raw.slice(0, 200);
-    } catch { detail = raw.slice(0, 200); }
-    return Response.json({ error: `Airtable ${res.status}: ${detail}` }, { status: 500 });
+  const body = await request.json().catch(() => null) as { action?: string; id?: string } | null;
+  if (body?.action !== "opened" || !body.id) {
+    return Response.json({ error: "A valid pending ad open action is required." }, { status: 400 });
   }
 
-  const data = await res.json() as {
-    records: Array<{ id: string; createdTime: string; fields: Record<string, unknown> }>;
-  };
-
-  const ads: PendingAd[] = data.records.map(r => ({
-    id:               r.id,
-    ad_resource_name: str(r.fields, "ad_resource_name"),
-    business_name:    str(r.fields, "business_name"),
-    campaign_name:    str(r.fields, "campaign_name"),
-    ad_group_name:    str(r.fields, "ad_group_name"),
-    headline1:        str(r.fields, "headline1"),
-    headline2:        str(r.fields, "headline2"),
-    headline3:        str(r.fields, "headline3"),
-    description1:     str(r.fields, "description1"),
-    description2:     str(r.fields, "description2"),
-    path1:            str(r.fields, "path1"),
-    path2:            str(r.fields, "path2"),
-    final_url:        str(r.fields, "final_url"),
-    status:           str(r.fields, "status"),
-    created_at:       str(r.fields, "created_at") || r.createdTime.slice(0, 10),
-  }));
-
-  return Response.json({ ads, count: ads.length });
+  try {
+    const ad = await getPendingAd(body.id);
+    const audit = await logAuditEvent({
+      actor,
+      action: "pending_ad_opened",
+      category: "google_ads",
+      resource: { type: "pending_ad", id: ad.id, label: ad.reviewPackage.internalTitle },
+      summary: "Opened a pending ad for review",
+      metadata: {
+        campaign: ad.reviewPackage.campaignName,
+        ad_group: ad.reviewPackage.adGroupName,
+        final_url: ad.reviewPackage.finalUrl,
+        result: "opened",
+      },
+      request,
+    });
+    return Response.json({ success: true, requestId: audit.requestId });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Pending ad could not be opened." },
+      { status: 500 },
+    );
+  }
 }
 
 export async function PATCH(request: Request) {
   let actor;
   try {
-    ({ profile: actor } = await requireRole(request, "editor"));
+    ({ profile: actor } = await requireRole(request, "admin"));
   } catch (error) {
     return authErrorResponse(error);
   }
 
-  if (!API_KEY) {
-    return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
+  const body = await request.json().catch(() => null) as {
+    action?: "update" | "reject";
+    id?: string;
+    reviewPackage?: unknown;
+    reason?: string;
+  } | null;
+  if (!body?.id || !body.action) {
+    return Response.json({ error: "Pending ad ID and action are required." }, { status: 400 });
   }
 
-  const { id, status } = await request.json() as { id?: string; status?: "Approved" | "Rejected" | "Published" };
-  if (!id || !status) return Response.json({ error: "id and status required" }, { status: 400 });
-  await logAuditEvent({ actor, action: "google_ads_change_requested", category: "google_ads", resource: { type: "pending_ad", id }, summary: `Requested pending ad status change to ${status}`, after: { status }, request });
+  let before: PendingAd;
+  try {
+    before = await getPendingAd(body.id);
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Pending ad could not be loaded." },
+      { status: 500 },
+    );
+  }
 
-  const res = await fetch(
-    `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${id}`,
-    {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ fields: { status } }),
+  if (before.status !== "Pending Review") {
+    return Response.json({ error: "Only pending ads can be changed." }, { status: 409 });
+  }
+
+  try {
+    if (body.action === "update") {
+      const review = parseReviewPackage(body.reviewPackage);
+      if (!review) return Response.json({ error: "The review package is invalid." }, { status: 400 });
+      const now = new Date().toISOString();
+      const updatedReview = {
+        ...review,
+        history: [
+          ...(review.history ?? []),
+          { type: "pending_ad_updated", at: now, actor: actorLabel(actor), detail: "Review copy or approvals updated." },
+        ].slice(-50),
+      };
+      const after = await updatePendingAd(body.id, reviewPackageFields(updatedReview));
+      const audit = await logAuditEvent({
+        actor,
+        action: "pending_ad_updated",
+        category: "google_ads",
+        resource: { type: "pending_ad", id: body.id, label: updatedReview.internalTitle },
+        summary: "Updated a pending ad review package",
+        before: { campaign: before.reviewPackage.campaignName, ad_group: before.reviewPackage.adGroupName, final_url: before.reviewPackage.finalUrl },
+        after: { campaign: updatedReview.campaignName, ad_group: updatedReview.adGroupName, final_url: updatedReview.finalUrl },
+        metadata: { result: "updated" },
+        request,
+      });
+      return Response.json({ success: true, ad: after, requestId: audit.requestId });
     }
-  );
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-    await logAuditEvent({ actor, action: "action_failed", category: "google_ads", resource: { type: "pending_ad", id }, summary: "Pending ad status change failed", metadata: { operation: "google_ads_change_completed", proposed_status: status }, result: "failed", request });
-    return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
+    const reason = body.reason?.trim().slice(0, 500) || "No reason provided.";
+    const rejectedReview = {
+      ...before.reviewPackage,
+      history: [
+        ...(before.reviewPackage.history ?? []),
+        { type: "pending_ad_rejected", at: new Date().toISOString(), actor: actorLabel(actor), detail: reason },
+      ].slice(-50),
+    };
+    const after = await updatePendingAd(body.id, {
+      ...reviewPackageFields(rejectedReview),
+      status: "Rejected",
+    });
+    const audit = await logAuditEvent({
+      actor,
+      action: "pending_ad_rejected",
+      category: "google_ads",
+      resource: { type: "pending_ad", id: body.id, label: rejectedReview.internalTitle },
+      summary: "Rejected a pending ad and retained it for history",
+      before: { status: before.status },
+      after: { status: "Rejected" },
+      metadata: {
+        campaign: rejectedReview.campaignName,
+        ad_group: rejectedReview.adGroupName,
+        final_url: rejectedReview.finalUrl,
+        reason,
+        result: "rejected",
+      },
+      request,
+    });
+    return Response.json({ success: true, ad: after, requestId: audit.requestId });
+  } catch (error) {
+    const audit = await logAuditEvent({
+      actor,
+      action: body.action === "reject" ? "pending_ad_rejected" : "pending_ad_updated",
+      category: "google_ads",
+      resource: { type: "pending_ad", id: body.id },
+      summary: body.action === "reject" ? "Pending ad rejection failed" : "Pending ad update failed",
+      metadata: { operation: body.action, result: "failed" },
+      result: "failed",
+      request,
+    });
+    return Response.json(
+      {
+        error: error instanceof Error ? error.message : "Pending ad change failed.",
+        requestId: audit.requestId,
+      },
+      { status: 500 },
+    );
   }
-
-  await logAuditEvent({ actor, action: "google_ads_change_completed", category: "google_ads", resource: { type: "pending_ad", id }, summary: `Changed pending ad status to ${status}`, after: { status }, request });
-  return Response.json({ success: true });
 }

@@ -4,7 +4,7 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 
 export async function POST(request: Request) {
   let actor;
-  try { ({ profile: actor } = await requireRole(request, "editor")); } catch (error) { return authErrorResponse(error); }
+  try { ({ profile: actor } = await requireRole(request, "admin")); } catch (error) { return authErrorResponse(error); }
   if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
     return Response.json({ error: "Google Ads not connected" }, { status: 503 });
   }

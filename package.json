@@ -12,7 +12,8 @@
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "seed:wellness-pending-ad": "tsx scripts/seed-wellness-pending-ad.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
