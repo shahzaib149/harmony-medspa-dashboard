@@ -18,18 +18,19 @@ test("Wellness pending package contains the full requested RSA copy", () => {
   assert.equal(WELLNESS_PENDING_AD.descriptions[0].pinnedField, "DESCRIPTION_1");
 });
 
-test("Wellness pending package uses professional copy within Google Ads limits", () => {
+test("Wellness pending package remains blocked until supplied copy and approvals are reviewed", () => {
   const errors = validatePendingAdPackage(WELLNESS_PENDING_AD);
-  assert.deepEqual(errors, []);
-  assert.ok(WELLNESS_PENDING_AD.headlines.every(({ text }) => text.length <= 30));
-  assert.ok(WELLNESS_PENDING_AD.descriptions.every(({ text }) => text.length <= 90));
+  assert.ok(errors.some((error) => error.includes("Headline 11")));
+  assert.ok(errors.some((error) => error.includes("Description 1")));
+  assert.ok(errors.some((error) => error.includes("Description 4")));
   assert.equal(unconfirmedApprovals(WELLNESS_PENDING_AD).length, 8);
 });
 
 test("a valid clinic number can be saved for later call asset setup", () => {
   const review = structuredClone(WELLNESS_PENDING_AD);
   review.assets.callAsset.phoneNumber = "(941) 555-0123";
-  assert.deepEqual(validatePendingAdPackage(review), []);
+  const errors = validatePendingAdPackage(review);
+  assert.equal(errors.some((error) => error.includes("phone number") || error.includes("call asset")), false);
 });
 
 test("Mandrill number can never pass call asset validation", () => {

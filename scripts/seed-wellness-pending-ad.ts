@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  reviewPackageFromJson,
   WELLNESS_PENDING_AD,
   type PendingAdPackage,
 } from "../src/lib/google/pending-ads";
@@ -52,33 +51,7 @@ async function main() {
   };
   const existingRecord = existing.records?.[0];
   if (existingRecord) {
-    const currentReview = reviewPackageFromJson(String(existingRecord.fields?.review_package_json ?? ""));
-    const syncedAt = new Date().toISOString();
-    const review: PendingAdPackage = currentReview ? {
-      ...currentReview,
-      headlines: WELLNESS_PENDING_AD.headlines,
-      descriptions: WELLNESS_PENDING_AD.descriptions,
-      history: [
-        ...(currentReview.history ?? []),
-        {
-          type: "ad_copy_corrected",
-          at: syncedAt,
-          actor: "Dashboard deployment",
-          detail: "Headlines and descriptions updated to comply with Google Ads character limits.",
-        },
-      ].slice(-50),
-    } : WELLNESS_PENDING_AD;
-    const updateResponse = await fetch(
-      `https://api.airtable.com/v0/${baseId}/${tableId}/${existingRecord.id}?typecast=true`,
-      {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ fields: reviewFields(review) }),
-      },
-    );
-    const updated = await updateResponse.json().catch(() => null) as { error?: { message?: string } } | null;
-    if (!updateResponse.ok) throw new Error(updated?.error?.message || `Airtable update failed (${updateResponse.status}).`);
-    console.log(`Updated Wellness pending ad record ${existingRecord.id} with compliant copy.`);
+    console.log(`Wellness pending ad already exists as ${existingRecord.id}; no record changed.`);
     return;
   }
 
