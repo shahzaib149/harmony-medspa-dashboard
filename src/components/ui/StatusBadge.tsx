@@ -58,17 +58,22 @@ const variantLabels: Partial<Record<BadgeVariant, string>> = {
   email_sent: "Email sent",
   disconnected: "Disconnected",
 };
-const toneStyles: Record<Tone, { color: string; background: string }> = {
-  success: { color: "var(--healthy)", background: "var(--healthy-soft)" },
-  warning: { color: "var(--warning)", background: "var(--warning-soft)" },
-  danger: { color: "var(--danger)", background: "var(--danger-soft)" },
+const toneStyles: Record<
+  Tone,
+  { color: string; background: string; border: string }
+> = {
+  success: { color: "var(--success-text)", background: "var(--success-bg)", border: "var(--success-border)" },
+  warning: { color: "var(--warning-text)", background: "var(--warning-bg)", border: "var(--warning-border)" },
+  danger: { color: "var(--danger-text)", background: "var(--danger-bg)", border: "var(--danger-border)" },
   info: {
-    color: "var(--focus)",
-    background: "color-mix(in srgb, var(--focus) 11%, transparent)",
+    color: "var(--info-text)",
+    background: "var(--info-bg)",
+    border: "var(--info-border)",
   },
   neutral: {
-    color: "var(--text-secondary)",
-    background: "var(--surface-hover)",
+    color: "var(--neutral-text)",
+    background: "var(--neutral-bg)",
+    border: "var(--neutral-border)",
   },
 };
 
@@ -90,9 +95,14 @@ export default function StatusBadge({
       style={{
         color: style.color,
         backgroundColor: style.background,
-        borderColor: `color-mix(in srgb, ${style.color} 25%, transparent)`,
+        borderColor: style.border,
       }}
     >
+      <span
+        className="mr-1.5 size-1.5 rounded-full"
+        style={{ backgroundColor: style.color }}
+        aria-hidden="true"
+      />
       {label}
     </span>
   );

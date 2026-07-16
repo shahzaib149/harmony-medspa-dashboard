@@ -5,6 +5,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { maskEmail, sanitizeAuditData } from "@/lib/audit/sanitize";
 import type { AuditEventInput } from "@/lib/audit/types";
 
+const AUDIT_TIMEOUT_MS = 5_000;
+
 function requestId(request?: Request) {
   return request?.headers.get("x-request-id")?.slice(0, 128) || randomUUID();
 }
@@ -21,7 +23,7 @@ export async function logAuditEvent(input: AuditEventInput): Promise<{ requestId
   const id = requestId(input.request);
   try {
     const service = createServiceClient();
-    const { error } = await service.from("audit_logs").insert({
+    const insert = service.from("audit_logs").insert({
       actor_user_id: input.actor?.id ?? null,
       actor_name: input.actor?.full_name?.trim() || null,
       actor_email_masked: maskEmail(input.actor?.email),
@@ -41,6 +43,10 @@ export async function logAuditEvent(input: AuditEventInput): Promise<{ requestId
       user_agent: input.request?.headers.get("user-agent")?.slice(0, 500) ?? null,
       ip_hash: hashIp(input.request),
     });
+    const { error } = await Promise.race([
+      insert,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Audit insert timed out")), AUDIT_TIMEOUT_MS)),
+    ]);
     if (error) throw error;
     return { requestId: id, logged: true };
   } catch (error) {

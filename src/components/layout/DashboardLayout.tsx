@@ -3,11 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
-import {
-  DATA_CACHE_KEYS,
-  preloadDashboardData,
-} from "@/lib/dashboard-data-cache";
-import { useAuth } from "@/contexts/AuthContext";
 import { usePathname } from "next/navigation";
 
 interface DashboardLayoutProps {
@@ -25,7 +20,6 @@ export default function DashboardLayout({
 }: DashboardLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const { role } = useAuth();
   const pathname = usePathname();
 
   useEffect(() => {
@@ -45,64 +39,6 @@ export default function DashboardLayout({
   }, [mobileOpen]);
 
   useEffect(() => setMobileOpen(false), [pathname]);
-
-  useEffect(() => {
-    const warmDashboard = () => {
-      const tasks: Promise<unknown>[] = [];
-      if (pathname !== "/leads")
-        tasks.push(
-          preloadDashboardData(
-            DATA_CACHE_KEYS.leads,
-            "/api/airtable/leads?status=all",
-          ),
-        );
-      if (pathname !== "/message-logs")
-        tasks.push(
-          preloadDashboardData(
-            DATA_CACHE_KEYS.messageLogs,
-            "/api/airtable/message-logs?channel=All&status=All&dateRange=all&search=",
-          ),
-        );
-      if (pathname !== "/nurture")
-        tasks.push(
-          preloadDashboardData(
-            DATA_CACHE_KEYS.nurture,
-            "/api/airtable/nurture",
-          ),
-        );
-      if (pathname !== "/google-ads-analytics")
-        tasks.push(
-          preloadDashboardData(
-            DATA_CACHE_KEYS.campaigns,
-            "/api/airtable?table=campaigns&days=30",
-          ),
-          preloadDashboardData(
-            DATA_CACHE_KEYS.adGroups,
-            "/api/airtable?table=ad-groups&days=30",
-          ),
-          preloadDashboardData(
-            DATA_CACHE_KEYS.creatives,
-            "/api/airtable?table=creatives&days=30",
-          ),
-          preloadDashboardData(
-            DATA_CACHE_KEYS.keywords,
-            "/api/airtable?table=keywords&days=30",
-          ),
-        );
-      if (role === "admin" && pathname !== "/settings")
-        tasks.push(
-          preloadDashboardData(DATA_CACHE_KEYS.staff, "/api/auth/users"),
-        );
-      void Promise.all(tasks);
-    };
-    const requestIdle = window.requestIdleCallback?.bind(window);
-    if (requestIdle) {
-      const idleId = requestIdle(warmDashboard, { timeout: 1200 });
-      return () => window.cancelIdleCallback(idleId);
-    }
-    const timer = globalThis.setTimeout(warmDashboard, 250);
-    return () => globalThis.clearTimeout(timer);
-  }, [pathname, role]);
 
   return (
     <div

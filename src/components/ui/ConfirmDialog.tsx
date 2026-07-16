@@ -11,6 +11,7 @@ type Props = {
   cancelLabel?: string;
   destructive?: boolean;
   loading?: boolean;
+  loadingLabel?: string;
   children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   destructive = false,
   loading = false,
+  loadingLabel = "Working…",
   children,
   onConfirm,
   onCancel,
@@ -160,7 +162,7 @@ export function ConfirmDialog({
               color: "var(--primary-foreground)",
             }}
           >
-            {loading ? "Working…" : confirmLabel}
+            {loading ? loadingLabel : confirmLabel}
           </button>
         </div>
       </div>

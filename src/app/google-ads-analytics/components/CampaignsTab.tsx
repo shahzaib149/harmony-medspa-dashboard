@@ -37,15 +37,18 @@ function trunc(s: string, len: number) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    ENABLED: "bg-green-100 text-green-700",
-    PAUSED: "bg-amber-100 text-amber-700",
-    REMOVED: "bg-gray-100 text-gray-500",
+  const map: Record<string, { color: string; background: string; border: string }> = {
+    ENABLED: { color: "var(--success-text)", background: "var(--success-bg)", border: "var(--success-border)" },
+    PAUSED: { color: "var(--warning-text)", background: "var(--warning-bg)", border: "var(--warning-border)" },
+    REMOVED: { color: "var(--neutral-text)", background: "var(--neutral-bg)", border: "var(--neutral-border)" },
   };
+  const style = map[status] ?? map.REMOVED;
   return (
     <span
-      className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] ?? "bg-gray-100 text-gray-500"}`}
+      className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold"
+      style={{ color: style.color, backgroundColor: style.background, borderColor: style.border }}
     >
+      <span className="mr-1.5 size-1.5 rounded-full" style={{ backgroundColor: style.color }} aria-hidden="true" />
       {status}
     </span>
   );

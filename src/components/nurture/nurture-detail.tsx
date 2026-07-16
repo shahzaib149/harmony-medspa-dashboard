@@ -3,12 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, Check, Clock3, Mail, MessageSquare, Phone, Sparkles, X } from "lucide-react";
 import { NURTURE_STEPS, type NurtureEnrollment, type NurtureMessage } from "@/lib/types/nurture";
-
-function date(value: string | null) {
-  if (!value) return "Not scheduled";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
-}
+import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 
 export default function NurtureDetail({ enrollment, onClose }: { enrollment: NurtureEnrollment | null; onClose: () => void }) {
   const [messages, setMessages] = useState<NurtureMessage[]>([]);
@@ -55,10 +50,11 @@ export default function NurtureDetail({ enrollment, onClose }: { enrollment: Nur
               <div className="space-y-0">
                 {NURTURE_STEPS.map((step, index) => {
                   const message = messages.find((item) => item.sequenceStep === step);
-                  const sent = Boolean(message) || index < currentIndex || (index === currentIndex && Boolean(enrollment.lastSentAt));
+                  const sent = message?.deliveryStatus.toLowerCase() === "sent";
+                  const current = enrollment.status === "Active" && index === currentIndex;
                   const stoppedHere = enrollment.status === "Stopped" && index === currentIndex;
                   const tone = stoppedHere ? "#F87171" : sent ? "#2DD4BF" : "#5A5A6A";
-                  return <div key={step} className="flex gap-3"><div className="flex flex-col items-center"><span className="flex h-8 w-8 items-center justify-center rounded-full border" style={{ color: tone, borderColor: `${tone}55`, backgroundColor: `${tone}12` }}>{sent ? <Check size={14} /> : <Clock3 size={13} />}</span>{index < NURTURE_STEPS.length - 1 && <span className="h-16 w-px bg-white/[.07]" />}</div><div className="min-w-0 pb-5 pt-1"><p className="text-sm font-bold" style={{ color: sent ? "var(--text-primary)" : "var(--text-muted)" }}>{step}</p><p className="mt-0.5 text-xs text-[var(--text-muted)]">{message ? `${message.deliveryStatus} · ${date(message.sentAt)}` : sent ? date(index === currentIndex ? enrollment.lastSentAt : null) : index === currentIndex + 1 ? `Scheduled ${date(enrollment.nextSendAt)}` : "Upcoming"}</p>{message?.messageBody && <p className="mt-2 rounded-xl bg-white/[.025] p-3 text-xs leading-5 text-[var(--text-secondary)]">{message.messageBody}</p>}</div></div>;
+                  return <div key={step} className="flex gap-3"><div className="flex flex-col items-center"><span className="flex h-8 w-8 items-center justify-center rounded-full border" style={{ color: tone, borderColor: `${tone}55`, backgroundColor: `${tone}12` }}>{sent ? <Check size={14} /> : <Clock3 size={13} />}</span>{index < NURTURE_STEPS.length - 1 && <span className="h-16 w-px bg-white/[.07]" />}</div><div className="min-w-0 pb-5 pt-1"><p className="text-sm font-bold" style={{ color: sent || current ? "var(--text-primary)" : "var(--text-muted)" }}>{step}</p><p className="mt-0.5 text-xs text-[var(--text-muted)]">{message ? `${message.deliveryStatus} · ${formatCampaignDate(message.sentAt)}` : current ? `Scheduled ${formatCampaignDate(enrollment.nextSendAt, "Not scheduled")}` : "Upcoming"}</p>{message?.messageBody && <p className="mt-2 rounded-xl bg-white/[.025] p-3 text-xs leading-5 text-[var(--text-secondary)]">{message.messageBody}</p>}</div></div>;
                 })}
               </div>
             )}

@@ -8,9 +8,16 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  DEFAULT_THEME,
+  resolveThemePreference,
+  savedThemePreference,
+  THEME_STORAGE_KEY,
+  type ResolvedTheme,
+  type ThemePreference,
+} from "@/lib/theme-preference";
 
-export type ThemePreference = "dark" | "light" | "system";
-type ResolvedTheme = "dark" | "light";
+export type { ThemePreference } from "@/lib/theme-preference";
 
 type ThemeContextValue = {
   theme: ThemePreference;
@@ -19,12 +26,7 @@ type ThemeContextValue = {
   mounted: boolean;
 };
 
-const STORAGE_KEY = "harmony-dashboard-theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-function isTheme(value: string | null): value is ThemePreference {
-  return value === "dark" || value === "light" || value === "system";
-}
 
 function systemTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: light)").matches
@@ -33,7 +35,10 @@ function systemTheme(): ResolvedTheme {
 }
 
 function applyTheme(preference: ThemePreference): ResolvedTheme {
-  const resolved = preference === "system" ? systemTheme() : preference;
+  const resolved = resolveThemePreference(
+    preference,
+    systemTheme() === "light",
+  );
   document.documentElement.dataset.theme = resolved;
   document.documentElement.dataset.themePreference = preference;
   document.documentElement.style.colorScheme = resolved;
@@ -41,13 +46,15 @@ function applyTheme(preference: ThemePreference): ResolvedTheme {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<ThemePreference>("dark");
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
+  const [theme, setThemeState] = useState<ThemePreference>(DEFAULT_THEME);
+  const [resolvedTheme, setResolvedTheme] =
+    useState<ResolvedTheme>("light");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const preference = isTheme(saved) ? saved : "dark";
+    const preference = savedThemePreference(
+      localStorage.getItem(THEME_STORAGE_KEY),
+    );
     setThemeState(preference);
     setResolvedTheme(applyTheme(preference));
     setMounted(true);
@@ -62,7 +69,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   const setTheme = useCallback((preference: ThemePreference) => {
-    localStorage.setItem(STORAGE_KEY, preference);
+    localStorage.setItem(THEME_STORAGE_KEY, preference);
     setThemeState(preference);
     setResolvedTheme(applyTheme(preference));
   }, []);

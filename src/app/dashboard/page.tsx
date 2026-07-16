@@ -1,13 +1,15 @@
-import DashboardLayout from "@/components/layout/DashboardLayout";
 import OverviewClient from "./OverviewClient";
+import type { OverviewPeriodKey } from "@/lib/overview-types";
 
-export default function DashboardPage() {
-  return (
-    <DashboardLayout
-      title="Growth Command Center"
-      subtitle="Live patient-growth and clinic operations"
-    >
-      <OverviewClient />
-    </DashboardLayout>
-  );
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  const requested = (await searchParams).range;
+  const supported = new Set<OverviewPeriodKey>(["7d", "30d", "90d", "month"]);
+  const initialRange = supported.has(requested as OverviewPeriodKey)
+    ? (requested as OverviewPeriodKey)
+    : "30d";
+  return <OverviewClient initialRange={initialRange} />;
 }

@@ -12,6 +12,7 @@ import { clearDashboardDataCache } from "@/lib/dashboard-data-cache";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const shouldLoadAuth = pathname !== "/login" && pathname !== "/lead" && !pathname.startsWith("/lead/");
   const authConfigured = isSupabaseConfigured();
   const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(null);
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (pathname === "/login" || pathname === "/lead" || pathname.startsWith("/lead/")) {
+    if (!shouldLoadAuth) {
       setUser(null);
       setProfile(null);
       setIsLoading(false);
@@ -62,8 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (!cancelled) void loadProfile(data.user);
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) void loadProfile(data.session?.user ?? null);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -74,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       listener.subscription.unsubscribe();
     };
-  }, [authConfigured, loadProfile, pathname, supabase]);
+  }, [authConfigured, loadProfile, shouldLoadAuth, supabase]);
 
   const signOut = useCallback(async () => {
     if (!authConfigured) return;

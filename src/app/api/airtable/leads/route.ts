@@ -3,6 +3,7 @@ import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from 
 import type { LeadCampaignSummary } from "@/lib/types/campaigns";
 import { normalizeUsPhone } from "@/lib/airtable/leads-base";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
 
 const TABLE_NAME = "Leads";
 const BASE_ID    = AIRTABLE_LEADS_BASE_ID;
@@ -68,7 +69,12 @@ function formulaString(value: string) {
 }
 
 function leadFormula(searchParams: URLSearchParams) {
-  const filters: string[] = [];
+  const filters: string[] = [leadViewFormula(normalizeLeadView(searchParams.get("view")))];
+  const search = searchParams.get("search")?.trim();
+  if (search) {
+    const term = formulaString(search.toLowerCase());
+    filters.push(`OR(FIND("${term}",LOWER({Name}&""))>0,FIND("${term}",LOWER({Email}&""))>0,FIND("${term}",LOWER({Phone}&""))>0,FIND("${term}",LOWER({Source}&""))>0)`);
+  }
   const recordId = searchParams.get("recordId")?.trim();
   if (recordId && /^rec[a-zA-Z0-9]+$/.test(recordId)) filters.push(`RECORD_ID()="${recordId}"`);
   const exact = (param: string, field: string) => {
@@ -93,11 +99,6 @@ function leadFormula(searchParams: URLSearchParams) {
   if (campaign === "none") filters.push(`AND(COUNTA({Nurture Enrollments})=0,LOWER({Email Sent Status}&"")!="sent",LOWER({Email Sent Status}&"")!="delivered",LOWER({SMS Sent Status}&"")!="sent",LOWER({SMS Sent Status}&"")!="delivered")`);
   exact("campaignStatus", "Nurture Status");
   exact("campaignStep", "Nurture Current Step");
-  const search = searchParams.get("search")?.trim();
-  if (search) {
-    const term = formulaString(search.toLowerCase());
-    filters.push(`OR(FIND("${term}",LOWER({Name}&""))>0,FIND("${term}",LOWER({Email}&""))>0,FIND("${term}",LOWER({Phone}&""))>0,FIND("${term}",LOWER({Source}&""))>0)`);
-  }
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
   if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) filters.push(`IS_AFTER({Lead Created At},DATEADD(DATETIME_PARSE("${dateFrom}"),-1,'seconds'))`);
@@ -136,14 +137,15 @@ async function airtableRecord(id: string) {
 }
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const view = normalizeLeadView(searchParams.get("view"));
   if (!isAirtableConfigured()) {
     return Response.json(
-      { items: [], leads: [], pageSize: 20, nextCursor: null, hasNextPage: false, hasPreviousPage: false, visibleFrom: 0, visibleTo: 0, total: null, configured: false },
+      { items: [], leads: [], view, pageSize: 20, nextCursor: null, hasNextPage: false, hasPreviousPage: false, visibleFrom: 0, visibleTo: 0, total: null, configured: false },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   }
 
-  const { searchParams } = new URL(request.url);
   const requestedPageSize = Number(searchParams.get("pageSize") || 20);
   const pageSize = PAGE_SIZES.has(requestedPageSize) ? requestedPageSize : 20;
   const cursor = searchParams.get("cursor")?.trim() || null;
@@ -173,7 +175,7 @@ export async function GET(request: Request) {
   const visibleFrom = leads.length ? (page - 1) * pageSize + 1 : 0;
 
   return Response.json(
-    { items: leads, leads, pageSize, nextCursor: data.offset ?? null, hasNextPage: Boolean(data.offset), hasPreviousPage: page > 1, visibleFrom, visibleTo: visibleFrom ? visibleFrom + leads.length - 1 : 0, total: null },
+    { items: leads, leads, view, pageSize, nextCursor: data.offset ?? null, hasNextPage: Boolean(data.offset), hasPreviousPage: page > 1, visibleFrom, visibleTo: visibleFrom ? visibleFrom + leads.length - 1 : 0, total: null },
     { headers: { "Cache-Control": "no-store, max-age=0" } }
   );
 }
@@ -298,8 +300,9 @@ export async function PATCH(request: Request) {
     }
   );
 
+  const updatedRecord = await res.json().catch(() => null) as AirtableRecord | null;
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    const err = (updatedRecord ?? {}) as { error?: { message?: string } };
     await logAuditEvent({ actor, action: "action_failed", category: "leads", resource: { type: "lead", id: String(id), label: str(beforeFields, "Name") }, summary: "Lead update could not be completed", metadata: { operation: "lead_updated", changed_fields: Object.keys(fields) }, result: "failed", request });
     return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
@@ -308,7 +311,7 @@ export async function PATCH(request: Request) {
   const after = Object.fromEntries(Object.entries(fields).map(([field, value]) => [fieldNames[field] || field, value]));
   const action = "Status" in fields && Object.keys(fields).length === 1 ? "lead_status_changed" : "Replied" in fields && Object.keys(fields).length === 1 ? "lead_replied_changed" : "lead_updated";
   await logAuditEvent({ actor, action, category: "leads", resource: { type: "lead", id: String(id), label: str(beforeFields, "Name") || (typeof name === "string" ? name : null) }, summary: action === "lead_status_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} status` : action === "lead_replied_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} replied state` : `Updated ${str(beforeFields, "Name") || "lead"}`, before, after, request });
-  return Response.json({ success: true });
+  return Response.json({ success: true, lead: updatedRecord ? mapLead(updatedRecord) : null });
 }
 
 export async function DELETE(request: Request) {

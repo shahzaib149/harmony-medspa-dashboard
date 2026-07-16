@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Loader2,
 } from "lucide-react";
+import { Alert } from "@/components/ui/Alert";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 import {
   DATA_CACHE_KEYS,
@@ -417,16 +418,9 @@ function AnalyticsInner() {
 
       {/* Error */}
       {error && (
-        <div
-          className="rounded-xl p-4 text-sm"
-          style={{
-            backgroundColor: "rgba(248,113,113,0.08)",
-            border: "1px solid rgba(248,113,113,0.2)",
-            color: "#F87171",
-          }}
-        >
+        <Alert variant="danger" title="Google Ads data could not be loaded">
           {error}
-        </div>
+        </Alert>
       )}
 
       {/* KPI Cards */}

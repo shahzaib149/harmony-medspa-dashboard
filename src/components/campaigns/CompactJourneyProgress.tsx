@@ -11,13 +11,16 @@ const STEPS = [
 function CompactJourneyProgress({
   currentStep,
   status,
+  sentSteps = [],
 }: {
   currentStep: string;
   status: string;
+  sentSteps?: string[];
 }) {
   const current = STEPS.indexOf(currentStep as typeof STEPS[number]);
   const completed = status === "Completed";
   const stopped = status === "Stopped";
+  const confirmedSent = new Set(sentSteps);
 
   return (
     <div
@@ -31,21 +34,22 @@ function CompactJourneyProgress({
       }
     >
       <div className="flex items-center">
-        {STEPS.map((step, index) => (
-          <div key={step} className="flex flex-1 items-center last:flex-none">
+        {STEPS.map((step, index) => {
+          const sent = completed || (index !== current && confirmedSent.has(step));
+          return <div key={step} className="flex flex-1 items-center last:flex-none">
             <span
               title={step}
               className="h-2.5 w-2.5 shrink-0 rounded-full border transition-colors motion-reduce:transition-none"
               style={{
                 backgroundColor:
-                  completed || index < current
+                  sent
                     ? "var(--healthy)"
                     : index === current
                       ? "var(--brand-primary)"
                       : "var(--surface-2)",
                 borderColor: stopped && index >= current
                   ? "rgba(201, 85, 93, 0.55)"
-                  : completed || index < current
+                  : sent
                     ? "var(--healthy)"
                     : index === current
                       ? "var(--brand-primary)"
@@ -61,7 +65,7 @@ function CompactJourneyProgress({
                 className="h-px flex-1"
                 style={{
                   backgroundColor:
-                    completed || index < current
+                    sent
                       ? "color-mix(in srgb, var(--healthy) 60%, transparent)"
                       : stopped && index >= current
                         ? "rgba(201,85,93,0.35)"
@@ -69,8 +73,8 @@ function CompactJourneyProgress({
                 }}
               />
             )}
-          </div>
-        ))}
+          </div>;
+        })}
       </div>
       <p
         className="mt-2 text-[10px] font-bold"

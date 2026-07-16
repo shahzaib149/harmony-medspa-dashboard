@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   ChevronDown,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import AddLeadsToCampaignModal from "@/components/campaigns/AddLeadsToCampaignModal";
+import { useAuth } from "@/contexts/AuthContext";
 import { CampaignStatusBadge } from "@/components/campaigns/CampaignBadges";
 import PatientJourneyRail from "@/components/campaigns/PatientJourneyRail";
 import CampaignConversationTable, {
@@ -20,9 +21,25 @@ import CampaignConversationTable, {
   type Conversation,
 } from "@/components/campaigns/CampaignConversationTable";
 import { DestructiveConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Alert } from "@/components/ui/Alert";
+import { Toast } from "@/components/ui/Toast";
 import CompactJourneyProgress from "@/components/campaigns/CompactJourneyProgress";
+import DisconnectedEnrollmentCleanupModal, {
+  type CleanupAction,
+} from "@/components/campaigns/DisconnectedEnrollmentCleanupModal";
+import {
+  formatCampaignDate,
+  isCampaignDateToday,
+} from "@/lib/campaigns/campaign-date";
+import {
+  campaignDeliveryFor,
+  displayedNextTouch,
+  sentStepsForLead,
+} from "@/lib/campaigns/campaign-display";
 import type { CampaignSummary, NurtureEnrollment } from "@/lib/types/campaigns";
 import type { MessageLog } from "@/types/message-log";
+
+const AddLeadsToCampaignModal = dynamic(() => import("@/components/campaigns/AddLeadsToCampaignModal"));
 
 type SpeedLead = {
   id: string;
@@ -45,17 +62,10 @@ type Data = {
 const MUTED = "var(--text-muted)",
   PANEL = "var(--surface-1)",
   GOLD = "var(--brand-primary)";
-const REFERENCE_NOW = Date.now(),
-  REFERENCE_TODAY = new Date(REFERENCE_NOW).toDateString();
-function format(value: string | null | undefined) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-}
+const REFERENCE_NOW = Date.now();
 
 export default function CampaignDetailClient({ slug }: { slug: string }) {
+  const { role } = useAuth();
   const router = useRouter(),
     searchParams = useSearchParams(),
     rawTab = searchParams.get("tab");
@@ -77,10 +87,17 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
     [stopTarget, setStopTarget] = useState<NurtureEnrollment | null>(null),
     [stopping, setStopping] = useState(false),
     [conversation, setConversation] = useState<Conversation | null>(null),
-    [reviewOrphans, setReviewOrphans] = useState(false);
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    [cleanup, setCleanup] = useState<{
+      open: boolean;
+      enrollmentId: string | null;
+      action: CleanupAction;
+    }>({ open: false, enrollmentId: null, action: "review" }),
+    [cleanupToast, setCleanupToast] = useState("");
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const response = await fetch(`/api/airtable/campaigns/${slug}`, {
         cache: "no-store",
@@ -88,12 +105,12 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error);
       setData(body);
+      return true;
     } catch (event) {
-      setError(
-        event instanceof Error ? event.message : "Could not load campaign",
-      );
+      if (showLoading) setError(event instanceof Error ? event.message : "Could not load campaign");
+      return false;
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [slug]);
   useEffect(() => {
@@ -103,6 +120,11 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
     if (rawTab === "message-history" || rawTab === "messages")
       router.replace(`/campaigns/${slug}?tab=conversations`, { scroll: false });
   }, [rawTab, router, slug]);
+  useEffect(() => {
+    if (!cleanupToast) return;
+    const timeout = window.setTimeout(() => setCleanupToast(""), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [cleanupToast]);
   const visible = useMemo(
     () =>
       data?.leads.filter((item) => {
@@ -119,6 +141,14 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
         );
       }) ?? [],
     [data, query, status, step],
+  );
+  const disconnectedEnrollments = useMemo(
+    () =>
+      data?.leads.filter(
+        (item): item is NurtureEnrollment =>
+          "airtableRecordId" in item && !item.lead,
+      ) ?? [],
+    [data],
   );
   async function stopNurture() {
     if (!stopTarget) return;
@@ -174,7 +204,7 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
     return (
       <div className="p-8 text-center text-red-300">
         <p>{error || "Campaign not found"}</p>
-        <button onClick={load} className="mt-3 rounded-lg border px-4 py-2">
+        <button onClick={() => void load()} className="mt-3 rounded-lg border px-4 py-2">
           Retry
         </button>
       </div>
@@ -204,7 +234,7 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
           "Replied Leads",
           data.leads.filter((item) => "replied" in item && item.replied).length,
         ],
-        ["Last activity", format(c.lastActivity)],
+        ["Last activity", formatCampaignDate(c.lastActivity)],
       ];
   const conversationLeads = data.leads.flatMap((item) =>
     "airtableRecordId" in item
@@ -257,7 +287,7 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
         <p className="mt-2 text-sm text-[#9292A0]">{c.description}</p>
         <p className="mt-2 text-xs text-[#9292A0]">
           Channels: {c.channels.join(" + ")} · Last activity:{" "}
-          {format(c.lastActivity)}
+          {formatCampaignDate(c.lastActivity)}
         </p>
       </header>
       <nav
@@ -327,13 +357,16 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
           status={status}
           step={step}
           stopping={stopping}
-          reviewOrphans={reviewOrphans}
+          canAdd={role === "admin"}
+          canManageCleanup={role === "admin"}
           onQuery={setQuery}
           onStatus={setStatus}
           onStep={setStep}
           onAdd={() => setAddOpen(true)}
           onStop={setStopTarget}
-          onReviewOrphans={() => setReviewOrphans((value) => !value)}
+          onOpenCleanup={(enrollmentId = null, action = "review") =>
+            setCleanup({ open: true, enrollmentId, action })
+          }
           onClear={() => {
             setQuery("");
             setStatus("All");
@@ -350,7 +383,7 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
               ["SMS", sms],
               ["Email", email],
               ["Failed / rejected", failed],
-              ["Most recent", format(c.lastActivity)],
+              ["Most recent", formatCampaignDate(c.lastActivity)],
             ].map(([label, value]) => (
               <div
                 key={String(label)}
@@ -375,7 +408,32 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
       <AddLeadsToCampaignModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onComplete={load}
+        onComplete={() => void load(false)}
+      />
+      <DisconnectedEnrollmentCleanupModal
+        open={cleanup.open}
+        enrollments={disconnectedEnrollments}
+        messages={data.messages}
+        canManage={role === "admin"}
+        initialEnrollmentId={cleanup.enrollmentId}
+        initialAction={cleanup.action}
+        onClose={() =>
+          setCleanup({ open: false, enrollmentId: null, action: "review" })
+        }
+        onChanged={async (message) => {
+          setCleanup((current) => ({
+            ...current,
+            enrollmentId: null,
+            action: "review",
+          }));
+          const refreshed = await load(false);
+          if (!refreshed) {
+            throw new Error(
+              "The enrollment was updated, but Campaign Leads could not be refreshed. Refresh this page before continuing.",
+            );
+          }
+          setCleanupToast(message);
+        }}
       />
       <DestructiveConfirmDialog
         open={Boolean(stopTarget)}
@@ -396,6 +454,13 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
           onClose={() => setConversation(null)}
         />
       )}
+      {cleanupToast && (
+        <Toast
+          variant="success"
+          message={cleanupToast}
+          onClose={() => setCleanupToast("")}
+        />
+      )}
     </div>
   );
 }
@@ -409,26 +474,32 @@ function CampaignLeadsPanel(props: {
   status: string;
   step: string;
   stopping: boolean;
-  reviewOrphans: boolean;
+  canAdd: boolean;
+  canManageCleanup: boolean;
   onQuery: (v: string) => void;
   onStatus: (v: string) => void;
   onStep: (v: string) => void;
   onAdd: () => void;
   onStop: (item: NurtureEnrollment) => void;
-  onReviewOrphans: () => void;
+  onOpenCleanup: (
+    enrollmentId?: string | null,
+    action?: CleanupAction,
+  ) => void;
   onClear: () => void;
 }) {
   const enrollments = props.allItems.filter(
       (item): item is NurtureEnrollment => "airtableRecordId" in item,
     ),
-    orphans = enrollments.filter((item) => !item.lead),
+    disconnected = enrollments.filter((item) => !item.lead),
     valid = enrollments.filter((item) => item.lead),
     due = valid.filter(
       (item) =>
-        item.status === "Active" && item.nextSendAt && isToday(item.nextSendAt),
+        item.status === "Active" &&
+        item.nextSendAt &&
+        isCampaignDateToday(item.nextSendAt, REFERENCE_NOW),
     ).length,
     needsAttention = valid.filter(
-      (item) => deliveryFor(item, props.messages).failed > 0,
+      (item) => campaignDeliveryFor(props.messages, item.linkedLeadId).failed > 0,
     ).length;
   if (!props.nurture) return <LeadTable items={props.visible} />;
   const visibleValid = props.visible.filter(
@@ -459,35 +530,38 @@ function CampaignLeadsPanel(props: {
           </div>
         ))}
       </div>
-      {orphans.length > 0 && (
-        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-200">
-          <div className="flex items-center justify-between">
-            <p>
-              {orphans.length} enrollment
-              {orphans.length === 1 ? " is" : "s are"} no longer connected to a
-              Lead.
-            </p>
+      {disconnected.length > 0 && (
+        <Alert
+          variant="warning"
+          title={
+            disconnected.length === 1
+              ? "1 enrollment is no longer connected to a Lead."
+              : `${disconnected.length} enrollments are no longer connected to Leads.`
+          }
+          action={
             <button
-              onClick={props.onReviewOrphans}
-              className="font-bold text-[#C9A84C]"
+              onClick={() => props.onOpenCleanup()}
+              className="min-h-10 rounded-xl border px-3 text-xs font-bold"
+              style={{
+                color: "var(--warning-text)",
+                borderColor: "var(--warning-border)",
+                backgroundColor: "var(--surface-1)",
+              }}
             >
               Review cleanup
             </button>
-          </div>
-          {props.reviewOrphans && (
-            <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
-              {orphans.map((item) => (
-                <p
-                  key={item.airtableRecordId}
-                  className="text-xs text-[#B8B8C2]"
-                >
-                  {item.status} · {item.currentStep || "Step unavailable"} ·{" "}
-                  {format(item.createdAt)} · Record {item.airtableRecordId}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
+          }
+        >
+          The enrollment cannot continue because its linked Lead record is
+          unavailable.
+        </Alert>
+      )}
+      {disconnected.length > 0 && (
+        <DisconnectedEnrollmentRows
+          items={disconnected}
+          canManage={props.canManageCleanup}
+          onOpen={props.onOpenCleanup}
+        />
       )}
       <div className="flex flex-col gap-2 sm:flex-row">
         <label className="relative flex-1">
@@ -527,25 +601,19 @@ function CampaignLeadsPanel(props: {
             <option key={value}>{value}</option>
           ))}
         </select>
-        <button
-          onClick={props.onAdd}
-          className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#C9A84C] px-4 py-2 text-sm font-bold text-black"
-        >
-          <Plus size={16} />
-          Add Leads
-        </button>
+        {props.canAdd && <button onClick={props.onAdd} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#C9A84C] px-4 py-2 text-sm font-bold text-black"><Plus size={16} />Add Leads</button>}
       </div>
-      {valid.length === 0 && orphans.length === 0 ? (
-        <EmptyLeads onAdd={props.onAdd} />
+      {valid.length === 0 && disconnected.length === 0 ? (
+        <EmptyLeads onAdd={props.canAdd ? props.onAdd : undefined} />
       ) : visibleValid.length === 0 ? (
         <div className="rounded-xl border border-white/10 p-10 text-center">
           <h3 className="font-serif text-xl text-white">
-            {orphans.length && valid.length === 0
+            {disconnected.length && valid.length === 0
               ? "Enrollment records need attention"
               : "No Leads match these filters"}
           </h3>
           <p className="mt-2 text-sm text-[#9292A0]">
-            {orphans.length && valid.length === 0
+            {disconnected.length && valid.length === 0
               ? "Enrollment records exist, but they are not linked to available Leads."
               : "Clear filters to return to the full campaign list."}
           </p>
@@ -569,6 +637,127 @@ function CampaignLeadsPanel(props: {
     </div>
   );
 }
+
+function DisconnectedEnrollmentRows({
+  items,
+  canManage,
+  onOpen,
+}: {
+  items: NurtureEnrollment[];
+  canManage: boolean;
+  onOpen: (enrollmentId?: string | null, action?: CleanupAction) => void;
+}) {
+  const [menu, setMenu] = useState<string | null>(null);
+  return (
+    <section
+      aria-label="Disconnected Enrollments"
+      className="rounded-2xl border"
+      style={{
+        borderColor: "var(--warning-border)",
+        backgroundColor: "var(--surface-1)",
+      }}
+    >
+      <div
+        className="border-b px-4 py-3"
+        style={{ borderColor: "var(--border-subtle)" }}
+      >
+        <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+          Disconnected Enrollments
+        </h3>
+        <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+          Lead-dependent actions are unavailable until a Lead is reconnected.
+        </p>
+      </div>
+      <div className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
+        {items.map((item) => (
+          <div
+            key={item.airtableRecordId}
+            className="relative flex items-center gap-3 px-4 py-3"
+          >
+            <button
+              type="button"
+              onClick={() => onOpen(item.airtableRecordId, "review")}
+              className="min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{ outlineColor: "var(--focus)" }}
+            >
+              <span className="block text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                Lead unavailable
+              </span>
+              <span className="mt-1 block truncate text-xs" style={{ color: "var(--text-muted)" }}>
+                {item.airtableRecordId} · {item.currentStep || "Step unavailable"} · {item.status}
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label={`Actions for enrollment ${item.airtableRecordId}`}
+              aria-expanded={menu === item.airtableRecordId}
+              onClick={() =>
+                setMenu(menu === item.airtableRecordId ? null : item.airtableRecordId)
+              }
+              className="grid size-10 shrink-0 place-items-center rounded-xl border focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                color: "var(--text-secondary)",
+                borderColor: "var(--border-subtle)",
+                outlineColor: "var(--focus)",
+              }}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {menu === item.airtableRecordId && (
+              <div
+                className="absolute right-4 top-12 z-30 w-56 rounded-xl border p-1"
+                style={{
+                  color: "var(--text-primary)",
+                  backgroundColor: "var(--surface-raised)",
+                  borderColor: "var(--border-subtle)",
+                  boxShadow: "var(--shadow-modal)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(null);
+                    onOpen(item.airtableRecordId, "review");
+                  }}
+                  className="min-h-11 w-full rounded-lg px-3 text-left text-xs font-bold hover:bg-[var(--surface-hover)]"
+                >
+                  Review enrollment
+                </button>
+                {canManage && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenu(null);
+                        onOpen(item.airtableRecordId, "reconnect");
+                      }}
+                      className="min-h-11 w-full rounded-lg px-3 text-left text-xs font-bold hover:bg-[var(--surface-hover)]"
+                      style={{ color: "var(--brand-primary)" }}
+                    >
+                      Reconnect Lead
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenu(null);
+                        onOpen(item.airtableRecordId, "remove");
+                      }}
+                      className="min-h-11 w-full rounded-lg px-3 text-left text-xs font-bold hover:bg-[var(--danger-bg)]"
+                      style={{ color: "var(--danger-text)" }}
+                    >
+                      Remove Enrollment
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function NurtureOperationalTable({
   items,
   messages,
@@ -589,8 +778,8 @@ function NurtureOperationalTable({
     <>
       <div className="grid gap-3 md:hidden">
         {items.map((item) => {
-          const health = deliveryFor(item, messages);
-          const last = item.lastSentAt || item.nextSendAt || item.createdAt;
+          const health = campaignDeliveryFor(messages, item.linkedLeadId);
+          const last = health.lastActivity || item.lastSentAt || item.createdAt;
           return (
             <article
               key={item.airtableRecordId}
@@ -669,6 +858,7 @@ function NurtureOperationalTable({
                     <CompactJourneyProgress
                       currentStep={item.currentStep}
                       status={item.status}
+                      sentSteps={sentStepsForLead(messages, item.linkedLeadId)}
                     />
                   </div>
                 </div>
@@ -703,7 +893,7 @@ function NurtureOperationalTable({
                     {relative(last)}
                   </p>
                   <p className="mt-1 text-[10px] text-[#9292A0]">
-                    {format(last)} ET
+                    {formatCampaignDate(last)}
                   </p>
                 </div>
               </div>
@@ -732,8 +922,8 @@ function NurtureOperationalTable({
           </thead>
           <tbody>
             {items.map((item) => {
-              const health = deliveryFor(item, messages),
-                last = item.lastSentAt || item.nextSendAt || item.createdAt;
+              const health = campaignDeliveryFor(messages, item.linkedLeadId),
+                last = health.lastActivity || item.lastSentAt || item.createdAt;
               return (
                 <tr
                   key={item.airtableRecordId}
@@ -762,6 +952,7 @@ function NurtureOperationalTable({
                     <CompactJourneyProgress
                       currentStep={item.currentStep}
                       status={item.status}
+                      sentSteps={sentStepsForLead(messages, item.linkedLeadId)}
                     />
                   </td>
                   <td className="p-3">
@@ -786,11 +977,11 @@ function NurtureOperationalTable({
                     )}
                   </td>
                   <td className="p-3 text-[#B8B8C2]">
-                    <span title={`${format(last)} America/New_York`}>
+                    <span title={formatCampaignDate(last)}>
                       {relative(last)}
                     </span>
                     <p className="mt-1 text-[10px] text-[#9292A0]">
-                      {format(last)} ET
+                      {formatCampaignDate(last)}
                     </p>
                   </td>
                   <td
@@ -854,64 +1045,19 @@ function NextTouch({ item }: { item: NurtureEnrollment }) {
     return <p className="font-bold text-[#4ECDC4]">Completed</p>;
   if (item.status === "Stopped")
     return <p className="text-[#9292A0]">No future messages</p>;
-  const nextIndex =
-      [
-        "Day 1 SMS",
-        "Day 3 Email",
-        "Day 5 SMS",
-        "Day 8 Email",
-        "Day 12 SMS",
-      ].indexOf(item.currentStep) + 1,
-    next =
-      ["Day 1 SMS", "Day 3 Email", "Day 5 SMS", "Day 8 Email", "Day 12 SMS"][
-        nextIndex
-      ] || item.currentStep;
   return (
     <div>
-      <p className="font-bold text-white">{next}</p>
-      <p className="mt-1 text-[#B8B8C2]">{format(item.nextSendAt)} ET</p>
+      <p className="font-bold text-white">{displayedNextTouch(item.currentStep)}</p>
       <p
         className={`mt-1 text-[10px] ${item.nextSendAt && Date.parse(item.nextSendAt) < REFERENCE_NOW ? "text-amber-300" : "text-[#9292A0]"}`}
       >
         {relative(item.nextSendAt)}
       </p>
+      <p className="mt-1 text-[#B8B8C2]">
+        {formatCampaignDate(item.nextSendAt)}
+      </p>
     </div>
   );
-}
-function deliveryFor(item: NurtureEnrollment, messages: MessageLog[]) {
-  const logs = messages.filter(
-      (message) => message.recipientLeadId === item.linkedLeadId,
-    ),
-    failed = logs.filter(
-      (message) => message.deliveryStatus === "Failed",
-    ).length,
-    sent = logs.filter((message) => message.deliveryStatus === "Sent").length,
-    last = logs
-      .slice()
-      .sort(
-        (a, b) =>
-          Date.parse(b.sentAt ?? b.createdTime) -
-          Date.parse(a.sentAt ?? a.createdTime),
-      )[0];
-  return {
-    failed,
-    sent,
-    lastChannel: last?.channel,
-    label: !logs.length
-      ? "No messages yet"
-      : failed === 0
-        ? "Healthy"
-        : failed < logs.length
-          ? "Partial failure"
-          : "Needs attention",
-    color: !logs.length
-      ? "#9292A0"
-      : failed === 0
-        ? "#4ECDC4"
-        : failed < logs.length
-          ? "#E6AD55"
-          : "#F58A91",
-  };
 }
 function relative(value: string | null | undefined) {
   if (!value) return "No activity";
@@ -929,10 +1075,7 @@ function relative(value: string | null | undefined) {
       : `${Math.max(1, hours)} hour${hours === 1 ? "" : "s"}`;
   return diff < 0 ? `Overdue by ${amount}` : `In ${amount}`;
 }
-function isToday(value: string) {
-  return new Date(value).toDateString() === REFERENCE_TODAY;
-}
-function EmptyLeads({ onAdd }: { onAdd: () => void }) {
+function EmptyLeads({ onAdd }: { onAdd?: () => void }) {
   return (
     <div className="rounded-xl border border-white/10 p-12 text-center">
       <h3 className="font-serif text-xl text-white">
@@ -941,12 +1084,12 @@ function EmptyLeads({ onAdd }: { onAdd: () => void }) {
       <p className="mt-2 text-sm text-[#9292A0]">
         Add eligible Leads to begin the 14-Day Nurture sequence.
       </p>
-      <button
+      {onAdd && <button
         onClick={onAdd}
         className="mt-5 rounded-xl bg-[#C9A84C] px-4 py-2 text-sm font-bold text-black"
       >
         Add Leads
-      </button>
+      </button>}
     </div>
   );
 }
@@ -979,8 +1122,8 @@ function LeadTable({ items }: { items: Array<NurtureEnrollment | SpeedLead> }) {
                 ["Email", item.emailSentStatus || "—"],
                 ["SMS", item.smsSentStatus || "—"],
                 ["Replied", item.replied ? "Yes" : "No"],
-                ["Created", format(item.createdAt)],
-                ["Last contacted", format(item.lastContactedAt)],
+                ["Created", formatCampaignDate(item.createdAt)],
+                ["Last contacted", formatCampaignDate(item.lastContactedAt)],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -1041,10 +1184,10 @@ function LeadTable({ items }: { items: Array<NurtureEnrollment | SpeedLead> }) {
                     {item.replied ? "Yes" : "No"}
                   </td>
                   <td className="p-3 text-[#B8B8C2]">
-                    {format(item.createdAt)}
+                    {formatCampaignDate(item.createdAt)}
                   </td>
                   <td className="p-3 text-[#B8B8C2]">
-                    {format(item.lastContactedAt)}
+                    {formatCampaignDate(item.lastContactedAt)}
                   </td>
                 </tr>
               ),
@@ -1197,7 +1340,7 @@ function ConversationDrawer({
                       {message.messageBody || "No message body was recorded."}
                     </p>
                     <p className="mt-3 text-xs text-[#7F8997]">
-                      {format(message.sentAt)}
+                      {formatCampaignDate(message.sentAt)}
                     </p>
                   </button>
                   <div
@@ -1216,7 +1359,7 @@ function ConversationDrawer({
                         </p>
                         <div className="mt-4 rounded-xl bg-black/20 p-3 text-xs leading-5 text-[#7F8997]">
                           <p>Channel: {message.channel}</p>
-                          <p>Sent: {format(message.sentAt)}</p>
+                          <p>Sent: {formatCampaignDate(message.sentAt)}</p>
                           {message.mandrillMessageId && (
                             <p className="break-all">
                               Mandrill: {message.mandrillMessageId}

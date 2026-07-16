@@ -52,28 +52,9 @@ export default function LoginPage() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_active")
-      .eq("id", data.user.id)
-      .maybeSingle<{ is_active: boolean }>();
-
-    if (!profile?.is_active) {
-      await supabase.auth.signOut();
-      setLoading(false);
-      setError("This account is inactive. Contact an admin.");
-      return;
-    }
-
-    await supabase
-      .from("profiles")
-      .update({ last_sign_in_at: new Date().toISOString() })
-      .eq("id", data.user.id);
-
-    await fetch("/api/auth/audit-session", { method: "POST" }).catch(() => undefined);
-
     router.replace("/dashboard");
     router.refresh();
+    void fetch("/api/auth/audit-session", { method: "POST", keepalive: true }).catch(() => undefined);
   }
 
   return (

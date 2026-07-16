@@ -13,6 +13,15 @@ class AuthError extends Error {
   }
 }
 
+const AUTH_TIMEOUT_MS = 8_000;
+
+async function withAuthTimeout<T>(operation: PromiseLike<T>): Promise<T> {
+  return Promise.race([
+    Promise.resolve(operation),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new AuthError(503, "Authentication service timed out")), AUTH_TIMEOUT_MS)),
+  ]);
+}
+
 function parseCookieHeader(header: string | null) {
   if (!header) return [];
   return header.split(";").map((part) => {
@@ -31,7 +40,7 @@ async function getUserFromBearerToken(request: Request) {
   if (!token) return null;
 
   const supabase = createServiceClient();
-  const { data, error } = await supabase.auth.getUser(token);
+  const { data, error } = await withAuthTimeout(supabase.auth.getUser(token));
   if (error || !data.user) return null;
   return data.user;
 }
@@ -72,7 +81,7 @@ export async function requireRole(
     }
   );
 
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const { data: { user }, error } = await withAuthTimeout(supabase.auth.getUser());
   if (error || !user) throw new AuthError(401, "Authentication required");
 
   return requireProfileForUser(user, minimumRole);
@@ -80,11 +89,11 @@ export async function requireRole(
 
 async function requireProfileForUser(user: User, minimumRole: Role): Promise<{ user: User; profile: Profile }> {
   const service = createServiceClient();
-  const { data: profile, error: profileError } = await service
+  const { data: profile, error: profileError } = await withAuthTimeout(service
     .from("profiles")
     .select("id,email,full_name,role,is_active,last_sign_in_at,created_at,updated_at")
     .eq("id", user.id)
-    .maybeSingle<Profile>();
+    .maybeSingle<Profile>());
 
   if (profileError || !profile || !profile.is_active || !isRole(profile.role)) {
     throw new AuthError(403, "Access denied");

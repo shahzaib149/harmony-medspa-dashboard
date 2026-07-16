@@ -3,6 +3,7 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useRef } from "react";
 import { type ThemePreference, useTheme } from "./ThemeProvider";
+import { DEFAULT_THEME } from "@/lib/theme-preference";
 
 const options = [
   { value: "dark" as const, label: "Dark", Icon: Moon },
@@ -13,7 +14,7 @@ const options = [
 export default function ThemeSelector() {
   const { theme, setTheme, mounted } = useTheme();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selected = mounted ? theme : "dark";
+  const selected = mounted ? theme : DEFAULT_THEME;
 
   function select(value: ThemePreference, focus = false) {
     setTheme(value);

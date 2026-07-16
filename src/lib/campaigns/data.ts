@@ -1,5 +1,6 @@
 import { listRecords, linkedIds, mapLead, textField } from "@/lib/airtable/leads-base";
 import { CAMPAIGNS, getCampaign } from "@/lib/campaigns/registry";
+import { isCampaignDateToday } from "@/lib/campaigns/campaign-date";
 import type { CampaignSummary, NurtureEnrollment } from "@/lib/types/campaigns";
 import type { MessageLog } from "@/types/message-log";
 
@@ -35,7 +36,7 @@ export function summarizeCampaigns(data: Awaited<ReturnType<typeof campaignData>
       const completed = data.enrollments.filter((item) => item.status === "Completed").length;
       const booked = data.enrollments.filter((item) => item.lead?.status === "Booked").length;
       const replied = data.enrollments.filter((item) => item.lead?.replied).length;
-      const due = data.enrollments.filter((item) => item.status === "Active" && dateValue(item.nextSendAt) <= Date.now()).length;
+      const due = data.enrollments.filter((item) => item.status === "Active" && isCampaignDateToday(item.nextSendAt)).length;
       const last = Math.max(...data.enrollments.map((item) => Math.max(dateValue(item.lastSentAt), dateValue(item.createdAt))), ...messages.map((item) => dateValue(item.sentAt)), 0);
       return { ...definition, totalLeads: data.enrollments.length, activeLeads: active, completedLeads: completed, messagesSent: messages.filter((item) => item.deliveryStatus === "Sent").length, lastActivity: last ? new Date(last).toISOString() : null, metrics: { stopped: data.enrollments.filter((item) => item.status === "Stopped").length, dueToday: due, replyRate: data.enrollments.length ? Math.round(replied / data.enrollments.length * 100) : 0, bookingRate: data.enrollments.length ? Math.round(booked / data.enrollments.length * 100) : 0 } };
     }

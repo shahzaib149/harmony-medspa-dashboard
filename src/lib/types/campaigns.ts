@@ -126,22 +126,45 @@ export interface BulkEnrollNewLead {
 export interface BulkEnrollmentRequest {
   leadIds: string[];
   newLeads: BulkEnrollNewLead[];
-  /** ISO date-time with timezone offset, e.g. 2026-07-20T16:00:00-04:00 */
-  firstSendAt: string;
-  timezone: string;
+  /** Canonical UTC instant stored in Airtable. */
+  scheduledAtUtc: string;
+  /** IANA timezone used to interpret the selected wall-clock values. */
+  scheduledTimezone: string;
+  scheduledLocalDate: string;
+  scheduledLocalTime: string;
 }
 
 export interface BulkEnrollmentResultItem {
   leadId?: string;
+  rowId?: string;
   name?: string;
   enrollmentId?: string;
   reason?: string;
+  retryable?: boolean;
+}
+
+export interface BulkEnrollmentSummary {
+  selected: number;
+  existingLeads: number;
+  newLeadsCreated: number;
+  enrollmentsCreated: number;
+  duplicatesSkipped: number;
+  alreadyEnrolled: number;
+  invalid: number;
+  failed: number;
 }
 
 export interface BulkEnrollmentResult {
+  success: boolean;
+  partial: boolean;
+  requestId: string;
+  summary: BulkEnrollmentSummary;
   enrolled: BulkEnrollmentResultItem[];
   skipped: BulkEnrollmentResultItem[];
   failed: BulkEnrollmentResultItem[];
+  code?: string;
+  message?: string;
+  retryable?: boolean;
 }
 
 export const NURTURE_STEPS = [

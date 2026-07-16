@@ -1,8 +1,13 @@
 "use client";
-import Papa from "papaparse";
-import { FileUp, Search, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileUp, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BulkActionConfirmDialog } from "@/components/ui/ConfirmDialog";
+import {
+  createNurtureSchedule,
+  NURTURE_TIMEZONE,
+  NurtureScheduleError,
+  toNurtureSchedulePayload,
+} from "@/lib/campaigns/nurture-schedule";
 import type { BulkEnrollmentResult } from "@/lib/types/campaigns";
 type Lead = {
   id: string;
@@ -56,19 +61,6 @@ function eligibility(lead: Lead) {
     return "Valid email and US phone required";
   return "";
 }
-function firstSend(date: string, time: string) {
-  if (!date || !time) return "";
-  const probe = new Date(`${date}T12:00:00Z`);
-  const zone =
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      timeZoneName: "longOffset",
-    })
-      .formatToParts(probe)
-      .find((part) => part.type === "timeZoneName")
-      ?.value.replace("GMT", "") || "-04:00";
-  return `${date}T${time}:00${zone}`;
-}
 function rowError(row: NewLead) {
   if (!row.name.trim()) return "Name is required";
   if (!row.email.trim() || !row.phone.trim())
@@ -91,6 +83,10 @@ export default function AddLeadsToCampaignModal({
 }) {
   const [tab, setTab] = useState<"existing" | "new" | "csv">("existing"),
     [leads, setLeads] = useState<Lead[]>([]),
+    [leadsLoading, setLeadsLoading] = useState(false),
+    [leadPage, setLeadPage] = useState(0),
+    [leadCursors, setLeadCursors] = useState<Array<string | null>>([null]),
+    [leadNextCursor, setLeadNextCursor] = useState<string | null>(null),
     [selected, setSelected] = useState<Set<string>>(new Set()),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("All"),
@@ -104,9 +100,12 @@ export default function AddLeadsToCampaignModal({
     [saving, setSaving] = useState(false),
     [confirming, setConfirming] = useState(false),
     [error, setError] = useState(""),
+    [retryable, setRetryable] = useState(false),
+    [lastRequestId, setLastRequestId] = useState(""),
     [result, setResult] = useState<BulkEnrollmentResult | null>(null);
   const master = useRef<HTMLInputElement>(null),
-    fileRef = useRef<HTMLInputElement>(null);
+    fileRef = useRef<HTMLInputElement>(null),
+    inFlight = useRef(false);
   useEffect(() => {
     if (!open) return;
     setTab("existing");
@@ -117,63 +116,74 @@ export default function AddLeadsToCampaignModal({
     setPermission(false);
     setResult(null);
     setError("");
+    setRetryable(false);
+    setLastRequestId("");
   }, [initialLeadId, open]);
+  useEffect(() => {
+    setLeadPage(0);
+    setLeadCursors([null]);
+  }, [query, status]);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void (async () => {
+        setLeadsLoading(true);
         try {
-          const allLeads: Lead[] = [];
-          let cursor: string | null = null;
-          let page = 1;
-
-          do {
-            const params = new URLSearchParams({
-              page: String(page),
-              pageSize: "50",
-            });
-            if (cursor) params.set("cursor", cursor);
-            if (query.trim()) params.set("search", query.trim());
-            if (status !== "All") params.set("status", status);
-
-            const response = await fetch(`/api/airtable/leads?${params}`, {
-              cache: "no-store",
-              signal: controller.signal,
-            });
-            const body = (await response.json()) as {
-              error?: string;
-              leads?: Lead[];
-              nextCursor?: string | null;
-            };
-            if (!response.ok || body.error) {
-              throw new Error(body.error || "Leads could not be loaded");
-            }
-
-            allLeads.push(...(body.leads ?? []));
-            cursor = body.nextCursor ?? null;
-            page += 1;
-          } while (cursor && !controller.signal.aborted);
-
+          const params = new URLSearchParams({ page: String(leadPage + 1), pageSize: "50" });
+          const cursor = leadCursors[leadPage];
+          if (cursor) params.set("cursor", cursor);
+          if (query.trim()) params.set("search", query.trim());
+          if (status !== "All") params.set("status", status);
+          const response = await fetch(`/api/airtable/leads?${params}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]) });
+          const body = (await response.json()) as { error?: string; leads?: Lead[]; nextCursor?: string | null };
+          if (!response.ok || body.error) throw new Error(body.error || "Leads could not be loaded");
           if (!controller.signal.aborted) {
-            setLeads(allLeads);
+            setLeads(body.leads ?? []);
+            setLeadNextCursor(body.nextCursor ?? null);
             setError("");
           }
         } catch (caught) {
-          if (!(caught instanceof DOMException && caught.name === "AbortError")) {
+          if (!(caught instanceof DOMException && ["AbortError", "TimeoutError"].includes(caught.name))) {
             setError("Leads could not be loaded");
           }
+        } finally {
+          setLeadsLoading(false);
         }
       })();
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [open, query, status]);
+  }, [leadCursors, leadPage, open, query, status]);
   const visible = useMemo(
     () =>
       leads,
     [leads],
   );
-  const eligibleVisible = visible.filter((lead) => !eligibility(lead));
+  const eligibleVisible = useMemo(() => visible.filter((lead) => !eligibility(lead)), [visible]);
+  const scheduleState = useMemo(() => {
+    if (!date || !time) return { schedule: null, error: "" };
+    try {
+      return {
+        schedule: createNurtureSchedule(
+          {
+            scheduledLocalDate: date,
+            scheduledLocalTime: time,
+            scheduledTimezone: NURTURE_TIMEZONE,
+          },
+          { requireFuture: true },
+        ),
+        error: "",
+      };
+    } catch (caught) {
+      return {
+        schedule: null,
+        error:
+          caught instanceof NurtureScheduleError
+            ? caught.message
+            : "The selected campaign time is invalid.",
+      };
+    }
+  }, [date, time]);
   useEffect(() => {
     if (master.current)
       master.current.indeterminate =
@@ -184,12 +194,14 @@ export default function AddLeadsToCampaignModal({
       tab === "existing" ? selected.size : tab === "new" ? 1 : csvSelected.size,
     ready =
       count > 0 &&
-      Boolean(date && time && permission) &&
+      Boolean(scheduleState.schedule && permission) &&
       (tab !== "new" || !rowError(newLead));
   const update = (key: keyof NewLead, value: string) =>
     setNewLead((current) => ({ ...current, [key]: value }));
-  function parseCsv(file: File) {
+  async function parseCsv(file: File) {
     setFileName(file.name);
+    setError("");
+    const Papa = (await import("papaparse")).default;
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: "greedy",
@@ -244,8 +256,19 @@ export default function AddLeadsToCampaignModal({
     });
   }
   async function enroll() {
+    if (inFlight.current) return;
+    if (!scheduleState.schedule) {
+      setError(scheduleState.error || "Select a valid First Send At time.");
+      return;
+    }
+    inFlight.current = true;
     setSaving(true);
     setError("");
+    setRetryable(false);
+    const requestId = crypto.randomUUID();
+    setLastRequestId(requestId);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), 60_000);
     try {
       const url =
         tab === "csv"
@@ -256,33 +279,43 @@ export default function AddLeadsToCampaignModal({
           ? {
               rows: csvRows,
               selectedRowIds: [...csvSelected],
-              firstSendAt: firstSend(date, time),
-              timezone: "America/New_York",
+              ...toNurtureSchedulePayload(scheduleState.schedule),
             }
           : {
               leadIds: tab === "existing" ? [...selected] : [],
               newLeads: tab === "new" ? [newLead] : [],
-              firstSendAt: firstSend(date, time),
-              timezone: "America/New_York",
+              ...toNurtureSchedulePayload(scheduleState.schedule),
             };
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Request-Id": requestId },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
-      const body = await response.json();
-      if (!response.ok && !body.enrolled)
-        throw new Error(body.error || "Leads could not be enrolled");
+      const body = await response.json() as BulkEnrollmentResult & { error?: string };
+      if (!Array.isArray(body.enrolled)) throw new Error(body.message || body.error || "Leads could not be enrolled");
       setResult(body);
       setConfirming(false);
-      onComplete();
+      if (body.enrolled.length) onComplete();
     } catch (event) {
-      setError(
-        event instanceof Error ? event.message : "Leads could not be enrolled",
-      );
+      const timedOut = controller.signal.aborted;
+      setError(timedOut ? "Enrollment took too long to complete. Retry safely using the same selected Leads." : event instanceof Error ? event.message : "Leads could not be enrolled");
+      setRetryable(true);
+      setConfirming(false);
     } finally {
+      window.clearTimeout(timeout);
+      inFlight.current = false;
       setSaving(false);
     }
+  }
+
+  function retryFailed(failed: BulkEnrollmentResult["failed"]) {
+    if (failed.length && tab === "csv") setCsvSelected(new Set(failed.flatMap((entry) => entry.rowId ? [entry.rowId] : [])));
+    if (failed.length && tab === "existing") setSelected(new Set(failed.flatMap((entry) => entry.leadId ? [entry.leadId] : [])));
+    setResult(null);
+    setError("");
+    setRetryable(false);
+    setConfirming(true);
   }
   if (!open) return null;
   return (
@@ -315,14 +348,15 @@ export default function AddLeadsToCampaignModal({
           </div>
           <button
             aria-label="Close"
+            disabled={saving}
             onClick={onClose}
-            className="grid size-11 shrink-0 place-items-center rounded-xl"
+            className="grid size-11 shrink-0 place-items-center rounded-xl disabled:opacity-40"
           >
             <X className="text-(--text-muted)" />
           </button>
         </header>
         {result ? (
-          <Result result={result} onClose={onClose} />
+          <Result result={result} onClose={onClose} onRetry={() => retryFailed(result.failed)} />
         ) : (
           <>
             <nav className="flex shrink-0 overflow-x-auto border-b border-(--border-subtle) px-4">
@@ -357,10 +391,19 @@ export default function AddLeadsToCampaignModal({
                   selected={selected}
                   query={query}
                   status={status}
+                  loading={leadsLoading}
+                  page={leadPage}
+                  hasNext={Boolean(leadNextCursor)}
                   master={master}
                   onQuery={setQuery}
                   onStatus={setStatus}
                   onSelected={setSelected}
+                  onPrevious={() => setLeadPage((current) => Math.max(0, current - 1))}
+                  onNext={() => {
+                    if (!leadNextCursor) return;
+                    setLeadCursors((current) => [...current.slice(0, leadPage + 1), leadNextCursor]);
+                    setLeadPage((current) => current + 1);
+                  }}
                 />
               )}{" "}
               {tab === "new" && (
@@ -400,10 +443,11 @@ export default function AddLeadsToCampaignModal({
                 onTime={setTime}
                 onPermission={setPermission}
               />
-              {error && (
-                <p role="alert" className="mt-3 text-sm text-(--danger)">
-                  {error}
-                </p>
+              {(error || scheduleState.error) && (
+                <div role="alert" className="mt-3 flex flex-col gap-3 rounded-xl border border-(--danger)/25 bg-(--danger-soft) p-3 text-sm text-(--danger) sm:flex-row sm:items-center sm:justify-between">
+                  <span><AlertCircle className="mr-2 inline" size={16} />{scheduleState.error || error}{lastRequestId && <span className="mt-1 block text-xs text-(--text-muted)">Request ID: {lastRequestId}</span>}</span>
+                  {retryable && <button type="button" onClick={() => setConfirming(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-current px-3 text-xs font-bold"><RefreshCw size={14} />Retry selected Leads</button>}
+                </div>
               )}
             </div>
             <footer className="mobile-safe-bottom flex shrink-0 flex-col gap-2 border-t border-(--border-subtle) p-4 min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between sm:p-5">
@@ -426,13 +470,16 @@ export default function AddLeadsToCampaignModal({
           description="The selected Leads will be enrolled in the 14-Day Nurture campaign. Make.com will begin sending messages when the selected First Send At time becomes due."
           confirmLabel={`Enroll ${count} Leads`}
           loading={saving}
+          loadingLabel={`Starting nurture for ${count} Leads…`}
           onCancel={() => setConfirming(false)}
           onConfirm={() => void enroll()}
         >
           <p>
-            First Send At: <b>{formatSchedule(date, time)}</b>
+            First Send At:{" "}
+            <b>{scheduleState.schedule?.confirmationText || "Not selected"}</b>
           </p>
-          <p>Timezone: America/New_York</p>
+          <p>Timezone: {NURTURE_TIMEZONE}</p>
+          {saving && <p className="mt-3 flex items-center gap-2 font-semibold text-(--text-primary)"><Loader2 className="animate-spin text-(--brand-primary)" size={16} />Creating Lead and enrollment records. Please keep this window open.</p>}
         </BulkActionConfirmDialog>
       </div>
     </div>
@@ -443,19 +490,29 @@ function Existing({
   selected,
   query,
   status,
+  loading,
+  page,
+  hasNext,
   master,
   onQuery,
   onStatus,
   onSelected,
+  onPrevious,
+  onNext,
 }: {
   leads: Lead[];
   selected: Set<string>;
   query: string;
   status: string;
+  loading: boolean;
+  page: number;
+  hasNext: boolean;
   master: React.RefObject<HTMLInputElement | null>;
   onQuery: (v: string) => void;
   onStatus: (v: string) => void;
   onSelected: (v: Set<string>) => void;
+  onPrevious: () => void;
+  onNext: () => void;
 }) {
   const eligible = leads.filter((lead) => !eligibility(lead));
   const all =
@@ -501,6 +558,13 @@ function Existing({
         >
           Clear
         </button>
+      </div>
+      <div className="mt-3 flex items-center justify-between text-xs text-(--text-muted)">
+        <span>{loading ? "Loading Leads…" : `Page ${page + 1} · ${leads.length} Leads`}</span>
+        <span className="flex gap-2">
+          <button type="button" disabled={page === 0 || loading} onClick={onPrevious} className="min-h-9 rounded-lg border border-(--border-subtle) px-3 font-bold disabled:opacity-40">Previous</button>
+          <button type="button" disabled={!hasNext || loading} onClick={onNext} className="min-h-9 rounded-lg border border-(--border-subtle) px-3 font-bold disabled:opacity-40">Next</button>
+        </span>
       </div>
       <div className="mt-4 grid gap-3 sm:hidden">
         {leads.map((lead) => {
@@ -897,7 +961,7 @@ function Schedule({
       </label>
       <div>
         <p className="text-[10px] uppercase text-(--text-muted)">Timezone</p>
-        <p className="text-sm text-(--text-primary)">America/New_York</p>
+        <p className="text-sm text-(--text-primary)">{NURTURE_TIMEZONE}</p>
       </div>
       <label className="flex items-center gap-3 sm:col-span-4 text-sm text-(--text-secondary)">
         <input
@@ -913,13 +977,28 @@ function Schedule({
 function Result({
   result,
   onClose,
+  onRetry,
 }: {
   result: BulkEnrollmentResult;
   onClose: () => void;
+  onRetry: () => void;
 }) {
+  const partial = result.failed.length > 0 && result.enrolled.length > 0;
+  const completeFailure = result.failed.length > 0 && result.enrolled.length === 0;
   return (
     <div className="overflow-y-auto p-6">
-      <h3 className="font-serif text-2xl text-(--healthy)">Enrollment results</h3>
+      <div className="flex items-start gap-3">
+        {completeFailure ? <AlertCircle className="mt-1 text-(--danger)" /> : <CheckCircle2 className="mt-1 text-(--healthy)" />}
+        <div>
+          <h3 className={`font-serif text-2xl ${completeFailure ? "text-(--danger)" : "text-(--healthy)"}`}>
+            {partial ? "Enrollment partially completed" : completeFailure ? "Enrollment could not be completed" : "Nurture started"}
+          </h3>
+          <p className="mt-1 text-sm text-(--text-secondary)">
+            {result.enrolled.length} Lead{result.enrolled.length === 1 ? " was" : "s were"} enrolled successfully.
+          </p>
+          <p className="mt-1 text-xs text-(--text-muted)">Request ID: {result.requestId}</p>
+        </div>
+      </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <p className="rounded-xl bg-(--healthy-soft) p-4 text-(--healthy)">
           {result.enrolled.length} enrolled
@@ -931,25 +1010,21 @@ function Result({
           {result.failed.length} failed
         </p>
       </div>
+      <div className="mt-4 grid gap-2 rounded-xl border border-(--border-subtle) bg-(--surface-2) p-4 text-sm text-(--text-secondary) sm:grid-cols-2">
+        <p>{result.summary.newLeadsCreated} new Leads created</p>
+        <p>{result.summary.existingLeads} existing Leads used</p>
+        <p>{result.summary.duplicatesSkipped} duplicates skipped</p>
+        <p>{result.summary.alreadyEnrolled} already enrolled</p>
+      </div>
       {[...result.skipped, ...result.failed].map((item, index) => (
         <p key={index} className="mt-2 text-sm text-(--text-secondary)">
           {item.name || item.leadId}: {item.reason}
         </p>
       ))}
-      <button
-        onClick={onClose}
-        className="mt-6 rounded-xl bg-(--brand-primary) px-5 py-2 font-bold text-(--primary-foreground)"
-      >
-        Done
-      </button>
+      <div className="mt-6 flex flex-col gap-2 min-[380px]:flex-row min-[380px]:justify-end">
+        {(result.failed.length > 0 || result.retryable) && <button onClick={onRetry} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-(--brand-primary) px-5 py-2 font-bold text-(--brand-primary)"><RefreshCw size={15} />{result.failed.length ? "Retry failed rows" : "Retry selected Leads"}</button>}
+        <button onClick={onClose} className="min-h-11 rounded-xl bg-(--brand-primary) px-5 py-2 font-bold text-(--primary-foreground)">Close</button>
+      </div>
     </div>
   );
-}
-function formatSchedule(date: string, time: string) {
-  return date && time
-    ? new Date(firstSend(date, time)).toLocaleString("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "Not selected";
 }

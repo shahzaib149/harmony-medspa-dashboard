@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CampaignStatusBadge } from "@/components/campaigns/CampaignBadges";
+import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import type { CampaignSummary } from "@/lib/types/campaigns";
 
 const TEXT = "var(--text-primary)";
@@ -18,11 +19,7 @@ const MUTED = "var(--text-muted)";
 const PANEL = "var(--surface-1)";
 
 function fmt(value: string | null) {
-  if (!value) return "No activity yet";
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+  return formatCampaignDate(value, "No activity yet");
 }
 
 export default function CampaignsClient() {

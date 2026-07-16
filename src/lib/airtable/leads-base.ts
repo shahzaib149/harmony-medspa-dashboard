@@ -3,6 +3,8 @@ import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey } from "@/lib/airtable/config
 export type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
 
 const root = `https://api.airtable.com/v0/${AIRTABLE_LEADS_BASE_ID}`;
+const AIRTABLE_TIMEOUT_MS = 10_000;
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 export function textField(fields: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
@@ -27,11 +29,30 @@ export function safeAirtableError(status: number) {
 }
 
 export async function airtableFetch(path: string, init?: RequestInit) {
-  return fetch(`${root}/${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json", ...init?.headers },
-    cache: "no-store",
-  });
+  const method = (init?.method ?? "GET").toUpperCase();
+  const maxAttempts = method === "GET" ? 3 : 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const timeout = AbortSignal.timeout(AIRTABLE_TIMEOUT_MS);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    try {
+      const response = await fetch(`${root}/${path}`, {
+        ...init,
+        signal,
+        headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json", ...init?.headers },
+        cache: "no-store",
+      });
+      const mayRetryWrite = method === "GET" || response.status === 429;
+      if (attempt === maxAttempts || !RETRYABLE_STATUS.has(response.status) || !mayRetryWrite) return response;
+      const retryAfter = Number(response.headers.get("retry-after"));
+      await new Promise((resolve) => setTimeout(resolve, Number.isFinite(retryAfter) ? retryAfter * 1_000 : 250 * attempt));
+    } catch (error) {
+      if (attempt === maxAttempts || method !== "GET") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
+
+  throw new Error("Airtable request failed");
 }
 
 export async function listRecords(table: string, params = new URLSearchParams()) {

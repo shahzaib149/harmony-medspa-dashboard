@@ -37,8 +37,8 @@ const MUTED = "var(--text-muted)";
 const DIM = "var(--text-muted)";
 const BORDER = "var(--border-subtle)";
 const BORDER_SOFT = "var(--border-subtle)";
-const TEAL = "#2DD4BF";
-const RED = "#F87171";
+const TEAL = "var(--success-text)";
+const RED = "var(--danger-text)";
 
 type DrawerMode = "create" | "edit";
 type StaffForm = {
@@ -60,10 +60,25 @@ const emptyForm: StaffForm = {
   confirmPassword: "",
 };
 
-const ROLE_COLOR: Record<Role, string> = {
-  admin: GOLD,
-  editor: TEAL,
-  viewer: MUTED,
+const ROLE_STYLE: Record<
+  Role,
+  { color: string; background: string; border: string }
+> = {
+  admin: {
+    color: "var(--brand-primary-strong)",
+    background: "var(--brand-primary-soft)",
+    border: "color-mix(in srgb, var(--brand-primary) 45%, var(--border-subtle))",
+  },
+  editor: {
+    color: "var(--success-text)",
+    background: "var(--success-bg)",
+    border: "var(--success-border)",
+  },
+  viewer: {
+    color: "var(--neutral-text)",
+    background: "var(--neutral-bg)",
+    border: "var(--neutral-border)",
+  },
 };
 
 function initials(name: string) {
@@ -92,19 +107,19 @@ function roleLabel(role: string) {
 }
 
 function RoleBadge({ role }: { role: Role }) {
-  const color = ROLE_COLOR[role] ?? MUTED;
+  const style = ROLE_STYLE[role] ?? ROLE_STYLE.viewer;
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize"
       style={{
-        color,
-        backgroundColor: `${color}12`,
-        border: `1px solid ${color}28`,
+        color: style.color,
+        backgroundColor: style.background,
+        border: `1px solid ${style.border}`,
       }}
     >
       <span
         className="h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: style.color }}
       />
       {role}
     </span>
@@ -141,6 +156,7 @@ function RoleSelect({
   disabled?: boolean;
   onChange: (r: Role) => void;
 }) {
+  const style = ROLE_STYLE[value];
   return (
     <label className="relative">
       <select
@@ -149,9 +165,9 @@ function RoleSelect({
         onChange={(e) => onChange(e.target.value as Role)}
         className="appearance-none rounded-full border pl-2.5 pr-6 py-1 text-[11px] font-bold capitalize disabled:cursor-not-allowed disabled:opacity-50"
         style={{
-          color: ROLE_COLOR[value],
-          backgroundColor: `${ROLE_COLOR[value]}12`,
-          borderColor: `${ROLE_COLOR[value]}30`,
+          color: style.color,
+          backgroundColor: style.background,
+          borderColor: style.border,
         }}
       >
         <option value="admin">admin</option>
@@ -161,7 +177,7 @@ function RoleSelect({
       <ChevronDown
         size={10}
         className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2"
-        style={{ color: ROLE_COLOR[value] }}
+        style={{ color: style.color }}
       />
     </label>
   );

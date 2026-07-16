@@ -1,9 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isRole, type Profile } from "@/lib/auth/permissions";
 import { getSupabasePublicConfig, isSupabaseConfigured } from "@/lib/supabase/config";
 
-const protectedRoutePattern = /^\/(dashboard|leads|nurture|message-logs|google-ads-analytics|settings|google-business)(\/.*)?$/;
+const protectedRoutePattern = /^\/(dashboard|leads|campaigns|nurture|message-logs|google-ads-analytics|ai-insights|settings|audit-log|google-business)(\/.*)?$/;
 
 function hasSupabaseAuthCookie(request: NextRequest) {
   return request.cookies.getAll().some((cookie) => (
@@ -71,40 +70,9 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id,email,full_name,role,is_active,last_sign_in_at,created_at,updated_at")
-    .eq("id", user.id)
-    .maybeSingle<Profile>();
-
-  if (!profile?.is_active) {
-    if (isProtected) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/login";
-      redirectUrl.searchParams.set("error", "inactive");
-      return NextResponse.redirect(redirectUrl);
-    }
-    return response;
-  }
-
   if (isLogin) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
-
-  if (pathname.startsWith("/settings/users") && profile.role !== "admin") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-harmony-user-id", user.id);
-  requestHeaders.set("x-harmony-user-email", user.email ?? profile.email ?? "");
-  if (isRole(profile.role)) requestHeaders.set("x-harmony-role", profile.role);
-
-  response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
 
   return response;
 }

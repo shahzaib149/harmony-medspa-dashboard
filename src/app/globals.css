@@ -1,6 +1,74 @@
 @import "tailwindcss" source("../");
 
 :root,
+[data-theme="light"] {
+  --background: #f5f6f3;
+  --background-subtle: #ecefea;
+  --surface-1: #ffffff;
+  --surface-2: #f8f9f7;
+  --surface-raised: #ffffff;
+  --surface-hover: #eff2ed;
+  --border-subtle: #d6dcd6;
+  --border-strong: #bcc5bd;
+  --text-primary: #1a1d1f;
+  --text-secondary: #4f595f;
+  --text-muted: #667178;
+  --brand-primary: #8a651e;
+  --brand-primary-strong: #715116;
+  --brand-primary-hover: #715116;
+  --brand-primary-soft: rgba(138, 101, 30, 0.1);
+  --brand-soft: var(--brand-primary-soft);
+  --primary-foreground: #ffffff;
+  --success: #1e766f;
+  --success-text: #145c56;
+  --success-bg: #e7f4f1;
+  --success-border: #9bcfc7;
+  --healthy: var(--success-text);
+  --healthy-soft: var(--success-bg);
+  --warning: #9a620f;
+  --warning-text: #754703;
+  --warning-bg: #fff6de;
+  --warning-border: #dcb966;
+  --warning-soft: var(--warning-bg);
+  --danger: #a84442;
+  --danger-text: #873230;
+  --danger-bg: #fceae9;
+  --danger-border: #d99b99;
+  --danger-soft: var(--danger-bg);
+  --info: #326b81;
+  --info-text: #244e5d;
+  --info-bg: #eaf4f7;
+  --info-border: #9fc8d5;
+  --neutral-text: #4f595f;
+  --neutral-bg: #f0f2ef;
+  --neutral-border: #cbd2cc;
+  --focus: #2c7d91;
+  --input-bg: #ffffff;
+  --disabled-bg: #edf0ec;
+  --disabled-text: #737d83;
+  --overlay: rgba(25, 28, 32, 0.38);
+  --shadow-soft: 0 8px 24px rgba(43, 52, 47, 0.08);
+  --shadow-modal: 0 24px 64px rgba(43, 52, 47, 0.2);
+  --chart-1: #8a651e;
+  --chart-2: #1e766f;
+  --chart-3: #376f91;
+  --chart-4: #a8563e;
+  --chart-5: #655b91;
+  --chart-6: #5f6970;
+  --chart-grid: rgba(79, 89, 95, 0.22);
+  --chart-axis: #59656c;
+  --chart-tooltip: #ffffff;
+  --chart-leads: #8a651e;
+  --chart-replied: #376f91;
+  --chart-booked: #1e766f;
+  --chart-visits: #376f91;
+  --chart-new-patients: #1e766f;
+  --chart-sms: #1e766f;
+  --chart-email: #376f91;
+  --chart-warning: #a84442;
+  --chart-success: #1e766f;
+}
+
 [data-theme="dark"] {
   --background: #090a0d;
   --background-subtle: #0c0e12;
@@ -15,16 +83,39 @@
   --text-muted: #777f8b;
   --brand-primary: #c7a354;
   --brand-primary-strong: #dbb965;
+  --brand-primary-hover: #dbb965;
   --brand-primary-soft: rgba(199, 163, 84, 0.12);
+  --brand-soft: var(--brand-primary-soft);
   --primary-foreground: #171309;
-  --healthy: #42a89f;
-  --healthy-soft: rgba(66, 168, 159, 0.12);
+  --success: #42a89f;
+  --success-text: #73c8c0;
+  --success-bg: rgba(66, 168, 159, 0.12);
+  --success-border: rgba(66, 168, 159, 0.36);
+  --healthy: var(--success-text);
+  --healthy-soft: var(--success-bg);
   --warning: #d39a4a;
-  --warning-soft: rgba(211, 154, 74, 0.12);
+  --warning-text: #e3b66f;
+  --warning-bg: rgba(211, 154, 74, 0.12);
+  --warning-border: rgba(211, 154, 74, 0.38);
+  --warning-soft: var(--warning-bg);
   --danger: #ce6b69;
-  --danger-soft: rgba(206, 107, 105, 0.12);
+  --danger-text: #e79592;
+  --danger-bg: rgba(206, 107, 105, 0.12);
+  --danger-border: rgba(206, 107, 105, 0.38);
+  --danger-soft: var(--danger-bg);
+  --info: #6e9fbe;
+  --info-text: #91bad2;
+  --info-bg: rgba(110, 159, 190, 0.12);
+  --info-border: rgba(110, 159, 190, 0.38);
+  --neutral-text: #a7adb7;
+  --neutral-bg: #151820;
+  --neutral-border: #343945;
   --focus: #67aab5;
+  --input-bg: var(--surface-2);
+  --disabled-bg: #151820;
+  --disabled-text: #777f8b;
   --overlay: rgba(0, 0, 0, 0.68);
+  --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.24);
   --shadow-modal: 0 28px 90px rgba(0, 0, 0, 0.56);
   --chart-1: #c7a354;
   --chart-2: #42a89f;
@@ -35,42 +126,15 @@
   --chart-grid: rgba(167, 173, 183, 0.12);
   --chart-axis: #8d95a1;
   --chart-tooltip: #1a1e27;
-}
-
-[data-theme="light"] {
-  --background: #f4f6f4;
-  --background-subtle: #ecefeb;
-  --surface-1: #ffffff;
-  --surface-2: #f7f8f6;
-  --surface-raised: #ffffff;
-  --surface-hover: #eef1ed;
-  --border-subtle: #dde2dd;
-  --border-strong: #c9d0ca;
-  --text-primary: #191c20;
-  --text-secondary: #596169;
-  --text-muted: #747d84;
-  --brand-primary: #936d25;
-  --brand-primary-strong: #78571b;
-  --brand-primary-soft: rgba(147, 109, 37, 0.1);
-  --primary-foreground: #ffffff;
-  --healthy: #217d76;
-  --healthy-soft: rgba(33, 125, 118, 0.1);
-  --warning: #a66b22;
-  --warning-soft: rgba(166, 107, 34, 0.1);
-  --danger: #b44f4c;
-  --danger-soft: rgba(180, 79, 76, 0.1);
-  --focus: #287c94;
-  --overlay: rgba(25, 28, 32, 0.38);
-  --shadow-modal: 0 24px 70px rgba(43, 52, 47, 0.18);
-  --chart-1: #936d25;
-  --chart-2: #217d76;
-  --chart-3: #376f91;
-  --chart-4: #a8563e;
-  --chart-5: #655b91;
-  --chart-6: #687179;
-  --chart-grid: rgba(89, 97, 105, 0.14);
-  --chart-axis: #687179;
-  --chart-tooltip: #ffffff;
+  --chart-leads: #d0ad5d;
+  --chart-replied: #79aac7;
+  --chart-booked: #5abbb2;
+  --chart-visits: #79aac7;
+  --chart-new-patients: #5abbb2;
+  --chart-sms: #5abbb2;
+  --chart-email: #79aac7;
+  --chart-warning: #e07d78;
+  --chart-success: #5abbb2;
 }
 
 @theme inline {
@@ -144,6 +208,95 @@ button,
   word-break: break-word;
 }
 
+.overview-display {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -0.025em;
+}
+
+.panel-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.75rem;
+  padding: 0 0.35rem;
+  color: var(--brand-primary-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.panel-link:hover {
+  color: var(--brand-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.overview-kpi-icon {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.65rem;
+}
+.overview-kpi-icon--brand {
+  color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+}
+.overview-kpi-icon--teal {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+.overview-kpi-icon--blue {
+  color: var(--info-text);
+  background: var(--info-bg);
+}
+
+.harmony-journey-line {
+  position: relative;
+  display: grid;
+  gap: 0.25rem;
+}
+.harmony-journey-line::before {
+  position: absolute;
+  top: 1rem;
+  bottom: 1rem;
+  left: 0.875rem;
+  width: 1px;
+  content: "";
+  background: linear-gradient(
+    to bottom,
+    var(--chart-leads),
+    var(--chart-replied),
+    var(--chart-booked)
+  );
+}
+.harmony-journey-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.65rem 0;
+}
+.harmony-journey-marker {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 42%, var(--border-subtle));
+  border-radius: 999px;
+  background: var(--surface-1);
+}
+.harmony-journey-marker > span {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: inherit;
+  background: var(--brand-primary);
+}
+
 .theme-choice {
   color: var(--text-secondary);
   background: var(--surface-2);
@@ -185,7 +338,7 @@ button,
 input,
 textarea,
 select {
-  background-color: var(--surface-2) !important;
+  background-color: var(--input-bg) !important;
   color: var(--text-primary) !important;
   border-color: var(--border-subtle) !important;
 }
@@ -207,8 +360,29 @@ select:focus {
 input:disabled,
 textarea:disabled,
 select:disabled {
-  opacity: 0.62;
+  color: var(--disabled-text) !important;
+  background-color: var(--disabled-bg) !important;
+  border-color: var(--border-subtle) !important;
+  opacity: 1;
   cursor: not-allowed;
+}
+
+[data-theme="light"] table {
+  background-color: var(--surface-1);
+}
+[data-theme="light"] thead {
+  color: var(--text-secondary);
+  background-color: var(--surface-2);
+}
+[data-theme="light"] tbody tr {
+  border-color: var(--border-subtle);
+}
+[data-theme="light"] tbody tr:hover {
+  background-color: var(--surface-hover);
+}
+[data-theme="light"] button:disabled,
+[data-theme="light"] [aria-disabled="true"] {
+  color: var(--disabled-text);
 }
 
 /* Compatibility layer while legacy pages migrate from raw colors to tokens. */
@@ -431,6 +605,31 @@ select:disabled {
   }
   .ad-detail-left {
     border-right: 1px solid var(--border-subtle);
+  }
+  .harmony-journey-line {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    padding-top: 0.15rem;
+  }
+  .harmony-journey-line::before {
+    top: 1.025rem;
+    right: 12.5%;
+    bottom: auto;
+    left: 12.5%;
+    width: auto;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      var(--chart-leads),
+      var(--chart-replied),
+      var(--chart-booked)
+    );
+  }
+  .harmony-journey-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

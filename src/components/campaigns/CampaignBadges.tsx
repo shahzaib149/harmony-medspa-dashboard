@@ -2,17 +2,18 @@ import type { LeadCampaignSummary } from "@/lib/types/campaigns";
 
 function tone(status: string) {
   if (status === "Active")
-    return { color: "var(--healthy)", background: "var(--healthy-soft)" };
+    return { color: "var(--success-text)", background: "var(--success-bg)", border: "var(--success-border)" };
   if (status === "Completed")
     return {
-      color: "var(--focus)",
-      background: "color-mix(in srgb, var(--focus) 10%, transparent)",
+      color: "var(--info-text)",
+      background: "var(--info-bg)",
+      border: "var(--info-border)",
     };
   if (status === "Stopped")
-    return { color: "var(--danger)", background: "var(--danger-soft)" };
+    return { color: "var(--danger-text)", background: "var(--danger-bg)", border: "var(--danger-border)" };
   if (status === "Paused")
-    return { color: "var(--warning)", background: "var(--warning-soft)" };
-  return { color: "var(--text-muted)", background: "var(--surface-hover)" };
+    return { color: "var(--warning-text)", background: "var(--warning-bg)", border: "var(--warning-border)" };
+  return { color: "var(--neutral-text)", background: "var(--neutral-bg)", border: "var(--neutral-border)" };
 }
 
 export function CampaignStatusBadge({ status }: { status: string }) {
@@ -22,10 +23,11 @@ export function CampaignStatusBadge({ status }: { status: string }) {
       className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
       style={{
         color: style.color,
-        borderColor: `color-mix(in srgb, ${style.color} 28%, transparent)`,
+        borderColor: style.border,
         backgroundColor: style.background,
       }}
     >
+      <span className="mr-1.5 size-1.5 rounded-full" style={{ backgroundColor: style.color }} aria-hidden="true" />
       {status}
     </span>
   );
@@ -47,7 +49,7 @@ export function LeadCampaignBadges({
               className="rounded-full border px-2 py-1 text-[10px]"
               style={{
                 color: style.color,
-                borderColor: `color-mix(in srgb, ${style.color} 24%, transparent)`,
+                borderColor: style.border,
                 backgroundColor: style.background,
               }}
             >

@@ -30,7 +30,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('harmony-dashboard-theme');if(p!=='dark'&&p!=='light'&&p!=='system')p='dark';var r=p==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):p;var d=document.documentElement;d.dataset.theme=r;d.dataset.themePreference=p;d.style.colorScheme=r}catch(e){document.documentElement.dataset.theme='dark';document.documentElement.style.colorScheme='dark'}})();`,
+            __html: `(function(){try{var p=localStorage.getItem('harmony-dashboard-theme');if(p!=='dark'&&p!=='light'&&p!=='system')p='light';var r=p==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):p;var d=document.documentElement;d.dataset.theme=r;d.dataset.themePreference=p;d.style.colorScheme=r}catch(e){document.documentElement.dataset.theme='light';document.documentElement.dataset.themePreference='light';document.documentElement.style.colorScheme='light'}})();`,
           }}
         />
       </head>

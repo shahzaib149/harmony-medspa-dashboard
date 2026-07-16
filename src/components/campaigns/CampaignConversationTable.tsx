@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUpRight, Mail, MessageSquare } from "lucide-react";
+import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import type { MessageLog } from "@/types/message-log";
 
 type LeadLike = {
@@ -142,7 +143,7 @@ export default function CampaignConversationTable({
                 {item.lastPreview || "No message preview"}
               </p>
               <p className="mt-2 text-[10px] text-[var(--text-muted)]">
-                {new Date(item.lastActivity).toLocaleString()}
+                {formatCampaignDate(item.lastActivity)}
               </p>
             </button>
           );
@@ -223,7 +224,7 @@ export default function CampaignConversationTable({
                     {item.lastPreview || "—"}
                   </td>
                   <td className="whitespace-nowrap px-4 py-4 text-[var(--text-muted)]">
-                    {new Date(item.lastActivity).toLocaleString()}
+                    {formatCampaignDate(item.lastActivity)}
                   </td>
                   <td className="px-4 py-4 text-[var(--brand-primary)]">
                     <ArrowUpRight size={15} />
