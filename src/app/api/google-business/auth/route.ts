@@ -1,5 +1,12 @@
 // Step 1 — redirect user to Google's consent screen with GBP scope
-export async function GET() {
+import { requireRole } from "@/lib/auth/requireRole";
+
+export async function GET(request: Request) {
+  try {
+    await requireRole(request, "admin");
+  } catch {
+    return Response.redirect(new URL("/login?next=/api/google-business/auth", request.url), 302);
+  }
   const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
   if (!clientId) {
     return Response.json({ error: "GOOGLE_ADS_CLIENT_ID not set" }, { status: 500 });

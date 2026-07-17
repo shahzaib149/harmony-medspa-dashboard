@@ -98,6 +98,7 @@ async function airtableRecord(id: string) {
 }
 
 export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const { searchParams } = new URL(request.url);
   const view = normalizeLeadView(searchParams.get("view"));
   if (!isAirtableConfigured()) {

@@ -42,8 +42,10 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, role, signOut } = useAuth();
-  const displayName = profile?.full_name || profile?.email || "Signed in";
+  const { profile, role, isLoading, signOut } = useAuth();
+  // Never assert an identity we have not verified. Until the server-verified
+  // profile loads we show a neutral loading label — never "Signed in".
+  const displayName = profile?.full_name || profile?.email || (isLoading ? "Loading account…" : "Not signed in");
 
   function handleNavigation(href: string) {
     onClose();
@@ -120,55 +122,26 @@ export default function Sidebar({
           className="block"
           prefetch
           onClick={() => handleNavigation("/dashboard")}
+          aria-label="Harmony Med Spa — go to Overview"
         >
-          <p
+          <span
+            role="img"
+            aria-label="Harmony Med Spa"
             style={{
-              fontFamily: "Georgia, 'Times New Roman', serif",
-              fontSize: 22,
-              fontStyle: "italic",
-              color: "var(--brand-primary)",
-              lineHeight: 1,
-              letterSpacing: "0.5px",
+              display: "block",
+              width: 152,
+              aspectRatio: "337 / 97",
+              backgroundColor: "var(--brand-primary)",
+              WebkitMaskImage: "url(/images/logo.png)",
+              maskImage: "url(/images/logo.png)",
+              WebkitMaskRepeat: "no-repeat",
+              maskRepeat: "no-repeat",
+              WebkitMaskPosition: "left center",
+              maskPosition: "left center",
+              WebkitMaskSize: "contain",
+              maskSize: "contain",
             }}
-          >
-            Harmony
-          </p>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              marginTop: 4,
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                height: "0.5px",
-                backgroundColor:
-                  "color-mix(in srgb, var(--brand-primary) 35%, transparent)",
-              }}
-            />
-            <p
-              style={{
-                fontSize: 9,
-                letterSpacing: "4px",
-                color: "var(--brand-primary)",
-                opacity: 0.8,
-                fontWeight: 500,
-              }}
-            >
-              MED SPA
-            </p>
-            <div
-              style={{
-                flex: 1,
-                height: "0.5px",
-                backgroundColor:
-                  "color-mix(in srgb, var(--brand-primary) 35%, transparent)",
-              }}
-            />
-          </div>
+          />
         </Link>
         {/* Close button — mobile only */}
         <button

@@ -1,4 +1,5 @@
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import type { NurtureEnrollment, NurtureStatus } from "@/lib/types/nurture";
 
 const BASE_ID = AIRTABLE_LEADS_BASE_ID;
@@ -54,6 +55,7 @@ async function fetchRecords(table: string, params = new URLSearchParams()) {
 }
 
 export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   if (!isAirtableConfigured()) {
     return Response.json(
       { enrollments: [], count: 0, configured: false },

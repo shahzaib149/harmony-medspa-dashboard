@@ -17,8 +17,19 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Local/demo mode: render without auth until real Supabase credentials exist.
-  if (!isSupabaseConfigured()) return response;
+  const pathnameForConfigCheck = request.nextUrl.pathname;
+
+  if (!isSupabaseConfigured()) {
+    // No Supabase credentials configured — fail closed on protected routes
+    // instead of rendering the dashboard open to anyone.
+    if (protectedRoutePattern.test(pathnameForConfigCheck)) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("next", pathnameForConfigCheck);
+      return NextResponse.redirect(redirectUrl);
+    }
+    return response;
+  }
 
   const { url, anonKey } = getSupabasePublicConfig();
 

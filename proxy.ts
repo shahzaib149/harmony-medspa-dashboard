@@ -1,1 +1,0 @@
-export { middleware as proxy, config } from "./middleware";

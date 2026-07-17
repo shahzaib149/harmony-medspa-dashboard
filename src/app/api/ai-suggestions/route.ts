@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 type CampaignRow = {
   campaignName: string;
@@ -23,6 +24,7 @@ type KeywordRow = {
 };
 
 export async function POST(req: NextRequest) {
+  try { await requireRole(req, "editor"); } catch (error) { return authErrorResponse(error); }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json(

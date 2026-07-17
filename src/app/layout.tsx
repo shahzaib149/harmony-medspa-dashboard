@@ -37,6 +37,7 @@ export default function RootLayout({
       <body
         className="h-full antialiased"
         style={{ fontFamily: "var(--font-inter), sans-serif" }}
+        suppressHydrationWarning
       >
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>

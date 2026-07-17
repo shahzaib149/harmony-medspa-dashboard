@@ -2,6 +2,12 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { sanitizeAuditData } from "@/lib/audit/sanitize";
 import { AUDIT_CATEGORIES, AUDIT_RESULTS, type AuditCategory, type AuditLogRecord } from "@/lib/audit/types";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import {
+  clinicDateToUtcRange,
+  clinicDateValue,
+  formatClinicDateTime,
+  isClinicDateValue,
+} from "@/lib/date-time";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -33,14 +39,16 @@ type QueryOptions = {
   resourceType: string | null;
 };
 
-function applyFilters<T extends { eq: (column: string, value: string) => T; gte: (column: string, value: string) => T; lte: (column: string, value: string) => T; or: (filters: string) => T }>(query: T, options: QueryOptions) {
+function applyFilters<T extends { eq: (column: string, value: string) => T; gte: (column: string, value: string) => T; lt: (column: string, value: string) => T; or: (filters: string) => T }>(query: T, options: QueryOptions) {
   let next = query;
   if (options.search) {
     const term = safeSearch(options.search);
     if (term) next = next.or(`actor_name.ilike.%${term}%,action.ilike.%${term}%,resource_label.ilike.%${term}%,summary.ilike.%${term}%`);
   }
-  if (options.dateFrom) next = next.gte("created_at", `${options.dateFrom}T00:00:00.000Z`);
-  if (options.dateTo) next = next.lte("created_at", `${options.dateTo}T23:59:59.999Z`);
+  const fromRange = options.dateFrom ? clinicDateToUtcRange(options.dateFrom) : null;
+  const toRange = options.dateTo ? clinicDateToUtcRange(options.dateTo) : null;
+  if (fromRange) next = next.gte("created_at", fromRange.start.toISOString());
+  if (toRange) next = next.lt("created_at", toRange.endExclusive.toISOString());
   if (options.user) next = next.eq("actor_user_id", options.user);
   if (options.role) next = next.eq("actor_role", options.role);
   if (options.category) next = next.eq("category", options.category);
@@ -96,6 +104,8 @@ export async function GET(request: Request) {
   if (options.category && !AUDIT_CATEGORIES.includes(options.category as AuditCategory)) return Response.json({ error: "Invalid category" }, { status: 400 });
   if (options.result && !AUDIT_RESULTS.includes(options.result as "success" | "failed")) return Response.json({ error: "Invalid result" }, { status: 400 });
   if (options.role && !["admin", "editor", "viewer"].includes(options.role)) return Response.json({ error: "Invalid role" }, { status: 400 });
+  if (options.dateFrom && !isClinicDateValue(options.dateFrom)) return Response.json({ error: "Invalid From date" }, { status: 400 });
+  if (options.dateTo && !isClinicDateValue(options.dateTo)) return Response.json({ error: "Invalid To date" }, { status: 400 });
 
   const service = createServiceClient();
   const limit = format === "csv" ? 5000 : pageSize;
@@ -120,15 +130,14 @@ export async function GET(request: Request) {
       after_data: sanitizeAuditData(item.after_data),
       metadata: sanitizeAuditData(item.metadata),
     })) as AuditLogRecord[];
-    const header = ["Time", "Actor", "Role", "Action", "Category", "Resource", "Result", "Summary", "Request ID"];
-    const csvRows = items.map((item) => [item.created_at, item.actor_name || item.actor_email_masked || "System", item.actor_role, item.action, item.category, item.resource_label || item.resource_id, item.result, item.summary, item.request_id]);
+    const header = ["Time (America/New_York)", "Actor", "Role", "Action", "Category", "Resource", "Result", "Summary", "Request ID"];
+    const csvRows = items.map((item) => [formatClinicDateTime(item.created_at), item.actor_name || item.actor_email_masked || "System", item.actor_role, item.action, item.category, item.resource_label || item.resource_id, item.result, item.summary, item.request_id]);
     const csv = [header, ...csvRows].map((row) => row.map(csvCell).join(",")).join("\r\n");
     await logAuditEvent({ actor: auth.profile, action: "audit_logs_exported", category: "exports", summary: `Exported ${items.length} audit activities`, metadata: { exported_rows: items.length, filters: options }, request });
-    return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="harmony-audit-log-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" } });
+    return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="harmony-audit-log-${clinicDateValue()}.csv"`, "Cache-Control": "no-store" } });
   }
 
-  const startOfToday = new Date();
-  startOfToday.setUTCHours(0, 0, 0, 0);
+  const startOfToday = clinicDateToUtcRange(clinicDateValue())!.start;
   const [listResult, today, access, leadChanges, failed, profilesResult] = await Promise.all([
     query,
     safeExactCount(undefined, undefined, startOfToday.toISOString()),

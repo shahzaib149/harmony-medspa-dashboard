@@ -1,6 +1,9 @@
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+
 export const revalidate = 3600; // re-generate at most once per hour
 
-export async function GET() {
+export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });

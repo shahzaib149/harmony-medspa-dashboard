@@ -1,8 +1,10 @@
 import { createGBPPost } from "@/lib/google/business-client";
 import Anthropic from "@anthropic-ai/sdk";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 // GET — AI draft a GBP post
 export async function GET(request: Request) {
+  try { await requireRole(request, "editor"); } catch (error) { return authErrorResponse(error); }
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type") ?? "OFFER";
   const topic = searchParams.get("topic") ?? "Summer special";
@@ -27,6 +29,7 @@ Return ONLY the post text.`,
 
 // POST — publish a post to GBP
 export async function POST(request: Request) {
+  try { await requireRole(request, "editor"); } catch (error) { return authErrorResponse(error); }
   const { topicType, summary, callToAction } = await request.json();
   const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
   if (!refreshToken) return Response.json({ error: "Google not connected — missing GOOGLE_ADS_REFRESH_TOKEN" }, { status: 503 });

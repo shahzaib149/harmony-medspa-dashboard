@@ -63,6 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
 
+    // Fast path: getSession() reads the local cookie without a network round
+    // trip, so the UI (sidebar identity, role-gated nav) paints immediately.
+    // Real authorization is enforced server-side on every protected page by
+    // requirePageAuth() (getUser + profile + is_active) and by each API route,
+    // so the client copy is for presentation only and can stay optimistic.
     supabase.auth.getSession().then(({ data }) => {
       if (!cancelled) void loadProfile(data.session?.user ?? null);
     });

@@ -1,7 +1,9 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import GoogleBusinessClient from "./GoogleBusinessClient";
+import { requirePageAuth } from "@/lib/auth/require-page-auth";
 
-export default function GoogleBusinessPage() {
+export default async function GoogleBusinessPage() {
+  await requirePageAuth({ next: "/google-business" });
   return (
     <DashboardLayout
       title="Google Business Profile"

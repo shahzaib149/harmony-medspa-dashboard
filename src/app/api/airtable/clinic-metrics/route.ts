@@ -9,7 +9,8 @@ function map(record: { id: string; createdTime: string; fields: Record<string, u
 function validMonth(value: string) { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   if (!isAirtableConfigured()) return Response.json({ metrics: [], configured: false, error: "Airtable is not configured" }, { status: 503 });
   try {
     const metrics = (await listRecords(TABLE)).map(map).filter((item) => validMonth(item.month)).sort((a, b) => a.month.localeCompare(b.month));

@@ -1,4 +1,5 @@
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const MESSAGE_LOG_TABLE = "Message Log";
@@ -174,6 +175,7 @@ function matchesSearch(log: MessageLog, query: string) {
 }
 
 export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   if (!isAirtableConfigured()) {
     return Response.json({ messageLogs: [], count: 0, configured: false }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   }

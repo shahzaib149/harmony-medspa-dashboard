@@ -1,7 +1,9 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import SettingsClient from "./SettingsClient";
+import { requirePageAuth } from "@/lib/auth/require-page-auth";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  await requirePageAuth({ next: "/settings" });
   return (
     <DashboardLayout
       title="Settings"

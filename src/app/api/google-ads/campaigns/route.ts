@@ -4,6 +4,7 @@ import {
   fetchAdPerformance,
   fetchKeywords,
 } from "@/lib/google/ads-client";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 function dateRange(days: number) {
   const to = new Date().toISOString().split("T")[0];
@@ -20,6 +21,7 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<{ data: T; er
 }
 
 export async function POST(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const { days = 30 } = await request.json().catch(() => ({}));
   const { from, to } = dateRange(Number(days));
 

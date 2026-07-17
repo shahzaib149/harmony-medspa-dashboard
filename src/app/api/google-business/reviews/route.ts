@@ -1,6 +1,8 @@
 import { fetchReviews, replyToReview } from "@/lib/google/gbp-client";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
-export async function GET() {
+export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   try {
     const data = await fetchReviews();
     return Response.json(data);
@@ -10,6 +12,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  try { await requireRole(request, "editor"); } catch (error) { return authErrorResponse(error); }
   const { reviewId, comment } = await request.json();
   try {
     const result = await replyToReview(reviewId, comment);

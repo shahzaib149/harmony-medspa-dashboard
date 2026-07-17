@@ -373,8 +373,14 @@ function AnalyticsInner() {
                 backgroundColor: "rgba(255,255,255,0.05)",
                 color: MUTED,
               }}
+              title={`Last fetched ${lastRefresh.toLocaleString()}`}
             >
-              Refreshed{" "}
+              Last fetched{" "}
+              {lastRefresh.toLocaleDateString([], {
+                month: "short",
+                day: "numeric",
+              })}
+              {" · "}
               {lastRefresh.toLocaleTimeString([], {
                 hour: "numeric",
                 minute: "2-digit",

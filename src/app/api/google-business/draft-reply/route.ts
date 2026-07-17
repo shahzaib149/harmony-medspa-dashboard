@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(request: Request) {
+  try { await requireRole(request, "editor"); } catch (error) { return authErrorResponse(error); }
   const { reviewerName, rating, reviewText } = await request.json();
 
   const msg = await client.messages.create({

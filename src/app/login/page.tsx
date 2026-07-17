@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -8,16 +9,13 @@ import {
   EyeOff,
   Loader2,
   Lock,
-  LockKeyhole,
   Mail,
   ShieldCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-const BG = "var(--background)";
-
 const inputClassName =
-  "login-input h-11 w-full rounded-lg border px-10 text-sm font-medium outline-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55";
+  "login-input h-12 w-full rounded-xl border px-11 text-sm font-medium outline-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,36 +56,42 @@ export default function LoginPage() {
   }
 
   return (
-    <main
-      className="login-shell relative flex h-screen min-h-screen items-center justify-center overflow-hidden px-4 py-4 text-[#F0ECE4] sm:px-6"
-      style={{ backgroundColor: BG }}
-    >
+    <main className="login-shell relative flex h-dvh min-h-[100svh] items-center justify-center overflow-x-hidden overflow-y-auto px-4 py-4 md:justify-start md:px-[clamp(2rem,7vw,8rem)] lg:overflow-hidden">
+      <Image
+        src="/images/login/harmony-waiting-room-login.webp"
+        alt="Harmony MedSpa waiting room in Sarasota"
+        fill
+        priority
+        sizes="100vw"
+        className="login-background object-cover"
+      />
+      <div className="login-image-treatment absolute inset-0" aria-hidden="true" />
+
       <style>{`
-        .login-shell::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          opacity: 0.42;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
-          background-size: 52px 52px;
-          mask-image: radial-gradient(circle at center, rgba(0,0,0,0.58), transparent 70%);
+        .login-shell {
+          isolation: isolate;
+          background: #181613;
         }
 
-        .login-shell::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          opacity: 0.18;
-          background-image: radial-gradient(circle at center, rgba(255,255,255,0.09) 0 1px, transparent 1px);
-          background-size: 180px 180px;
+        .login-background {
+          z-index: -2;
+          object-position: 68% center;
+        }
+
+        .login-image-treatment {
+          z-index: -1;
+          background:
+            linear-gradient(180deg, rgba(21, 19, 16, 0.34), rgba(21, 19, 16, 0.64)),
+            rgba(18, 17, 15, 0.18);
         }
 
         .login-panel {
           animation: loginPanelIn 420ms ease-out both;
+          color: var(--text-primary);
+          background: color-mix(in srgb, var(--surface-1) 96%, transparent);
+          border-color: color-mix(in srgb, var(--border-strong) 86%, transparent);
+          box-shadow: 0 24px 64px rgba(18, 16, 12, 0.24);
+          backdrop-filter: saturate(108%) blur(3px);
         }
 
         .login-input {
@@ -120,22 +124,85 @@ export default function LoginPage() {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        @media (max-width: 640px) {
-          .login-shell::before { opacity: 0.32; background-size: 58px 58px; }
-          .login-shell::after { opacity: 0.1; }
+        /* Brand wordmark — the Harmony logo, recolored to brand gold via mask
+           (the source PNG is white-on-transparent, invisible on light themes).
+           Settles in a beat after the panel for a quiet, refined entrance. */
+        .login-logo {
+          width: min(216px, 66%);
+          aspect-ratio: 337 / 97;
+          background-color: var(--brand-primary);
+          -webkit-mask: url(/images/logo.png) center / contain no-repeat;
+          mask: url(/images/logo.png) center / contain no-repeat;
+          animation: loginMarkIn 560ms cubic-bezier(0.22, 1, 0.36, 1) both 90ms;
         }
 
-        .login-panel {
-          background: var(--surface-1) !important;
-          border-color: var(--border-subtle) !important;
-          box-shadow: var(--shadow-modal) !important;
+        @keyframes loginMarkIn {
+          from { opacity: 0; transform: translateY(6px) scale(0.96); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        [data-theme="light"] .login-shell::before,
-        [data-theme="light"] .login-shell::after { opacity: 0.12; }
+        [data-theme="light"] .login-image-treatment {
+          background:
+            linear-gradient(180deg, rgba(243, 237, 227, 0.25), rgba(31, 27, 22, 0.48)),
+            rgba(255, 248, 235, 0.08);
+        }
+
+        [data-theme="dark"] .login-image-treatment {
+          background:
+            linear-gradient(180deg, rgba(8, 9, 11, 0.46), rgba(8, 9, 11, 0.76)),
+            rgba(8, 9, 11, 0.14);
+        }
+
+        [data-theme="dark"] .login-panel {
+          background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+          border-color: color-mix(in srgb, var(--border-strong) 80%, transparent);
+          box-shadow: 0 24px 72px rgba(0, 0, 0, 0.46);
+        }
+
+        @media (min-width: 768px) {
+          .login-background {
+            object-position: center center;
+          }
+
+          [data-theme="light"] .login-image-treatment {
+            background: linear-gradient(
+              90deg,
+              rgba(245, 241, 233, 0.82) 0%,
+              rgba(236, 229, 217, 0.68) 30%,
+              rgba(31, 28, 24, 0.1) 62%,
+              rgba(20, 18, 16, 0.24) 100%
+            );
+          }
+
+          [data-theme="dark"] .login-image-treatment {
+            background: linear-gradient(
+              90deg,
+              rgba(8, 9, 11, 0.88) 0%,
+              rgba(8, 9, 11, 0.72) 31%,
+              rgba(8, 9, 11, 0.14) 63%,
+              rgba(8, 9, 11, 0.34) 100%
+            );
+          }
+        }
+
+        @media (max-height: 700px) {
+          .login-card-content {
+            padding-top: 1.15rem !important;
+            padding-bottom: 1.15rem !important;
+          }
+
+          .login-heading {
+            margin-bottom: 1rem !important;
+          }
+
+          .login-logo {
+            margin-bottom: 0.4rem !important;
+          }
+        }
 
         @media (prefers-reduced-motion: reduce) {
           .login-panel,
+          .login-logo,
           .login-motion {
             animation: none !important;
             transition: none !important;
@@ -143,26 +210,30 @@ export default function LoginPage() {
         }
       `}</style>
 
-      <div className="relative z-10 w-full max-w-[420px]">
+      <div className="relative z-10 my-auto w-full max-w-[420px]">
         <section
-          className="login-panel relative w-full overflow-hidden rounded-2xl border border-[#2A2A3A] bg-[#12121A]/96"
+          className="login-panel relative w-full overflow-hidden rounded-[22px] border"
           aria-label="Harmony MedSpa secure login"
         >
-          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#C9A84C]/42 to-transparent" />
+          <div
+            className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[var(--brand-primary)] to-transparent opacity-55"
+            aria-hidden="true"
+          />
 
-          <div className="relative px-5 py-6 sm:px-7 sm:py-7">
-            <div className="mb-6 text-center">
-              <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-[#C9A84C]/30 bg-[#C9A84C]/10 text-[#C9A84C] shadow-[0_0_22px_rgba(201,168,76,0.13)]">
-                <LockKeyhole size={20} strokeWidth={1.8} />
-              </div>
+          <div className="login-card-content relative px-5 py-6 sm:px-7 sm:py-7">
+            <div className="login-heading mb-6 text-center">
+              <h1 className="login-logo mx-auto" role="img" aria-label="Harmony Med Spa" />
 
-              <h1 className="text-2xl font-semibold tracking-normal text-[#F0ECE4]">
-                Harmony MedSpa
-              </h1>
-              <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.22em] text-[#C9A84C]">
+              <p
+                className="mt-3 text-[11px] font-bold uppercase tracking-[0.22em]"
+                style={{ color: "var(--brand-primary)" }}
+              >
                 Patient Growth Dashboard
               </p>
-              <p className="mx-auto mt-3 max-w-[320px] text-sm leading-5 text-[#8B8AA3]">
+              <p
+                className="mx-auto mt-2.5 max-w-[320px] text-sm leading-5"
+                style={{ color: "var(--text-muted)" }}
+              >
                 Secure access to leads, ads, and automation activity.
               </p>
             </div>
@@ -175,12 +246,16 @@ export default function LoginPage() {
               }}
             >
               <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#8E8C98]">
+                <span
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}
+                >
                   Email
                 </span>
                 <span className="relative block">
                   <Mail
-                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#C9A84C]/72"
+                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2"
+                    style={{ color: "var(--brand-primary)" }}
                     size={17}
                     strokeWidth={1.8}
                   />
@@ -198,12 +273,16 @@ export default function LoginPage() {
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#8E8C98]">
+                <span
+                  className="mb-2 block text-xs font-bold uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}
+                >
                   Password
                 </span>
                 <span className="relative block">
                   <Lock
-                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#4ECDC4]/76"
+                    className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2"
+                    style={{ color: "var(--success-text)" }}
                     size={17}
                     strokeWidth={1.8}
                   />
@@ -221,7 +300,8 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowPassword((isVisible) => !isVisible)}
                     disabled={loading}
-                    className="login-motion absolute right-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-[#8E8C98] outline-none transition hover:bg-white/[0.04] hover:text-[#F0ECE4] focus-visible:ring-2 focus-visible:ring-[#C9A84C]/60 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="login-motion absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg outline-none transition hover:bg-[var(--surface-hover)] focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{ color: "var(--text-muted)" }}
                     aria-label={
                       showPassword ? "Hide password" : "Show password"
                     }
@@ -234,7 +314,12 @@ export default function LoginPage() {
 
               {error && (
                 <div
-                  className="flex items-start gap-2 rounded-xl border border-[#EF4444]/28 bg-[#EF4444]/10 px-3 py-2.5 text-sm font-semibold leading-5 text-[#FCA5A5]"
+                  className="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold leading-5"
+                  style={{
+                    color: "var(--danger-text)",
+                    borderColor: "var(--danger-border)",
+                    backgroundColor: "var(--danger-bg)",
+                  }}
                   role="alert"
                 >
                   <AlertCircle className="mt-0.5 shrink-0" size={16} />
@@ -245,7 +330,11 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || !email || !password}
-                className="login-motion group flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#C9A84C] text-sm font-extrabold text-[#0A0A0F] shadow-[0_12px_28px_rgba(201,168,76,0.2)] outline-none transition duration-200 hover:bg-[#D8B95A] hover:shadow-[0_16px_34px_rgba(201,168,76,0.26)] focus-visible:ring-2 focus-visible:ring-[#C9A84C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0F] disabled:cursor-not-allowed disabled:bg-[#8D793D] disabled:opacity-65 disabled:shadow-none"
+                className="login-motion flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-extrabold shadow-[0_12px_28px_rgba(94,70,22,0.2)] outline-none transition duration-200 hover:brightness-105 focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+                style={{
+                  color: "var(--primary-foreground)",
+                  backgroundColor: "var(--brand-primary)",
+                }}
               >
                 {loading ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -254,9 +343,18 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-5 border-t border-white/[0.06] pt-4">
-              <p className="flex items-center justify-center gap-2 text-center text-xs font-medium text-[#8B8AA3]">
-                <ShieldCheck size={14} className="text-[#4ECDC4]" />
+            <div
+              className="mt-5 border-t pt-4"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              <p
+                className="flex items-center justify-center gap-2 text-center text-xs font-medium"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <ShieldCheck
+                  size={14}
+                  style={{ color: "var(--success-text)" }}
+                />
                 Secure staff access
               </p>
             </div>

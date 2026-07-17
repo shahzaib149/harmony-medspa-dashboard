@@ -6,6 +6,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { buildLeadFormula } from "@/lib/leads/query";
 import {
   aggregateLeadSummary,
@@ -74,6 +75,7 @@ async function latestAirtableLead() {
 }
 
 export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const { searchParams } = new URL(request.url);
   const view = normalizeLeadView(searchParams.get("view"));
 

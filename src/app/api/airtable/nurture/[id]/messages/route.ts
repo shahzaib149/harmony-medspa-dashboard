@@ -1,4 +1,5 @@
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import type { NurtureMessage } from "@/lib/types/nurture";
 
 const BASE_ID = AIRTABLE_LEADS_BASE_ID;
@@ -30,7 +31,8 @@ async function fetchRecords(table: string, params: URLSearchParams) {
   return (await response.json() as { records: AirtableRecord[] }).records;
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   if (!isAirtableConfigured()) return Response.json({ messages: [], count: 0, configured: false });
   try {
     const { id } = await context.params;

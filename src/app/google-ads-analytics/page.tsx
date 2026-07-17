@@ -1,7 +1,9 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import GoogleAdsAnalyticsClient from "./GoogleAdsAnalyticsClient";
+import { requirePageAuth } from "@/lib/auth/require-page-auth";
 
-export default function GoogleAdsAnalyticsPage() {
+export default async function GoogleAdsAnalyticsPage() {
+  await requirePageAuth({ next: "/google-ads-analytics" });
   return (
     <DashboardLayout
       title="Google Ads Analytics"

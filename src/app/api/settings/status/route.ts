@@ -1,3 +1,5 @@
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+
 type Status = "connected" | "partial" | "missing" | "error";
 
 type IntegrationStatus = {
@@ -107,7 +109,8 @@ async function checkSupabase(item: IntegrationStatus): Promise<IntegrationStatus
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const items = await Promise.all([
     checkAirtable(baseStatus(
       "airtable",

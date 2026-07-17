@@ -1,4 +1,5 @@
 import { fetchAllRecords, num, str } from "@/lib/airtable/client";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 const TABLE_NAMES = {
   campaigns: "Google Ads Campaign Analytics",
@@ -70,6 +71,7 @@ function groupAndSum(items: Summable[]): Summable[] {
 }
 
 export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const { searchParams } = new URL(request.url);
   const table = searchParams.get("table") as keyof typeof TABLE_NAMES | null;
   const days = Number(searchParams.get("days") ?? 30);

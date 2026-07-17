@@ -1,5 +1,12 @@
 // Step 2 — Google redirects here with ?code=... , exchange it for tokens
+import { requireRole } from "@/lib/auth/requireRole";
+
 export async function GET(request: Request) {
+  try {
+    await requireRole(request, "admin");
+  } catch {
+    return Response.redirect(new URL("/login?next=/api/google-business/auth/callback", request.url), 302);
+  }
   const { searchParams } = new URL(request.url);
   const code  = searchParams.get("code");
   const error = searchParams.get("error");

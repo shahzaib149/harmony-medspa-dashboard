@@ -14,7 +14,8 @@ function actorLabel(actor: { full_name: string | null; email: string | null }) {
   return actor.full_name?.trim() || actor.email || "Dashboard admin";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   try {
     const ads = await listPendingAds();
     return Response.json({ ads, count: ads.length });

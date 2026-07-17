@@ -43,3 +43,6 @@ env.download
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code local settings & memory
+.claude/

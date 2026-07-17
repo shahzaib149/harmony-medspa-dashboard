@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { getOverviewData } from "@/lib/overview-data";
 import type { OverviewPeriodKey } from "@/lib/overview-types";
+import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET(request: Request) {
+  try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const requestId = request.headers.get("x-request-id")?.slice(0, 128) || randomUUID();
   const params = new URL(request.url).searchParams;
   const requestedPeriod = params.get("range") ?? params.get("period");
