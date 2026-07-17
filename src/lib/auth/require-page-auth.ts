@@ -1,4 +1,5 @@
 import "server-only";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -14,6 +15,12 @@ export async function requirePageAuth(options?: {
   minimumRole?: Role;
   next?: string;
 }): Promise<{ profile: Profile }> {
+  // Touch cookies() first so every guarded page is ALWAYS dynamically rendered
+  // per request. Without this, a build where Supabase env vars are missing would
+  // short-circuit below and bake the page as a static redirect to /login — which
+  // then never re-evaluates auth at runtime even after env vars are added.
+  await cookies();
+
   // Fail closed when auth is not configured — never render protected pages open.
   if (!isSupabaseConfigured()) redirect("/login");
 
