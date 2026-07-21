@@ -139,6 +139,23 @@ export type AttentionItem = {
   href: string;
 };
 
+// An unresolved failed SMS delivery that requires staff review. This is an
+// operational alert: it is NOT scoped to the analytics range and stays until an
+// admin marks the underlying Message Log record as reviewed.
+export type FailedSmsAlert = {
+  id: string;
+  leadId: string | null;
+  leadName: string;
+  phoneMasked: string | null;
+  sequence: string | null;
+  sequenceStep: string | null;
+  sentAt: string;
+  deliveryStatus: string;
+  errorReason: string | null;
+  leadHref: string | null;
+  messageLogHref: string;
+};
+
 export type RecentActivityItem = {
   id: string;
   category: "lead" | "campaign" | "message" | "clinic" | "audit";
@@ -188,6 +205,10 @@ export type OverviewResponse = {
   googleAdsSummary: GoogleAdsSummary | null;
   activityByDay: ActivityDay[];
   attentionItems: AttentionItem[];
+  // Unresolved failed SMS deliveries — always current, never hidden by the range.
+  failedSmsAlerts: FailedSmsAlert[];
+  // Failed SMS deliveries marked reviewed within the last 30 days (history only).
+  reviewedSmsCount: number;
   recentActivity: RecentActivityItem[];
   canViewAuditLog: boolean;
 };

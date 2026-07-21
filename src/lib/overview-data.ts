@@ -16,6 +16,7 @@ import type {
   ClinicMetric,
   DeliveryChannelHealth,
   DeliveryTrendPoint,
+  FailedSmsAlert,
   GoogleAdsSummary,
   LeadFunnelStage,
   LeadSourcePerformance,
@@ -78,6 +79,10 @@ type Message = {
   sequence: string | null;
   sequenceStep: string | null;
   status: "successful" | "failed" | "pending" | "unknown";
+  rawStatus: string;
+  errorReason: string | null;
+  attentionStatus: string;
+  reviewedAt: string | null;
   sentAt: string;
 };
 
@@ -111,14 +116,8 @@ const OVERVIEW_FIELDS = {
     "SMS Sent Status",
   ],
   enrollments: ["Lead", "Status", "Current Step", "Next Send At", "Last Sent At", "Created At"],
-  messages: [
-    "Recipient Lead",
-    "Channel",
-    "Sequence",
-    "Sequence Step",
-    "Delivery Status",
-    "Sent At",
-  ],
+  // Message Log is fetched without a field projection (see getOverviewData) so the
+  // optional review columns don't trigger Airtable "unknown field" errors.
   clinic: ["Month", "Total Visits", "New Patients", "Updated At"],
 } as const;
 
@@ -212,6 +211,7 @@ function mapMessage(record: AirtableRecord): Message {
   const sentAt =
     textField(record.fields, "Sent At", "Sent Date", "Created At") ||
     record.createdTime;
+  const rawStatus = textField(record.fields, "Delivery Status", "Status", "Mandrill Status");
   return {
     id: record.id,
     leadId: linkedIds(record.fields["Recipient Lead"])[0] ?? null,
@@ -222,11 +222,23 @@ function mapMessage(record: AirtableRecord): Message {
       textField(record.fields, "Sequence", "Sequence Name", "Nurture Sequence") ||
       null,
     sequenceStep: textField(record.fields, "Sequence Step", "Step") || null,
-    status: normalizeDelivery(
-      textField(record.fields, "Delivery Status", "Status", "Mandrill Status"),
-    ),
+    status: normalizeDelivery(rawStatus),
+    rawStatus,
+    errorReason: textField(record.fields, "Error Reason", "Error", "Failure Reason") || null,
+    // Absent/empty Attention Status is treated as an unresolved failure that still needs review.
+    attentionStatus: textField(record.fields, "Attention Status") || "Needs Review",
+    reviewedAt: textField(record.fields, "Reviewed At") || null,
     sentAt,
   };
+}
+
+// A failed SMS stays an active alert until its Attention Status is Reviewed.
+function isUnresolvedFailedSms(message: Message) {
+  return (
+    message.channel === "SMS" &&
+    message.status === "failed" &&
+    message.attentionStatus.trim().toLowerCase() !== "reviewed"
+  );
 }
 
 function contacted(lead: Lead) {
@@ -724,11 +736,12 @@ function attentionFor(
   leads: Lead[],
   enrollments: Enrollment[],
   messages: Message[],
+  unresolvedFailedSms: number,
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
-  const failedSms = messages.filter(
-    (message) => message.channel === "SMS" && message.status === "failed",
-  ).length;
+  // Failed SMS is an operational alert: driven by the unresolved count (unscoped
+  // by the analytics range), not by the messages that fall inside this period.
+  const failedSms = unresolvedFailedSms;
   const failedEmail = messages.filter(
     (message) => message.channel === "Email" && message.status === "failed",
   ).length;
@@ -759,7 +772,7 @@ function attentionFor(
   ) => {
     if (count > 0) items.push({ id, count, severity, title, detail, actionLabel, href });
   };
-  add("failed-sms", failedSms, "critical", `${failedSms} SMS ${failedSms === 1 ? "message" : "messages"} failed`, "Provider delivery status is marked failed.", "Review Message Log", "/message-logs?channel=SMS&status=Failed");
+  add("failed-sms", failedSms, "critical", `${failedSms} SMS ${failedSms === 1 ? "message needs" : "messages need"} review`, "A delivery failure requires staff review. The campaign continues to its next scheduled step.", "Review failure", "/message-logs?channel=SMS&status=Failed");
   add("failed-email", failedEmail, "critical", `${failedEmail} email ${failedEmail === 1 ? "message" : "messages"} failed`, "Provider delivery status is marked failed.", "Review Message Log", "/message-logs?channel=Email&status=Failed");
   add("disconnected", disconnected, "critical", `${disconnected} ${disconnected === 1 ? "enrollment is" : "enrollments are"} disconnected`, "The enrollment no longer resolves to a lead.", "Review campaign", "/campaigns/14-day-nurture");
   add("overdue-enrollment", overdueEnrollments, "warning", `${overdueEnrollments} campaign ${overdueEnrollments === 1 ? "step is" : "steps are"} overdue`, "The scheduled send time has passed for an active enrollment.", "Review nurture", "/campaigns/14-day-nurture");
@@ -768,6 +781,53 @@ function attentionFor(
   add("missing-email", withoutEmail, "warning", `${withoutEmail} ${withoutEmail === 1 ? "lead has" : "leads have"} no email`, "Email follow-up is unavailable for these leads.", "Review leads", "/leads");
   add("duplicates", duplicates, "warning", `${duplicates} duplicate ${duplicates === 1 ? "lead needs" : "leads need"} review`, "These records are marked Duplicate.", "Review duplicates", "/leads?status=Duplicate");
   return items.sort((a, b) => (a.severity === b.severity ? b.count - a.count : a.severity === "critical" ? -1 : 1));
+}
+
+// Keep the last 4 digits, mask everything else. Returns null when there is
+// nothing meaningful to show.
+function maskPhone(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 4) return phone ? "•••" : null;
+  return `•••••• ${digits.slice(-4)}`;
+}
+
+// Unresolved failed SMS deliveries, newest first. Never scoped to the analytics
+// range — these persist until an admin marks them reviewed.
+function failedSmsAlertsFor(
+  messages: Message[],
+  leadMap: Map<string, Lead>,
+): FailedSmsAlert[] {
+  return messages
+    .filter(isUnresolvedFailedSms)
+    .sort((a, b) => (validTime(b.sentAt) ?? 0) - (validTime(a.sentAt) ?? 0))
+    .map((message) => {
+      const lead = message.leadId ? leadMap.get(message.leadId) : undefined;
+      return {
+        id: message.id,
+        leadId: message.leadId,
+        leadName: lead?.name || (message.leadId ? "Unnamed lead" : "Disconnected lead"),
+        phoneMasked: lead?.phone ? maskPhone(lead.phone) : null,
+        sequence: message.sequence,
+        sequenceStep: message.sequenceStep,
+        sentAt: message.sentAt,
+        deliveryStatus: message.rawStatus || "Failed",
+        errorReason: message.errorReason,
+        leadHref: message.leadId ? "/leads" : null,
+        messageLogHref: "/message-logs?channel=SMS&status=Failed",
+      };
+    });
+}
+
+// Failed SMS deliveries marked reviewed in the last 30 days — history summary only.
+function reviewedSmsCountFor(messages: Message[]): number {
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  return messages.filter(
+    (message) =>
+      message.channel === "SMS" &&
+      message.status === "failed" &&
+      message.attentionStatus.trim().toLowerCase() === "reviewed" &&
+      (validTime(message.reviewedAt) ?? 0) >= cutoff,
+  ).length;
 }
 
 function systemActivity(
@@ -873,7 +933,10 @@ export async function getOverviewData(
       airtable
         ? listRecords("Nurture Enrollments", selectFields([...OVERVIEW_FIELDS.enrollments]))
         : unavailable(),
-      airtable ? listRecords("Message Log", selectFields([...OVERVIEW_FIELDS.messages])) : unavailable(),
+      // No field projection: the review columns (Attention Status, Reviewed At)
+      // may not exist yet, and Airtable 422s on unknown names in fields[]. Fetching
+      // all fields degrades gracefully before the columns exist and reads them after.
+      airtable ? listRecords("Message Log") : unavailable(),
       airtable
         ? listRecords(
             process.env.AIRTABLE_CLINIC_METRICS_TABLE_ID?.trim() || "Clinic Metrics",
@@ -920,6 +983,11 @@ export async function getOverviewData(
   const periodEnrollments = enrollments.filter((enrollment) =>
     inWindow(enrollment.createdAt, period.from, period.to),
   );
+  // Operational SMS-failure alerts are computed from ALL messages, not the
+  // period window, so an unresolved failure is never hidden by the range.
+  const overviewLeadMap = new Map(leads.map((lead) => [lead.id, lead]));
+  const failedSmsAlerts = failedSmsAlertsFor(messages, overviewLeadMap);
+  const reviewedSmsCount = reviewedSmsCountFor(messages);
   const previousMessages = messages.filter((message) =>
     inWindow(message.sentAt, period.previousFrom, period.previousTo),
   );
@@ -1024,7 +1092,9 @@ export async function getOverviewData(
     clinicMetrics,
     googleAdsSummary,
     activityByDay,
-    attentionItems: attentionFor(periodLeads, enrollments, periodMessages),
+    attentionItems: attentionFor(periodLeads, enrollments, periodMessages, failedSmsAlerts.length),
+    failedSmsAlerts,
+    reviewedSmsCount,
     recentActivity,
     canViewAuditLog: audit.canView,
   };

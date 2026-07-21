@@ -1,5 +1,7 @@
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import { getMessageLogReviewRecord, markMessageLogReviewed } from "@/lib/airtable/message-log-review";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
 
 const MESSAGE_LOG_TABLE = "Message Log";
@@ -240,6 +242,88 @@ export async function GET(request: Request) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not load message logs" },
       { status: 500, headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
+  }
+}
+
+const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
+
+// Admin-only: mark a failed SMS delivery as reviewed. Never alters Delivery
+// Status, never retries the message, never touches campaign progression.
+export async function PATCH(request: Request) {
+  let actor;
+  try {
+    ({ profile: actor } = await requireRole(request, "admin"));
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
+  if (!isAirtableConfigured()) {
+    return Response.json({ error: "Airtable is not configured." }, { status: 503, headers: NO_STORE });
+  }
+
+  const body = (await request.json().catch(() => null)) as { action?: string; id?: string } | null;
+  if (body?.action !== "review" || !body.id) {
+    return Response.json({ error: "A valid message review action is required." }, { status: 400, headers: NO_STORE });
+  }
+
+  const reviewer = actor.full_name?.trim() || actor.email || actor.id;
+
+  let record;
+  try {
+    record = await getMessageLogReviewRecord(body.id);
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "The message could not be loaded." },
+      { status: 500, headers: NO_STORE },
+    );
+  }
+
+  if (record.channel !== "SMS" || !record.isFailed) {
+    return Response.json({ error: "Only failed SMS messages can be reviewed." }, { status: 400, headers: NO_STORE });
+  }
+  if (record.isReviewed) {
+    // Idempotent: already resolved by someone else.
+    return Response.json({ success: true, alreadyReviewed: true }, { headers: NO_STORE });
+  }
+
+  try {
+    await markMessageLogReviewed(body.id, reviewer);
+    const audit = await logAuditEvent({
+      actor,
+      action: "sms_failure_reviewed",
+      category: "communications",
+      resource: { type: "message_log", id: body.id, label: `SMS delivery failure (${record.sequenceStep || record.sequence || "unassigned step"})` },
+      summary: "Reviewed a failed SMS delivery",
+      before: { attention_status: record.attentionStatus, delivery_status: record.rawStatus },
+      after: { attention_status: "Reviewed", delivery_status: record.rawStatus },
+      metadata: {
+        channel: record.channel,
+        sequence: record.sequence,
+        sequence_step: record.sequenceStep,
+        reviewed_by: reviewer,
+        result: "reviewed",
+      },
+      request,
+    });
+    return Response.json({ success: true, requestId: audit.requestId }, { headers: NO_STORE });
+  } catch (error) {
+    const audit = await logAuditEvent({
+      actor,
+      action: "sms_failure_reviewed",
+      category: "communications",
+      resource: { type: "message_log", id: body.id },
+      summary: "Failed SMS review could not be saved",
+      metadata: { result: "failed" },
+      result: "failed",
+      request,
+    });
+    return Response.json(
+      {
+        error: error instanceof Error ? error.message : "The review could not be saved.",
+        requestId: audit.requestId,
+      },
+      { status: 500, headers: NO_STORE },
     );
   }
 }

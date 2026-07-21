@@ -26,10 +26,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Sparkline from "@/components/overview/Sparkline";
 import { getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
+import { useAuth } from "@/contexts/AuthContext";
 import type {
   AttentionItem,
   CampaignHealth,
   ClinicMetric,
+  FailedSmsAlert,
   LeadFunnelStage,
   LeadTrendPoint,
   NurtureJourneyStep,
@@ -186,6 +188,37 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
     };
   }, [load, period]);
 
+  // Confirmed-success removal: once Airtable has accepted the review, drop the
+  // alert from local state instantly instead of paying for a full overview
+  // refetch. Keeps the ref and the cache in sync so the change survives a range
+  // switch and back.
+  const removeFailedSmsAlert = useCallback(
+    (id: string) => {
+      const current = dataRef.current;
+      if (!current) return;
+      const remaining = current.failedSmsAlerts.filter((alert) => alert.id !== id);
+      if (remaining.length === current.failedSmsAlerts.length) return;
+      const count = remaining.length;
+      const attentionItems = current.attentionItems
+        .map((item) =>
+          item.id === "failed-sms"
+            ? { ...item, count, title: `${count} SMS ${count === 1 ? "message needs" : "messages need"} review` }
+            : item,
+        )
+        .filter((item) => !(item.id === "failed-sms" && count === 0));
+      const next: OverviewResponse = {
+        ...current,
+        failedSmsAlerts: remaining,
+        attentionItems,
+        reviewedSmsCount: current.reviewedSmsCount + 1,
+      };
+      dataRef.current = next;
+      setData(next);
+      setCachedData(`overview:${period}`, next);
+    },
+    [period],
+  );
+
   // Keep the range in the URL so refresh, back and forward all restore it.
   const selectRange = useCallback(
     (next: OverviewPeriodKey) => {
@@ -236,7 +269,7 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
       ) : !data ? (
         <OverviewErrorState message={error} onRetry={() => void load(period)} />
       ) : (
-        <OverviewContent data={data} refreshing={refreshing} refreshError={error} onRetry={() => void load(period)} />
+        <OverviewContent data={data} refreshing={refreshing} refreshError={error} onRetry={() => void load(period)} onReviewFailedSms={removeFailedSmsAlert} />
       )}
     </DashboardLayout>
   );
@@ -286,12 +319,15 @@ function OverviewContent({
   refreshing,
   refreshError,
   onRetry,
+  onReviewFailedSms,
 }: {
   data: OverviewResponse;
   refreshing: boolean;
   refreshError: string;
   onRetry: () => void;
+  onReviewFailedSms: (id: string) => void;
 }) {
+  const [failureReviewOpen, setFailureReviewOpen] = useState(false);
   const activityNow = Date.parse(data.period.to);
   const trend = data.leadTrend;
   const seriesFrom = (pick: (p: LeadTrendPoint) => number) => trend.map(pick);
@@ -352,7 +388,11 @@ function OverviewContent({
           {data.errors.leads || data.errors.campaigns || data.errors.delivery ? (
             <SectionError message={data.errors.leads || data.errors.campaigns || data.errors.delivery!} onRetry={onRetry} />
           ) : (
-            <AttentionPanel items={data.attentionItems} />
+            <AttentionPanel
+              items={data.attentionItems}
+              reviewedSmsCount={data.reviewedSmsCount}
+              onReviewFailure={() => setFailureReviewOpen(true)}
+            />
           )}
         </Panel>
 
@@ -420,6 +460,13 @@ function OverviewContent({
           <RecentActivityFeed items={data.recentActivity} now={activityNow} />
         </Panel>
       </div>
+
+      <FailedSmsReviewModal
+        open={failureReviewOpen}
+        alerts={data.failedSmsAlerts}
+        onClose={() => setFailureReviewOpen(false)}
+        onReviewed={onReviewFailedSms}
+      />
     </div>
   );
 }
@@ -971,28 +1018,49 @@ const MONITORED_SIGNALS: Array<{ label: string; ids: string[] }> = [
   { label: "Contact details", ids: ["missing-phone", "missing-email", "duplicates"] },
 ];
 
-function AttentionPanel({ items }: { items: AttentionItem[] }) {
+function AttentionPanel({
+  items,
+  reviewedSmsCount,
+  onReviewFailure,
+}: {
+  items: AttentionItem[];
+  reviewedSmsCount: number;
+  onReviewFailure: () => void;
+}) {
   const flagged = new Set(items.map((item) => item.id));
   return (
     <div className="flex h-full flex-col gap-4">
       {items.length ? (
         <div className="space-y-2.5">
-          {items.slice(0, 4).map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="flex items-start gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3 transition-colors hover:bg-[var(--surface-hover)]"
-            >
-              <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${item.severity === "critical" ? "bg-[var(--danger-bg)] text-[var(--danger-text)]" : "bg-[var(--warning-bg)] text-[var(--warning-text)]"}`}>
-                <AlertTriangle size={14} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{item.detail}</p>
-              </div>
-              <ArrowRight size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-            </Link>
-          ))}
+          {items.slice(0, 4).map((item) => {
+            const iconWrap = `mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${item.severity === "critical" ? "bg-[var(--danger-bg)] text-[var(--danger-text)]" : "bg-[var(--warning-bg)] text-[var(--warning-text)]"}`;
+            const shell = "flex w-full items-start gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3 text-left transition-colors hover:bg-[var(--surface-hover)]";
+            const inner = (
+              <>
+                <span className={iconWrap}>
+                  <AlertTriangle size={14} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">{item.detail}</p>
+                </div>
+                <ArrowRight size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+              </>
+            );
+            // Failed SMS opens the in-place review flow rather than navigating away.
+            if (item.id === "failed-sms") {
+              return (
+                <button key={item.id} type="button" onClick={onReviewFailure} className={shell}>
+                  {inner}
+                </button>
+              );
+            }
+            return (
+              <Link key={item.id} href={item.href} className={shell}>
+                {inner}
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <div className="flex items-center gap-3 rounded-xl border border-[var(--success-border)] bg-[var(--success-bg)] p-3.5">
@@ -1023,7 +1091,193 @@ function AttentionPanel({ items }: { items: AttentionItem[] }) {
             );
           })}
         </ul>
+        {reviewedSmsCount > 0 && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+            <CheckCircle2 size={12} className="shrink-0 text-[var(--success-text)]" />
+            {reviewedSmsCount} delivery {reviewedSmsCount === 1 ? "issue" : "issues"} reviewed in the last 30 days
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+/* ── Failed SMS review ────────────────────────────────────────────────────── */
+
+function maskedOrPlaceholder(value: string | null) {
+  return value && value.trim() ? value : "Not available";
+}
+
+function FailedSmsReviewModal({
+  open,
+  alerts,
+  onClose,
+  onReviewed,
+}: {
+  open: boolean;
+  alerts: FailedSmsAlert[];
+  onClose: () => void;
+  onReviewed: (id: string) => void;
+}) {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const review = useCallback(
+    async (id: string) => {
+      setPendingId(id);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      try {
+        const response = await fetch("/api/airtable/message-logs", {
+          method: "PATCH",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "review", id }),
+          signal: AbortSignal.timeout(20_000),
+        });
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        // Do not remove the alert unless Airtable confirmed the update.
+        if (!response.ok) throw new Error(body.error || "The review could not be saved.");
+        // Confirmed success — drop it locally (no full overview refetch).
+        onReviewed(id);
+      } catch (event) {
+        const message =
+          event instanceof DOMException && event.name === "TimeoutError"
+            ? "The review timed out. Please try again."
+            : event instanceof Error
+              ? event.message
+              : "The review could not be saved.";
+        setErrors((prev) => ({ ...prev, [id]: message }));
+      } finally {
+        setPendingId(null);
+      }
+    },
+    [onReviewed],
+  );
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sms-review-title"
+        onClick={(event) => event.stopPropagation()}
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-[var(--shadow-modal)] sm:rounded-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3.5 sm:px-5">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-[var(--danger-bg)] text-[var(--danger-text)]">
+              <AlertTriangle size={15} />
+            </span>
+            <div className="min-w-0">
+              <h2 id="sms-review-title" className="text-base font-semibold text-[var(--text-primary)]">SMS delivery failures</h2>
+              <p className="mt-0.5 text-[11px] leading-4 text-[var(--text-muted)]">Review each failure. The campaign continues to its next scheduled step.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg px-2 py-1 text-lg leading-none text-[var(--text-muted)] hover:bg-[var(--surface-hover)]"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-3 overflow-y-auto p-4 sm:p-5">
+          {alerts.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--success-border)] bg-[var(--success-bg)] p-3.5">
+              <CheckCircle2 size={18} className="shrink-0 text-[var(--success-text)]" />
+              <p className="text-sm font-semibold text-[var(--success-text)]">All delivery failures have been reviewed.</p>
+            </div>
+          ) : (
+            alerts.map((alert) => (
+              <div key={alert.id} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-2)] p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">{alert.leadName}</p>
+                  <span className="shrink-0 rounded-full bg-[var(--danger-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--danger-text)]">
+                    {alert.deliveryStatus}
+                  </span>
+                </div>
+                <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 text-[11px] sm:grid-cols-2">
+                  <ReviewField label="Phone" value={maskedOrPlaceholder(alert.phoneMasked)} />
+                  <ReviewField label="Sent" value={formatDateTime(alert.sentAt)} />
+                  <ReviewField label="Campaign" value={maskedOrPlaceholder(alert.sequence)} />
+                  <ReviewField label="Step" value={maskedOrPlaceholder(alert.sequenceStep)} />
+                  <ReviewField label="Provider reason" value={maskedOrPlaceholder(alert.errorReason)} full />
+                </dl>
+
+                {errors[alert.id] && (
+                  <p className="mt-2 rounded-lg bg-[var(--danger-bg)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--danger-text)]">
+                    {errors[alert.id]}
+                  </p>
+                )}
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {alert.leadHref && (
+                    <Link href={alert.leadHref} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]">
+                      Open Lead <ExternalLink size={12} />
+                    </Link>
+                  )}
+                  <Link href={alert.messageLogHref} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]">
+                    Open Message Log <ExternalLink size={12} />
+                  </Link>
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => void review(alert.id)}
+                      disabled={pendingId === alert.id}
+                      className="ml-auto inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[var(--brand-primary)] px-3 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60"
+                    >
+                      {pendingId === alert.id ? (
+                        <>
+                          <RefreshCw size={12} className="animate-spin" /> Saving…
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={12} /> Mark as reviewed
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="ml-auto text-[11px] font-medium text-[var(--text-muted)]">Admin review required</span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewField({ label, value, full = false }: { label: string; value: string; full?: boolean }) {
+  return (
+    <div className={full ? "sm:col-span-2" : undefined}>
+      <dt className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-muted)]">{label}</dt>
+      <dd className="mt-0.5 break-words font-medium text-[var(--text-secondary)]">{value}</dd>
     </div>
   );
 }
