@@ -30,23 +30,26 @@ test("published state requires a PAUSED Google resource", () => {
   assert.equal(isGoogleAdResourceName("customers/1/adGroups/2"), false);
 });
 
-test("Wellness pending package contains the full requested RSA copy", () => {
+test("Wellness pending package contains the recovered compliant RSA copy", () => {
   assert.equal(WELLNESS_PENDING_AD.headlines.length, 15);
   assert.equal(WELLNESS_PENDING_AD.descriptions.length, 4);
-  assert.equal(WELLNESS_PENDING_AD.finalUrl, "https://www.harmonymedspafl.com/lead");
+  assert.equal(WELLNESS_PENDING_AD.adGroupName, "Wellness - Vercel Landing");
+  assert.equal(WELLNESS_PENDING_AD.finalUrl, "https://harmony-medspa.vercel.app/landing");
   assert.equal(WELLNESS_PENDING_AD.path1, "Free-Consult");
   assert.equal(WELLNESS_PENDING_AD.path2, "Book-Now");
+  assert.equal(WELLNESS_PENDING_AD.headlines[1].text, "Book Your Free Consult");
+  assert.equal(WELLNESS_PENDING_AD.descriptions[0].text, "Explore personalized wellness care at Harmony MedSpa. Book a free consultation today.");
   assert.equal(WELLNESS_PENDING_AD.headlines[0].pinnedField, "HEADLINE_1");
   assert.equal(WELLNESS_PENDING_AD.headlines[1].pinnedField, "HEADLINE_2");
   assert.equal(WELLNESS_PENDING_AD.headlines[2].pinnedField, "HEADLINE_2");
   assert.equal(WELLNESS_PENDING_AD.descriptions[0].pinnedField, "DESCRIPTION_1");
 });
 
-test("Wellness pending package remains blocked until supplied copy and approvals are reviewed", () => {
+test("Wellness pending package copy is compliant and only requires factual approvals", () => {
   const errors = validatePendingAdPackage(WELLNESS_PENDING_AD);
-  assert.ok(errors.some((error) => error.includes("Headline 11")));
-  assert.ok(errors.some((error) => error.includes("Description 1")));
-  assert.ok(errors.some((error) => error.includes("Description 4")));
+  assert.deepEqual(errors, []);
+  assert.ok(WELLNESS_PENDING_AD.headlines.every(({ text }) => text.length <= 30));
+  assert.ok(WELLNESS_PENDING_AD.descriptions.every(({ text }) => text.length <= 90));
   assert.equal(unconfirmedApprovals(WELLNESS_PENDING_AD).length, 8);
 });
 
