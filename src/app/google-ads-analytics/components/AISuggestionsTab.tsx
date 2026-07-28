@@ -38,6 +38,7 @@ type SiteAd = {
   path1: string;
   path2: string;
   focus: string;
+  insight?: string;
 };
 
 function normalizeSuggestion(value: unknown): AISuggestion | null {
@@ -75,8 +76,6 @@ const STORAGE_KEY = "harmony_ai_suggestions_v2";
 const QA_KEY = "harmony_quick_ads_v1";
 const QA_TTL = 24 * 60 * 60 * 1000;
 const MAX_HISTORY = 7;
-const MAKE_WEBHOOK =
-  "https://hook.us2.make.com/pwe6qssw5klmlhf958exyotd845uiahy";
 const GOLD = "#C9A84C";
 const CARD = "var(--surface-1)";
 const BORDER = "var(--border-subtle)";
@@ -1193,23 +1192,34 @@ export default function AISuggestionsTab({
     setPublishing(true);
     setPublishResult(null);
     try {
-      const res = await fetch(MAKE_WEBHOOK, {
+      const response = await fetch("/api/google-ads/publish-via-make", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...card.raw,
+          event: "publish_ad_requested",
+          requestedStatus: "PAUSED",
           adType: "RESPONSIVE_SEARCH_AD",
           businessName: "Harmony MedSpa",
           publishedAt: new Date().toISOString(),
+          sourceData:
+            card.raw.source === "analytics"
+              ? active
+              : (siteAds[selectedIdx] ?? null),
         }),
       });
-      if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error || "The publishing workflow rejected this ad.");
       setPublishResult({
         ok: true,
-        msg: "Ad sent to Make.com! Check your scenario.",
+        msg: "Ad accepted by the publishing workflow.",
       });
     } catch (e) {
-      setPublishResult({ ok: false, msg: String(e) });
+      setPublishResult({
+        ok: false,
+        msg: e instanceof Error ? e.message : "Failed to reach the publishing workflow",
+      });
     } finally {
       setPublishing(false);
       setTimeout(() => setPublishResult(null), 6000);

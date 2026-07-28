@@ -1,10 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isVerifiedPublishedAd,
+  isGoogleAdResourceName,
+  normalizePublicationStatus,
   unconfirmedApprovals,
   validatePendingAdPackage,
   WELLNESS_PENDING_AD,
 } from "../src/lib/google/pending-ads";
+
+test("legacy publication statuses normalize to the workflow contract", () => {
+  assert.equal(normalizePublicationStatus("Pending"), "Pending Review");
+  assert.equal(normalizePublicationStatus("Approved"), "Pending Review");
+  assert.equal(normalizePublicationStatus("processing"), "Publishing");
+  assert.equal(normalizePublicationStatus("Published / Created Paused"), "Published");
+  assert.equal(normalizePublicationStatus("error"), "Failed");
+  assert.equal(normalizePublicationStatus("Rejected"), "Rejected");
+});
+
+test("published state requires a PAUSED Google resource", () => {
+  const verified = { publication_status: "Published" as const, google_ads_status: "PAUSED", ad_resource_name: "customers/1/adGroupAds/2~3", published_at: "2026-07-22T12:00:00.000Z", published_by: "Admin", publish_error: "" };
+  assert.equal(isVerifiedPublishedAd(verified), true);
+  assert.equal(isVerifiedPublishedAd({ ...verified, google_ads_status: "" }), false);
+  assert.equal(isVerifiedPublishedAd({ ...verified, ad_resource_name: "" }), false);
+  assert.equal(isVerifiedPublishedAd({ ...verified, published_at: "" }), false);
+  assert.equal(isVerifiedPublishedAd({ ...verified, published_by: "" }), false);
+  assert.equal(isVerifiedPublishedAd({ ...verified, publish_error: "Still failed" }), false);
+  assert.equal(isGoogleAdResourceName("customers/1/adGroupAds/2~3"), true);
+  assert.equal(isGoogleAdResourceName("customers/1/adGroups/2"), false);
+});
 
 test("Wellness pending package contains the full requested RSA copy", () => {
   assert.equal(WELLNESS_PENDING_AD.headlines.length, 15);

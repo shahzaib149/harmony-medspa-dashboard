@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { getSupabasePublicConfig, isSupabaseConfigured } from "@/lib/supabase/config";
 import { createServiceClient } from "@/lib/supabase/server";
 import { hasMinimumRole, isRole, type Profile, type Role } from "@/lib/auth/permissions";
+import { resilientFetch } from "@/lib/network/resilient-fetch";
 
 class AuthError extends Error {
   status: number;
@@ -14,12 +15,44 @@ class AuthError extends Error {
 }
 
 const AUTH_TIMEOUT_MS = 8_000;
+const AUTH_RETRY_DELAY_MS = 250;
 
 async function withAuthTimeout<T>(operation: PromiseLike<T>): Promise<T> {
   return Promise.race([
     Promise.resolve(operation),
     new Promise<never>((_, reject) => setTimeout(() => reject(new AuthError(503, "Authentication service timed out")), AUTH_TIMEOUT_MS)),
   ]);
+}
+
+function isTransientAuthError(error: unknown) {
+  if (error instanceof AuthError && error.status === 503) return true;
+  const status = Number((error as { status?: unknown } | null)?.status);
+  if (status === 0 || status >= 500) return true;
+  const message = error instanceof Error
+    ? `${error.message} ${String(error.cause ?? "")}`
+    : String((error as { message?: unknown } | null)?.message ?? error ?? "");
+  return /fetch failed|network|timed? out|eai_again|enotfound|connection/i.test(message);
+}
+
+async function getVerifiedUser(
+  operation: () => PromiseLike<{ data: { user: User | null }; error: unknown }>,
+) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { data, error } = await withAuthTimeout(operation());
+      if (data.user) return data.user;
+      if (!isTransientAuthError(error)) return null;
+    } catch (error) {
+      if (!isTransientAuthError(error)) throw error;
+    }
+    if (attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
+    }
+  }
+  throw new AuthError(
+    503,
+    "Authentication is temporarily unavailable. Wait a moment and try again.",
+  );
 }
 
 function parseCookieHeader(header: string | null) {
@@ -40,9 +73,7 @@ async function getUserFromBearerToken(request: Request) {
   if (!token) return null;
 
   const supabase = createServiceClient();
-  const { data, error } = await withAuthTimeout(supabase.auth.getUser(token));
-  if (error || !data.user) return null;
-  return data.user;
+  return getVerifiedUser(() => supabase.auth.getUser(token));
 }
 
 export function authErrorResponse(error: unknown) {
@@ -70,6 +101,7 @@ export async function requireRole(
     url,
     anonKey,
     {
+      global: { fetch: resilientFetch },
       cookies: {
         getAll() {
           return parseCookieHeader(request.headers.get("cookie"));
@@ -81,8 +113,8 @@ export async function requireRole(
     }
   );
 
-  const { data: { user }, error } = await withAuthTimeout(supabase.auth.getUser());
-  if (error || !user) throw new AuthError(401, "Authentication required");
+  const user = await getVerifiedUser(() => supabase.auth.getUser());
+  if (!user) throw new AuthError(401, "Authentication required");
 
   return requireProfileForUser(user, minimumRole);
 }

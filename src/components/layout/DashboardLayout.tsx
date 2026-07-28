@@ -42,7 +42,7 @@ export default function DashboardLayout({
 
   return (
     <div
-      className="flex min-h-dvh overflow-x-clip"
+      className="flex min-h-dvh w-full min-w-0 max-w-full overflow-x-hidden"
       style={{ backgroundColor: "var(--background)" }}
     >
       {/* Sidebar */}
@@ -58,7 +58,7 @@ export default function DashboardLayout({
 
       {/* Main content — offset by sidebar on md+ */}
       <main
-        className="min-h-dvh w-full min-w-0 flex-1 md:ml-[240px]"
+        className="min-h-dvh w-full min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[240px]"
         style={{ backgroundColor: "var(--background)" }}
       >
         {/* Top header */}
@@ -81,16 +81,16 @@ export default function DashboardLayout({
             <Menu size={22} />
           </button>
 
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <h1
-              className="truncate text-base font-semibold md:text-lg"
+              className="break-words text-base font-semibold leading-5 md:text-lg md:leading-6"
               style={{ color: "var(--text-primary)" }}
             >
               {title}
             </h1>
             {subtitle && (
               <p
-                className="mt-0.5 truncate text-xs md:text-sm"
+                className="mt-0.5 line-clamp-2 text-xs leading-4 md:text-sm md:leading-5"
                 style={{ color: "var(--text-muted)" }}
               >
                 {subtitle}
@@ -105,7 +105,7 @@ export default function DashboardLayout({
           )}
         </header>
 
-        <div className="px-4 py-5 max-[340px]:px-3 md:px-6 md:py-6 lg:px-8">
+        <div className="w-full min-w-0 max-w-full overflow-x-hidden px-4 py-5 max-[340px]:px-3 md:px-6 md:py-6 lg:px-8">
           {children}
         </div>
       </main>

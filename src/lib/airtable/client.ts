@@ -10,12 +10,16 @@ export interface RawRecord {
 const AIRTABLE_TIMEOUT_MS = 10_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
-async function fetchAirtablePage(url: string) {
+type AirtableCacheMode = "cached" | "no-store";
+
+async function fetchAirtablePage(url: string, cacheMode: AirtableCacheMode) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${API_KEY}` },
-        next: { revalidate: 180 },
+        ...(cacheMode === "no-store"
+          ? { cache: "no-store" as const }
+          : { next: { revalidate: 180 } }),
         signal: AbortSignal.timeout(AIRTABLE_TIMEOUT_MS),
       });
       if (!RETRYABLE_STATUS.has(response.status) || attempt === 3) return response;
@@ -34,6 +38,7 @@ async function fetchAirtablePage(url: string) {
 export async function fetchAllRecords(
   tableName: string,
   query = new URLSearchParams(),
+  options: { cache?: AirtableCacheMode } = {},
 ): Promise<RawRecord[]> {
   const records: RawRecord[] = [];
   let offset: string | undefined;
@@ -45,6 +50,7 @@ export async function fetchAllRecords(
 
     const res = await fetchAirtablePage(
       `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(tableName)}?${params}`,
+      options.cache ?? "cached",
     );
 
     if (!res.ok) {

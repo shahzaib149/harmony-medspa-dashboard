@@ -27,24 +27,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const { data } = await supabase
-      .from("profiles")
-      .select("id,email,full_name,role,is_active,last_sign_in_at,created_at,updated_at")
-      .eq("id", nextUser.id)
-      .maybeSingle<Profile>();
+    const response = await fetch("/api/auth/session", {
+      credentials: "same-origin",
+      cache: "no-store",
+    }).catch(() => null);
+    const data = response
+      ? await response.json().catch(() => null) as { user?: User; profile?: Profile } | null
+      : null;
 
-    if (!data?.is_active) {
-      await supabase.auth.signOut();
+    if (!response?.ok || !data?.profile?.is_active) {
       setUser(null);
       setProfile(null);
       setIsLoading(false);
-      router.replace("/login?error=inactive");
+      if (response?.status === 403) router.replace("/login?error=inactive");
+      else if (response?.status === 401) router.replace("/login");
       return;
     }
 
-    setProfile(data);
+    setUser(data.user ?? nextUser);
+    setProfile(data.profile);
     setIsLoading(false);
-  }, [router, supabase]);
+  }, [router]);
 
   useEffect(() => {
     if (!authConfigured) {

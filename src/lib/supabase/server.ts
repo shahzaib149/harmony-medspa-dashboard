@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { resilientFetch } from "@/lib/network/resilient-fetch";
 import { getSupabasePublicConfig, isSupabaseConfigured } from "@/lib/supabase/config";
 
 export async function createClient() {
@@ -10,6 +11,7 @@ export async function createClient() {
     url,
     anonKey,
     {
+      global: { fetch: resilientFetch },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -39,6 +41,7 @@ export function createServiceClient() {
     url,
     serviceRoleKey,
     {
+      global: { fetch: resilientFetch },
       auth: {
         autoRefreshToken: false,
         persistSession: false,

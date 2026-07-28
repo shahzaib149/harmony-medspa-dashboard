@@ -24,6 +24,8 @@
 .DS_Store
 *.pem
 /.codex-chrome-theme/
+/artifacts/*webhook-test*/
+/artifacts/webhook-origin-test.png
 frontend-design.skill
 
 # debug

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -12,14 +12,12 @@ import {
   Mail,
   ShieldCheck,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 
 const inputClassName =
   "login-input h-12 w-full rounded-xl border px-11 text-sm font-medium outline-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-55";
 
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,22 +35,36 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword(
-      {
-        email: email.trim().toLowerCase(),
-        password,
-      },
-    );
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          next: params.get("next"),
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+        redirectTo?: string;
+      } | null;
 
-    if (signInError || !data.user) {
+      if (!response.ok) {
+        setError(data?.error || "Sign-in failed. Try again.");
+        return;
+      }
+
+      router.replace(data?.redirectTo || "/dashboard");
+      router.refresh();
+      void fetch("/api/auth/audit-session", { method: "POST", keepalive: true }).catch(() => undefined);
+    } catch {
+      setError("The authentication service could not be reached. Check your connection and try again.");
+    } finally {
       setLoading(false);
-      setError("Invalid email or password. Check your details and try again.");
-      return;
     }
-
-    router.replace("/dashboard");
-    router.refresh();
-    void fetch("/api/auth/audit-session", { method: "POST", keepalive: true }).catch(() => undefined);
   }
 
   return (

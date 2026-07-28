@@ -134,7 +134,9 @@ export async function PATCH(request: Request) {
     };
     const after = await updatePendingAd(body.id, {
       ...reviewPackageFields(rejectedReview),
-      status: "Rejected",
+      // Rejected is represented by the durable history entry. Airtable's status
+      // select only contains Pending Review and Published.
+      status: "Pending Review",
     });
     const audit = await logAuditEvent({
       actor,

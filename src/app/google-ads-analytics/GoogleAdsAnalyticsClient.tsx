@@ -1,562 +1,676 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  DollarSign,
-  MousePointerClick,
-  TrendingUp,
-  ShoppingCart,
-  RefreshCw,
+  AlertTriangle,
+  CalendarDays,
   Loader2,
+  RefreshCw,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
-import { Alert } from "@/components/ui/Alert";
+import GoogleAdsWorkspace, {
+  type WorkspaceTab,
+} from "./components/GoogleAdsWorkspace";
+import type {
+  AdGroup,
+  Campaign,
+  Creative,
+  Keyword,
+  WorkspaceSnapshot,
+} from "./workspace-types";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
-import {
-  DATA_CACHE_KEYS,
-  setCachedData,
-  useDashboardCachedData,
-} from "@/lib/dashboard-data-cache";
 
-const tabFallback = () => (
-  <div className="h-48 animate-pulse rounded-2xl border border-white/[.06] bg-white/[.025]" />
-);
-const CampaignsTab = dynamic(() => import("./components/CampaignsTab"), {
-  ssr: false,
-  loading: tabFallback,
-});
-const AdGroupsTab = dynamic(() => import("./components/AdGroupsTab"), {
-  ssr: false,
-  loading: tabFallback,
-});
-const CreativesTab = dynamic(() => import("./components/CreativesTab"), {
-  ssr: false,
-  loading: tabFallback,
-});
-const KeywordsTab = dynamic(() => import("./components/KeywordsTab"), {
-  ssr: false,
-  loading: tabFallback,
-});
-const AISuggestionsTab = dynamic(
-  () => import("./components/AISuggestionsTab"),
-  { ssr: false, loading: tabFallback },
-);
-const PendingAdsPanel = dynamic(
-  () => import("@/app/dashboard/PendingAdsPanel"),
-  { ssr: false, loading: tabFallback },
-);
+export type { AdGroup, Campaign, Creative, Keyword } from "./workspace-types";
 
-export type Campaign = {
-  id: string;
-  accountName: string;
-  campaignId: string;
-  campaignName: string;
-  campaignStatus: string;
-  channelType: string;
-  cost: number;
-  clicks: number;
-  impressions: number;
-  ctrPct: number;
-  conversions: number;
-  conversionValue: number;
-  roas: number;
-  optimizationScore: number;
-  impressionShare: number;
-  impressionShareLostBudget: number;
-  impressionShareLostRank: number;
-  pulledAt: string;
-};
-export type AdGroup = {
-  id: string;
-  accountName: string;
-  campaignId: string;
-  campaignName: string;
-  adGroupId: string;
-  adGroupName: string;
-  adGroupStatus: string;
-  cost: number;
-  clicks: number;
-  impressions: number;
-  ctrPct: number;
-  conversions: number;
-  conversionValue: number;
-  roas: number;
-};
-export type Creative = {
+type AdPreviewRecord = {
   id: string;
   adId: string;
-  adName: string;
-  adType: string;
-  campaignId: string;
-  campaignName: string;
-  adGroupName: string;
-  cost: number;
-  clicks: number;
-  impressions: number;
-  ctrPct: number;
-  conversions: number;
-  conversionValue: number;
-  roas: number;
-  date: string;
-  creativeTagSuggestions: string;
-  headlines: string;
-  descriptions: string;
-  finalUrl: string;
-  displayUrl: string;
-  path1: string;
-  path2: string;
-};
-export type Keyword = {
-  id: string;
-  keywordText: string;
-  matchType: string;
-  campaignId: string;
-  campaignName: string;
-  adGroupName: string;
-  cost: number;
-  clicks: number;
-  impressions: number;
-  ctrPct: number;
-  conversions: number;
-  conversionValue: number;
-  roas: number;
+  resourceName?: string;
+  adGroupAdResourceName?: string;
+  adGroupId?: string;
+  adName?: string;
+  adType?: string;
+  status?: string;
+  headlines?: string;
+  descriptions?: string;
+  finalUrl?: string;
+  targetUrl?: string;
+  lastSynced?: string;
 };
 
-const TABS = [
-  { id: "campaigns", label: "Campaigns" },
-  { id: "ad-groups", label: "Ad Groups" },
-  { id: "creatives", label: "Creatives" },
-  { id: "keywords", label: "Keywords" },
-  { id: "ai-suggestions", label: "✦ AI Suggestions" },
-  { id: "pending-review", label: "⏳ Pending Review" },
-] as const;
+const VALID_TABS: WorkspaceTab[] = [
+  "overview",
+  "campaigns",
+  "ad-groups",
+  "ads",
+  "keywords",
+  "search-terms",
+  "assets",
+  "workflow",
+  "ai-suggestions",
+];
 
-type TabId = (typeof TABS)[number]["id"];
+const TAB_ROUTES: Record<WorkspaceTab, string> = {
+  overview: "/google-ads-analytics",
+  campaigns: "/google-ads-analytics/campaigns",
+  "ad-groups": "/google-ads-analytics/ad-groups",
+  ads: "/google-ads-analytics/ads",
+  keywords: "/google-ads-analytics/keywords",
+  "search-terms": "/google-ads-analytics/search-terms",
+  assets: "/google-ads-analytics/assets",
+  workflow: "/google-ads-analytics/publishing",
+  "ai-suggestions": "/google-ads-analytics/ai-suggestions",
+};
 
-function fmt$(n: number) {
-  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(2)}`;
-}
-function fmtN(n: number) {
-  return n.toLocaleString();
-}
+const WORKSPACE_CACHE_TTL_MS = 2 * 60 * 1000;
+type WorkspaceResult = {
+  snapshot: WorkspaceSnapshot;
+  syncError: string | null;
+};
+const workspaceCache = new Map<
+  string,
+  WorkspaceResult & { expiresAt: number }
+>();
+const workspaceRequests = new Map<string, Promise<WorkspaceResult>>();
 
-const GOLD = "#C9A84C";
-const CARD = "var(--surface-1)";
-const BORDER = "var(--border-subtle)";
-const TEXT = "var(--text-primary)";
-const MUTED = "var(--text-muted)";
-
-function KPICard({
-  icon: Icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  accent?: string;
-}) {
-  const color = accent ?? GOLD;
+function WorkspaceSkeleton() {
   return (
-    <div
-      className="rounded-2xl p-5 flex items-center gap-4"
-      style={{
-        backgroundColor: CARD,
-        border: `1px solid ${accent ? `${accent}25` : BORDER}`,
-      }}
-    >
-      <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center"
-        style={{ backgroundColor: `${color}15` }}
-      >
-        <Icon size={20} style={{ color }} />
+    <div className="animate-pulse space-y-5" aria-label="Loading Google Ads data">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => (
+          <div
+            key={item}
+            className="h-28 rounded-2xl border"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--surface-1)",
+            }}
+          />
+        ))}
       </div>
-      <div>
-        <p
-          className="text-xs font-semibold uppercase tracking-widest"
-          style={{ color: "#5A5A6A" }}
-        >
-          {label}
-        </p>
-        <p className="text-xl font-bold" style={{ color: TEXT }}>
-          {value}
-        </p>
+      <div
+        className="h-14 rounded-2xl border"
+        style={{
+          borderColor: "var(--border-subtle)",
+          background: "var(--surface-1)",
+        }}
+      />
+      <div
+        className="overflow-hidden rounded-2xl border p-4"
+        style={{
+          borderColor: "var(--border-subtle)",
+          background: "var(--surface-1)",
+        }}
+      >
+        <div className="h-10 rounded-xl" style={{ background: "var(--surface-2)" }} />
+        <div className="mt-4 space-y-3">
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <div
+              key={item}
+              className="h-14 rounded-xl"
+              style={{ background: "var(--surface-2)" }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function AnalyticsInner() {
+function numeric<T extends Record<string, unknown>>(row: T, key: keyof T) {
+  return Number(row[key] ?? 0);
+}
+
+function normalizeCampaign(row: Campaign): Campaign {
+  return {
+    ...row,
+    id: row.id || row.resourceName || row.campaignId,
+    accountName: row.accountName || "Harmony MedSpa",
+    campaignId: String(row.campaignId || ""),
+    campaignName: row.campaignName || `Campaign ${row.campaignId}`,
+    campaignStatus: row.campaignStatus || "UNKNOWN",
+    channelType: row.channelType || "UNSPECIFIED",
+    cost: numeric(row, "cost"),
+    clicks: numeric(row, "clicks"),
+    impressions: numeric(row, "impressions"),
+    ctrPct: numeric(row, "ctrPct"),
+    conversions: numeric(row, "conversions"),
+    conversionValue: numeric(row, "conversionValue"),
+    roas: numeric(row, "roas"),
+    optimizationScore: numeric(row, "optimizationScore"),
+    impressionShare: numeric(row, "impressionShare"),
+    impressionShareLostBudget: numeric(row, "impressionShareLostBudget"),
+    impressionShareLostRank: numeric(row, "impressionShareLostRank"),
+    pulledAt: row.pulledAt || new Date().toISOString(),
+  };
+}
+
+function normalizeAdGroup(row: AdGroup): AdGroup {
+  return {
+    ...row,
+    id: row.id || row.resourceName || row.adGroupId,
+    campaignId: String(row.campaignId || ""),
+    campaignName: row.campaignName || "Unresolved campaign",
+    adGroupId: String(row.adGroupId || ""),
+    adGroupName: row.adGroupName || `Ad group ${row.adGroupId}`,
+    adGroupStatus: row.adGroupStatus || "UNKNOWN",
+    cost: numeric(row, "cost"),
+    clicks: numeric(row, "clicks"),
+    impressions: numeric(row, "impressions"),
+    ctrPct: numeric(row, "ctrPct"),
+    conversions: numeric(row, "conversions"),
+    conversionValue: numeric(row, "conversionValue"),
+    roas: numeric(row, "roas"),
+  };
+}
+
+function normalizeCreative(row: Creative): Creative {
+  return {
+    ...row,
+    id: row.id || row.resourceName || row.adId,
+    adId: String(row.adId || ""),
+    adName: row.adName || `Ad ${row.adId}`,
+    adType: row.adType || "UNKNOWN",
+    campaignId: String(row.campaignId || ""),
+    campaignName: row.campaignName || "Unresolved campaign",
+    adGroupName: row.adGroupName || "Unresolved ad group",
+    cost: numeric(row, "cost"),
+    clicks: numeric(row, "clicks"),
+    impressions: numeric(row, "impressions"),
+    ctrPct: numeric(row, "ctrPct"),
+    conversions: numeric(row, "conversions"),
+    conversionValue: numeric(row, "conversionValue"),
+    roas: numeric(row, "roas"),
+    date: row.date || "",
+    creativeTagSuggestions: row.creativeTagSuggestions || "",
+    headlines: row.headlines || "",
+    descriptions: row.descriptions || "",
+    finalUrl: row.finalUrl || "",
+    displayUrl: row.displayUrl || "",
+    path1: row.path1 || "",
+    path2: row.path2 || "",
+  };
+}
+
+function normalizeKeyword(row: Keyword): Keyword {
+  return {
+    ...row,
+    id: row.id || row.resourceName || row.criterionId || row.keywordText,
+    keywordText: row.keywordText || "Unnamed keyword",
+    matchType: row.matchType || "UNSPECIFIED",
+    campaignId: String(row.campaignId || ""),
+    campaignName: row.campaignName || "Unresolved campaign",
+    adGroupName: row.adGroupName || "Unresolved ad group",
+    cost: numeric(row, "cost"),
+    clicks: numeric(row, "clicks"),
+    impressions: numeric(row, "impressions"),
+    ctrPct: numeric(row, "ctrPct"),
+    conversions: numeric(row, "conversions"),
+    conversionValue: numeric(row, "conversionValue"),
+    roas: numeric(row, "roas"),
+  };
+}
+
+function canonicalAdKey(
+  ad: Pick<
+    Creative,
+    "resourceName" | "adGroupAdResourceName" | "adId" | "adGroupId"
+  >,
+) {
+  return (
+    ad.adGroupAdResourceName ||
+    ad.resourceName ||
+    (ad.adId && ad.adGroupId ? `${ad.adGroupId}~${ad.adId}` : ad.adId)
+  );
+}
+
+function mergeAdInventory(
+  analytics: Creative[],
+  previews: AdPreviewRecord[],
+  adGroups: AdGroup[],
+  campaigns: Campaign[],
+) {
+  const groupsById = new Map(adGroups.map((group) => [group.adGroupId, group]));
+  const ads = new Map<string, Creative>();
+  for (const raw of analytics) {
+    const ad = normalizeCreative(raw);
+    ads.set(canonicalAdKey(ad) || ad.id, ad);
+  }
+  for (const preview of previews) {
+    const relation = (
+      preview.adGroupAdResourceName ||
+      preview.resourceName ||
+      ""
+    ).match(/\/adGroupAds\/(\d+)~(\d+)$/);
+    const adGroupId = preview.adGroupId || relation?.[1] || "";
+    const adId = preview.adId || relation?.[2] || "";
+    const key =
+      preview.adGroupAdResourceName ||
+      preview.resourceName ||
+      (adGroupId && adId ? `${adGroupId}~${adId}` : adId || preview.id);
+    const current =
+      ads.get(key) ||
+      [...ads.values()].find(
+        (ad) => ad.adId === adId && (!adGroupId || ad.adGroupId === adGroupId),
+      );
+    const group = groupsById.get(adGroupId);
+    if (current) {
+      const merged = normalizeCreative({
+        ...current,
+        resourceName:
+          current.resourceName ||
+          preview.resourceName ||
+          preview.adGroupAdResourceName,
+        adGroupAdResourceName:
+          current.adGroupAdResourceName ||
+          preview.adGroupAdResourceName ||
+          preview.resourceName,
+        adGroupId: current.adGroupId || adGroupId,
+        adName: current.adName || preview.adName || `Ad ${adId}`,
+        adType: current.adType || preview.adType || "UNKNOWN",
+        status: current.status || preview.status,
+        headlines: current.headlines || preview.headlines || "",
+        descriptions: current.descriptions || preview.descriptions || "",
+        finalUrl:
+          current.finalUrl || preview.finalUrl || preview.targetUrl || "",
+        displayUrl:
+          current.displayUrl || preview.finalUrl || preview.targetUrl || "",
+        lastSynced: current.lastSynced || preview.lastSynced,
+      });
+      ads.delete(canonicalAdKey(current) || current.id);
+      ads.set(canonicalAdKey(merged) || merged.id, merged);
+      continue;
+    }
+    const campaign = group
+      ? campaigns.find((item) => item.campaignId === group.campaignId)
+      : undefined;
+    const resourceName =
+      preview.adGroupAdResourceName || preview.resourceName || "";
+    const inventoryAd = normalizeCreative({
+      id: resourceName || preview.id,
+      adId,
+      resourceName,
+      adGroupAdResourceName: resourceName,
+      adName: preview.adName || `Ad ${adId}`,
+      adType: preview.adType || "UNKNOWN",
+      campaignId: campaign?.campaignId || group?.campaignId || "",
+      campaignResourceName:
+        campaign?.resourceName || group?.campaignResourceName,
+      campaignName: campaign?.campaignName || group?.campaignName || "",
+      adGroupId,
+      adGroupResourceName: group?.resourceName,
+      adGroupName:
+        group?.adGroupName || (adGroupId ? `Ad group ${adGroupId}` : ""),
+      status: preview.status || "UNKNOWN",
+      cost: 0,
+      clicks: 0,
+      impressions: 0,
+      ctrPct: 0,
+      conversions: 0,
+      conversionValue: 0,
+      conversionValueAvailable: false,
+      roas: 0,
+      date: "",
+      creativeTagSuggestions: "",
+      headlines: preview.headlines || "",
+      descriptions: preview.descriptions || "",
+      finalUrl: preview.finalUrl || preview.targetUrl || "",
+      displayUrl: preview.finalUrl || preview.targetUrl || "",
+      path1: "",
+      path2: "",
+      lastSynced: preview.lastSynced,
+      publishSource: "Google Ad Preview inventory",
+    });
+    ads.set(canonicalAdKey(inventoryAd) || inventoryAd.id, inventoryAd);
+  }
+  return [...ads.values()];
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+  const data = (await response.json().catch(() => null)) as
+    | (T & { error?: string })
+    | null;
+  if (!response.ok || !data)
+    throw new Error(data?.error || `Request failed (${response.status})`);
+  return data;
+}
+
+async function loadWorkspaceSnapshot(
+  days: number,
+  force: boolean,
+  view?: "ads" | "search-terms" | "assets",
+): Promise<WorkspaceResult> {
+  const viewQuery = view ? `&view=${view}&page=0&pageSize=25&sort=spend` : "";
+  const livePromise = getJson<WorkspaceSnapshot>(
+    `/api/google-ads/workspace?days=${days}${viewQuery}${force ? "&refresh=1" : ""}`,
+  );
+  try {
+    const live = await livePromise;
+    return {
+      snapshot: {
+        ...live,
+        campaigns: (live.campaigns || []).map(normalizeCampaign),
+        adGroups: (live.adGroups || []).map(normalizeAdGroup),
+        ads: mergeAdInventory(
+          live.ads || [],
+          [],
+          live.adGroups || [],
+          live.campaigns || [],
+        ),
+        keywords: (live.keywords || []).map(normalizeKeyword),
+        searchTerms: live.searchTerms || [],
+        assets: live.assets || [],
+      },
+      syncError: null,
+    };
+  } catch (liveError) {
+    // Airtable is a fallback, not a parallel duplicate of every successful
+    // live request. This removes five unnecessary browser requests per load.
+    const [campaigns, adGroups, ads, keywords, previews] = await Promise.all([
+      getJson<{ data?: Campaign[] }>(
+        `/api/airtable?table=campaigns&days=${days}`,
+      ),
+      getJson<{ data?: AdGroup[] }>(
+        `/api/airtable?table=ad-groups&days=${days}`,
+      ),
+      getJson<{ data?: Creative[] }>(
+        `/api/airtable?table=creatives&days=${days}`,
+      ),
+      getJson<{ data?: Keyword[] }>(
+        `/api/airtable?table=keywords&days=${days}`,
+      ),
+      getJson<{ data?: AdPreviewRecord[] }>(
+        `/api/airtable?table=ad-preview&days=${days}`,
+      ),
+    ]);
+    const campaignRows = (campaigns.data || []).map(normalizeCampaign);
+    const adGroupRows = (adGroups.data || []).map(normalizeAdGroup);
+    return {
+      snapshot: {
+        source: "airtable",
+        accountName: campaignRows[0]?.accountName || "Harmony MedSpa",
+        fetchedAt: new Date().toISOString(),
+        campaigns: campaignRows,
+        adGroups: adGroupRows,
+        ads: mergeAdInventory(
+          ads.data || [],
+          previews.data || [],
+          adGroupRows,
+          campaignRows,
+        ),
+        keywords: (keywords.data || []).map(normalizeKeyword),
+        searchTerms: [],
+        assets: [],
+      },
+      syncError:
+        liveError instanceof Error ? liveError.message : String(liveError),
+    };
+  }
+}
+
+export async function fetchWorkspaceSnapshot(
+  days: number,
+  force = false,
+  view?: "ads" | "search-terms" | "assets",
+): Promise<WorkspaceResult> {
+  const key = `${days}:${view || "full"}`;
+  const cached = workspaceCache.get(key);
+  if (!force && cached && cached.expiresAt > Date.now()) return cached;
+  const pending = workspaceRequests.get(key);
+  if (!force && pending) return pending;
+
+  const request = loadWorkspaceSnapshot(days, force, view).then((result) => {
+    workspaceCache.set(key, {
+      ...result,
+      expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
+    });
+    return result;
+  });
+  workspaceRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (workspaceRequests.get(key) === request) workspaceRequests.delete(key);
+  }
+}
+
+function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const router = useRouter();
-  const activeTab = (searchParams.get("tab") ?? "campaigns") as TabId;
-  const days = Number(searchParams.get("days") ?? 30);
-  const cachedCampaigns = useDashboardCachedData<{ data?: Campaign[] }>(
-    DATA_CACHE_KEYS.campaigns,
-  );
-  const cachedAdGroups = useDashboardCachedData<{ data?: AdGroup[] }>(
-    DATA_CACHE_KEYS.adGroups,
-  );
-  const cachedCreatives = useDashboardCachedData<{ data?: Creative[] }>(
-    DATA_CACHE_KEYS.creatives,
-  );
-  const cachedKeywords = useDashboardCachedData<{ data?: Keyword[] }>(
-    DATA_CACHE_KEYS.keywords,
-  );
-  const cached = useMemo(
-    () =>
-      days === 30
-        ? {
-            campaigns: cachedCampaigns,
-            adGroups: cachedAdGroups,
-            creatives: cachedCreatives,
-            keywords: cachedKeywords,
-          }
-        : null,
-    [cachedAdGroups, cachedCampaigns, cachedCreatives, cachedKeywords, days],
-  );
-  const hasCompleteCache = Boolean(
-    cached?.campaigns && cached.adGroups && cached.creatives && cached.keywords,
-  );
+  const requestedTab = searchParams.get("tab") as WorkspaceTab | null;
+  const activeTab =
+    routeTab ??
+    (requestedTab && VALID_TABS.includes(requestedTab)
+      ? requestedTab
+      : "overview");
+  const requestedDays = Number(searchParams.get("days") ?? 30);
+  const days = [7, 14, 30, 90].includes(requestedDays) ? requestedDays : 30;
+  const statusFilter = searchParams.get("status") || "";
+  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fatalError, setFatalError] = useState<string | null>(null);
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>(
-    () => cached?.campaigns?.data ?? [],
-  );
-  const [adGroups, setAdGroups] = useState<AdGroup[]>(
-    () => cached?.adGroups?.data ?? [],
-  );
-  const [creatives, setCreatives] = useState<Creative[]>(
-    () => cached?.creatives?.data ?? [],
-  );
-  const [keywords, setKeywords] = useState<Keyword[]>(
-    () => cached?.keywords?.data ?? [],
-  );
-  const [loading, setLoading] = useState(() => !hasCompleteCache);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-
-  useEffect(() => {
-    if (!cached || !hasCompleteCache) return;
-    setCampaigns(cached.campaigns?.data ?? []);
-    setAdGroups(cached.adGroups?.data ?? []);
-    setCreatives(cached.creatives?.data ?? []);
-    setKeywords(cached.keywords?.data ?? []);
-    setLoading(false);
-  }, [cached, hasCompleteCache]);
-
-  const fetchAll = useCallback(
-    async (showLoading = true) => {
-      if (showLoading) setLoading(true);
-      setError(null);
+  const load = useCallback(
+    async (quiet = false) => {
+      if (quiet) setRefreshing(true);
+      else setLoading(true);
+      setFatalError(null);
       try {
-        const [cr, ag, cv, kw] = await Promise.all([
-          fetch(`/api/airtable?table=campaigns&days=${days}`).then((r) =>
-            r.json(),
-          ),
-          fetch(`/api/airtable?table=ad-groups&days=${days}`).then((r) =>
-            r.json(),
-          ),
-          fetch(`/api/airtable?table=creatives&days=${days}`).then((r) =>
-            r.json(),
-          ),
-          fetch(`/api/airtable?table=keywords&days=${days}`).then((r) =>
-            r.json(),
-          ),
-        ]);
-        if (cr.error) throw new Error(cr.error);
-        setCampaigns(cr.data ?? []);
-        setAdGroups(ag.data ?? []);
-        setCreatives(cv.data ?? []);
-        setKeywords(kw.data ?? []);
-        if (days === 30) {
-          setCachedData(DATA_CACHE_KEYS.campaigns, cr);
-          setCachedData(DATA_CACHE_KEYS.adGroups, ag);
-          setCachedData(DATA_CACHE_KEYS.creatives, cv);
-          setCachedData(DATA_CACHE_KEYS.keywords, kw);
-        }
-        setLastRefresh(new Date());
-      } catch (e) {
-        setError(String(e));
+        const result = await fetchWorkspaceSnapshot(
+          days,
+          quiet,
+          activeTab === "ads" ||
+            activeTab === "search-terms" ||
+            activeTab === "assets"
+            ? activeTab
+            : undefined,
+        );
+        setSnapshot(result.snapshot);
+      } catch (error) {
+        setFatalError(
+          error instanceof Error
+            ? error.message
+            : "Google Ads data could not be loaded.",
+        );
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
     },
-    [days],
+    [activeTab, days],
   );
 
   useEffect(() => {
-    void fetchAll(!hasCompleteCache);
-  }, [fetchAll, hasCompleteCache]);
-
+    void load();
+  }, [load]);
   useEffect(() => {
-    const refresh = () => void fetchAll();
+    const refresh = () => void load(true);
     window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
     return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
-  }, [fetchAll]);
+  }, [load]);
 
-  const setTab = (t: TabId) => {
-    const p = new URLSearchParams(searchParams.toString());
-    p.set("tab", t);
-    router.replace(`?${p.toString()}`);
+  const setTab = (tab: WorkspaceTab, status?: string) => {
+    const params = new URLSearchParams();
+    params.set("days", String(days));
+    if (status) params.set("status", status);
+    router.push(`${TAB_ROUTES[tab]}?${params.toString()}`);
   };
-
-  const setDays = (d: number) => {
-    const p = new URLSearchParams(searchParams.toString());
-    p.set("days", String(d));
-    router.replace(`?${p.toString()}`);
+  const setDays = (value: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("days", String(value));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
-
-  const totalSpend = campaigns.reduce((s, c) => s + c.cost, 0);
-  const totalClicks = campaigns.reduce((s, c) => s + c.clicks, 0);
-  const totalConversions = campaigns.reduce((s, c) => s + c.conversions, 0);
-  const totalConvValue = campaigns.reduce((s, c) => s + c.conversionValue, 0);
-  // Use conversionValue/spend if available; otherwise use spend-weighted average of per-campaign ROAS from Airtable
-  const overallRoas =
-    totalSpend > 0
-      ? totalConvValue > 0
-        ? totalConvValue / totalSpend
-        : campaigns.reduce((s, c) => s + c.roas * c.cost, 0) / totalSpend
-      : 0;
-  const accountName = campaigns[0]?.accountName ?? "Harmony MedSpa";
-  const latestSync = campaigns.reduce(
-    (latest, c) => (c.pulledAt > latest ? c.pulledAt : latest),
-    "",
+  const counts = useMemo(
+    () =>
+      snapshot
+        ? `${snapshot.totals?.campaigns ?? snapshot.campaigns.length} campaigns · ${snapshot.totals?.adGroups ?? snapshot.adGroups.length} ad groups · ${snapshot.totals?.ads ?? snapshot.ads.length} ads`
+        : "Connecting inventory",
+    [snapshot],
   );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+    <div className="space-y-5">
+      <header
+        className="flex flex-col gap-4 border-b pb-5 xl:flex-row xl:items-end xl:justify-between"
+        style={{ borderColor: "var(--border-subtle)" }}
+      >
         <div>
-          <p
-            className="text-xs font-semibold uppercase tracking-widest"
-            style={{ color: GOLD }}
-          >
-            Google Ads Performance
-          </p>
-          <h1 className="text-2xl font-bold mt-1" style={{ color: TEXT }}>
-            Google Ads Analytics
+          <div className="flex flex-wrap items-center gap-2">
+            <p
+              className="text-[10px] font-bold uppercase tracking-[.18em]"
+              style={{ color: "var(--brand-primary-strong)" }}
+            >
+              Harmony acquisition operations
+            </p>
+            {snapshot && (
+              <span
+                className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
+                style={{
+                  color:
+                    snapshot.source === "live"
+                      ? "var(--success-text)"
+                      : "var(--warning-text)",
+                  background:
+                    snapshot.source === "live"
+                      ? "var(--success-bg)"
+                      : "var(--warning-bg)",
+                }}
+              >
+                {snapshot.source === "live" ? (
+                  <Wifi size={11} />
+                ) : (
+                  <WifiOff size={11} />
+                )}
+                {snapshot.source === "live"
+                  ? "Live Google Ads"
+                  : "Airtable fallback"}
+              </span>
+            )}
+          </div>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+            Google Ads workspace
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: MUTED }}>
-            Campaign performance, creative insights, and keyword analysis
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            {counts}
           </p>
-          {campaigns.length > 0 && (
-            <p className="text-xs mt-1" style={{ color: "#5A5A6A" }}>
-              {accountName} · {campaigns.length} campaigns · last {days} days
+          {snapshot && (
+            <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+              {snapshot.accountName} · Last synchronized{" "}
+              {new Date(snapshot.fetchedAt).toLocaleString()} · Selected range {days} days
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <span
-            className="px-3 py-1 rounded-full text-xs font-semibold"
-            style={{ backgroundColor: `${GOLD}15`, color: GOLD }}
-          >
-            Google Ads
-          </span>
-          {latestSync && (
-            <span
-              className="px-3 py-1 rounded-full text-xs"
-              style={{
-                backgroundColor: "rgba(255,255,255,0.05)",
-                color: MUTED,
-              }}
-            >
-              Synced {new Date(latestSync).toLocaleDateString()}
-            </span>
-          )}
-          {lastRefresh && (
-            <span
-              className="px-3 py-1 rounded-full text-xs"
-              style={{
-                backgroundColor: "rgba(255,255,255,0.05)",
-                color: MUTED,
-              }}
-              title={`Last fetched ${lastRefresh.toLocaleString()}`}
-            >
-              Last fetched{" "}
-              {lastRefresh.toLocaleDateString([], {
-                month: "short",
-                day: "numeric",
-              })}
-              {" · "}
-              {lastRefresh.toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </span>
-          )}
+        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
           <div
-            className="flex rounded-xl overflow-hidden"
-            style={{ border: `1px solid ${BORDER}` }}
+            className="flex max-w-full flex-1 items-center rounded-xl border p-1 sm:flex-none"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--surface-1)",
+            }}
+            role="group"
+            aria-label="Google Ads date range"
           >
-            {[7, 14, 30, 90].map((d) => (
+            <CalendarDays
+              size={14}
+              className="ml-2"
+              style={{ color: "var(--text-muted)" }}
+            />
+            {[7, 14, 30, 90].map((value) => (
               <button
-                key={d}
-                onClick={() => setDays(d)}
-                className="px-3 py-1.5 text-xs font-medium transition-colors"
-                style={
-                  days === d
-                    ? { backgroundColor: GOLD, color: "#0A0A0D" }
-                    : { color: MUTED }
-                }
+                key={value}
+                onClick={() => setDays(value)}
+                aria-pressed={days === value}
+                className="min-h-11 min-w-11 flex-1 rounded-lg px-2 text-xs font-bold sm:flex-none"
+                style={{
+                  background:
+                    days === value
+                      ? "var(--brand-primary-soft)"
+                      : "transparent",
+                  color:
+                    days === value
+                      ? "var(--brand-primary-strong)"
+                      : "var(--text-muted)",
+                }}
               >
-                {d}d
+                {value}d
               </button>
             ))}
           </div>
           <button
-            onClick={() => void fetchAll()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors"
-            style={{ border: `1px solid ${BORDER}`, color: MUTED }}
+            onClick={() => void load(true)}
+            disabled={refreshing || loading}
+            className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-bold disabled:opacity-50 sm:flex-none"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--surface-1)",
+            }}
           >
-            {loading ? (
-              <Loader2 size={14} className="animate-spin" />
+            {refreshing ? (
+              <Loader2 size={15} className="animate-spin" />
             ) : (
-              <RefreshCw size={14} />
+              <RefreshCw size={15} />
             )}
-            Refresh
+            Refresh all
           </button>
         </div>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <Alert variant="danger" title="Google Ads data could not be loaded">
-          {error}
-        </Alert>
+      </header>
+      {fatalError && (
+        <div
+          className="flex gap-3 rounded-2xl border p-4"
+          style={{
+            color: "var(--danger-text)",
+            background: "var(--danger-bg)",
+            borderColor: "var(--danger-border)",
+          }}
+        >
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-bold">Google Ads workspace could not load</p>
+            <p className="mt-1 text-sm leading-6">{fatalError}</p>
+            <button
+              onClick={() => void load()}
+              className="mt-3 rounded-lg border px-3 py-2 text-xs font-bold"
+              style={{ borderColor: "var(--danger-border)" }}
+            >
+              Try again
+            </button>
+          </div>
+        </div>
       )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          icon={DollarSign}
-          label="Total Spend"
-          value={fmt$(totalSpend)}
-          accent={GOLD}
-        />
-        <KPICard
-          icon={MousePointerClick}
-          label="Total Clicks"
-          value={fmtN(totalClicks)}
-        />
-        <KPICard
-          icon={TrendingUp}
-          label="Overall ROAS"
-          value={`${overallRoas.toFixed(2)}x`}
-          accent="#2DD4BF"
-        />
-        <KPICard
-          icon={ShoppingCart}
-          label="Total Conversions"
-          value={fmtN(Math.round(totalConversions))}
-        />
-      </div>
-
-      {/* Tab nav */}
-      <div>
-        <div
-          className="grid grid-cols-3 gap-2 lg:hidden"
-          aria-label="Google Ads analytics sections"
-        >
-          {TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            const isAI = tab.id === "ai-suggestions";
-            const isPending = tab.id === "pending-review";
-            const accentColor = isPending ? "#2DD4BF" : GOLD;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setTab(tab.id)}
-                className="flex min-h-11 min-w-0 items-center justify-center rounded-xl border px-2 py-2 text-center text-[11px] font-semibold leading-4 transition-colors"
-                style={{
-                  borderColor: active ? `${accentColor}70` : BORDER,
-                  backgroundColor: active
-                    ? `${accentColor}12`
-                    : "rgba(255,255,255,.02)",
-                  color: active
-                    ? accentColor
-                    : isAI || isPending
-                      ? `${accentColor}B0`
-                      : MUTED,
-                }}
-              >
-                <span className="break-words">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div
-          className="hidden gap-0 border-b lg:flex"
-          style={{ borderColor: BORDER }}
-        >
-          {TABS.map((tab) => {
-            const active = activeTab === tab.id;
-            const isAI = tab.id === "ai-suggestions";
-            const isPending = tab.id === "pending-review";
-            const accentColor = isPending ? "#2DD4BF" : GOLD;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setTab(tab.id)}
-                className="flex-shrink-0 whitespace-nowrap px-5 py-2.5 text-sm font-medium transition-colors"
-                style={{
-                  borderBottomWidth: "2px",
-                  borderBottomStyle: "solid",
-                  borderBottomColor: active ? accentColor : "transparent",
-                  color: active
-                    ? accentColor
-                    : isAI || isPending
-                      ? `${accentColor}90`
-                      : MUTED,
-                  fontWeight: isAI || isPending ? 600 : 500,
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Tab content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 size={32} className="animate-spin text-[#1A6B6B]" />
-        </div>
+      {loading && !snapshot ? (
+        <WorkspaceSkeleton />
       ) : (
-        <>
-          {activeTab === "campaigns" && <CampaignsTab campaigns={campaigns} />}
-          {activeTab === "ad-groups" && <AdGroupsTab adGroups={adGroups} />}
-          {activeTab === "creatives" && <CreativesTab creatives={creatives} />}
-          {activeTab === "keywords" && <KeywordsTab keywords={keywords} />}
-          {activeTab === "ai-suggestions" && (
-            <AISuggestionsTab
-              campaigns={campaigns}
-              creatives={creatives}
-              keywords={keywords}
-              days={days}
-            />
-          )}
-          {activeTab === "pending-review" && <PendingAdsPanel />}
-        </>
+        snapshot && (
+          <GoogleAdsWorkspace
+            snapshot={snapshot}
+            activeTab={activeTab}
+            setTab={setTab}
+            statusFilter={statusFilter}
+            days={days}
+          />
+        )
       )}
     </div>
   );
 }
 
-export default function GoogleAdsAnalyticsClient() {
+export default function GoogleAdsAnalyticsClient({
+  routeTab,
+}: {
+  routeTab?: WorkspaceTab;
+}) {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-24">
-          <Loader2 size={32} className="animate-spin text-[#1A6B6B]" />
-        </div>
+        <WorkspaceSkeleton />
       }
     >
-      <AnalyticsInner />
+      <AnalyticsInner routeTab={routeTab} />
     </Suspense>
   );
 }

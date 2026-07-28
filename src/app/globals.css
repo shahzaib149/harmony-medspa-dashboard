@@ -637,3 +637,106 @@ select:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Google Ads workspace: dense account ledger with explicit relationship cues. */
+.google-ads-workspace {
+  --ads-row-hover: color-mix(in srgb, var(--brand-primary) 6%, var(--surface-1));
+}
+.google-ads-tabs {
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.google-ads-tabs::-webkit-scrollbar {
+  display: none;
+}
+.google-ads-table-shell {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.google-ads-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 0.8rem 0.9rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.google-ads-table td {
+  padding: 0.8rem 0.9rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  border-color: var(--border-subtle);
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.google-ads-table tbody tr {
+  border-color: var(--border-subtle);
+  transition: background-color 120ms ease;
+}
+.google-ads-table tbody tr:hover {
+  background: var(--ads-row-hover);
+}
+.google-ads-table td > strong {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 750;
+  white-space: normal;
+}
+.google-ads-table td.text-right > strong {
+  white-space: nowrap;
+}
+.google-ads-table td > small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  line-height: 1rem;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 768px) {
+  .google-ads-table th:first-child,
+  .google-ads-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--surface-1);
+  }
+  .google-ads-table th:first-child {
+    z-index: 5;
+    background: var(--surface-2);
+  }
+  .google-ads-table td:first-child {
+    z-index: 2;
+    box-shadow: 1px 0 0 var(--border-subtle);
+  }
+  .google-ads-table tbody tr:hover td:first-child {
+    background: var(--ads-row-hover);
+  }
+}
+.google-ads-relation-rail .relation-node {
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+.google-ads-relation-rail .relation-node:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--brand-primary) 48%, var(--border-subtle));
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 767px) {
+  .google-ads-workspace .relation-node:not(:last-child)::after {
+    display: block;
+    width: 1px;
+    height: 0.6rem;
+    margin: 0.75rem auto -1.35rem;
+    content: "";
+    background: var(--border-strong);
+  }
+}

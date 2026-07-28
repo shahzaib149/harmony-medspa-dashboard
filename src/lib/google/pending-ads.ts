@@ -25,6 +25,29 @@ export type PendingAdActivity = {
   detail?: string;
 };
 
+export const PUBLICATION_STATUSES = [
+  "Pending Review",
+  "Publishing",
+  "Published",
+  "Failed",
+  "Rejected",
+] as const;
+
+export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
+
+export function normalizePublicationStatus(value: unknown): PublicationStatus {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "publishing" || normalized === "processing") return "Publishing";
+  if (normalized === "published" || normalized === "published / created paused" || normalized === "created paused") return "Published";
+  if (normalized === "failed" || normalized === "error") return "Failed";
+  if (normalized === "rejected") return "Rejected";
+  return "Pending Review";
+}
+
+export function isGoogleAdResourceName(value: string) {
+  return /^customers\/[^/]+\/adGroupAds\/[^/]+$/.test(value.trim());
+}
+
 export type PendingAdPackage = {
   version: 1;
   internalTitle: string;
@@ -81,10 +104,27 @@ export type PendingAd = {
   path1: string;
   path2: string;
   final_url: string;
-  status: string;
+  status: PublicationStatus;
+  publication_status: PublicationStatus;
+  google_ads_status: string;
+  publish_requested_at: string;
+  published_at: string;
+  published_by: string;
+  publish_error: string;
+  idempotency_key: string;
+  last_status_sync: string;
   created_at: string;
   reviewPackage: PendingAdPackage;
 };
+
+export function isVerifiedPublishedAd(ad: Pick<PendingAd, "publication_status" | "google_ads_status" | "ad_resource_name" | "published_at" | "published_by" | "publish_error">) {
+  return ad.publication_status === "Published"
+    && ad.google_ads_status.trim().toUpperCase() === "PAUSED"
+    && isGoogleAdResourceName(ad.ad_resource_name)
+    && Boolean(ad.published_at.trim())
+    && Boolean(ad.published_by.trim())
+    && !ad.publish_error.trim();
+}
 
 const MANDRILL_NUMBERS = new Set(["8638620501", "18638620501"]);
 

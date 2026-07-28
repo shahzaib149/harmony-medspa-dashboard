@@ -1,7 +1,23 @@
 const API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? "v21";
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
+let accessTokenCache: { value: string; expiresAt: number } | null = null;
+let accessTokenRequest: Promise<string> | null = null;
+
 async function getAccessToken(): Promise<string> {
+  if (accessTokenCache && accessTokenCache.expiresAt > Date.now()) {
+    return accessTokenCache.value;
+  }
+  if (accessTokenRequest) return accessTokenRequest;
+  accessTokenRequest = requestAccessToken();
+  try {
+    return await accessTokenRequest;
+  } finally {
+    accessTokenRequest = null;
+  }
+}
+
+async function requestAccessToken(): Promise<string> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -13,12 +29,23 @@ async function getAccessToken(): Promise<string> {
     }),
   });
 
-  const data = await res.json() as { access_token?: string; error?: string; error_description?: string };
+  const data = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+  };
 
   if (!res.ok || !data.access_token) {
-    throw new Error(`Token exchange failed: ${data.error} — ${data.error_description}`);
+    throw new Error(
+      `Token exchange failed: ${data.error} — ${data.error_description}`,
+    );
   }
-
+  accessTokenCache = {
+    value: data.access_token,
+    expiresAt:
+      Date.now() + Math.max(60, (data.expires_in || 3600) - 60) * 1000,
+  };
   return data.access_token;
 }
 
@@ -46,15 +73,22 @@ async function adsQuery(query: string): Promise<Record<string, unknown>[]> {
 
   const text = await res.text();
 
-  let data: { results?: Record<string, unknown>[]; error?: { message: string; details?: unknown[] } };
+  let data: {
+    results?: Record<string, unknown>[];
+    error?: { message: string; details?: unknown[] };
+  };
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(`Google Ads API 404 — URL tried: ${url} — Response: ${text.slice(0, 150)}`);
+    throw new Error(
+      `Google Ads API 404 — URL tried: ${url} — Response: ${text.slice(0, 150)}`,
+    );
   }
 
   if (!res.ok) {
-    throw new Error(data?.error?.message ?? `Google Ads API error ${res.status}`);
+    throw new Error(
+      data?.error?.message ?? `Google Ads API error ${res.status}`,
+    );
   }
 
   return data.results ?? [];
@@ -65,7 +99,388 @@ function num(val: unknown): number {
 }
 
 function micros(val: unknown): number {
-  return Math.round(num(val) / 1_000_000 * 100) / 100;
+  return Math.round((num(val) / 1_000_000) * 100) / 100;
+}
+
+function text(val: unknown): string {
+  return val == null ? "" : String(val);
+}
+
+function arrayOfText(val: unknown): string[] {
+  return Array.isArray(val) ? val.map(text).filter(Boolean) : [];
+}
+
+function assetTexts(
+  val: unknown,
+): Array<{ text: string; pinnedField?: string }> {
+  if (!Array.isArray(val)) return [];
+  return val
+    .map((item) => {
+      const asset = item as Record<string, unknown>;
+      return {
+        text: text(asset.text),
+        pinnedField: text(asset.pinnedField) || undefined,
+      };
+    })
+    .filter((item) => item.text);
+}
+
+/**
+ * Fetches an identity-complete Google Ads inventory and joins range metrics by
+ * resource name. Identity queries intentionally do not filter on segments.date;
+ * that keeps newly-created, paused and zero-impression entities visible.
+ */
+export async function fetchGoogleAdsWorkspace(
+  from: string,
+  to: string,
+  options: { includeSearchTerms?: boolean; includeAssets?: boolean } = {},
+) {
+  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
+  const [
+    campaignInventory,
+    campaignMetrics,
+    adGroups,
+    adGroupMetrics,
+    ads,
+    adMetrics,
+    keywords,
+    keywordMetrics,
+    searchTerms,
+    assets,
+  ] = await Promise.all([
+    adsQuery(`
+        SELECT campaign.id, campaign.resource_name, campaign.name, campaign.status,
+          campaign.advertising_channel_type, campaign.start_date, campaign.end_date,
+          campaign.bidding_strategy_type, campaign_budget.amount_micros,
+          campaign_budget.resource_name
+        FROM campaign
+        WHERE campaign.status != 'REMOVED'
+        ORDER BY campaign.name
+      `),
+    adsQuery(`
+        SELECT campaign.resource_name, metrics.cost_micros, metrics.impressions,
+          metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.conversions,
+          metrics.cost_per_conversion, metrics.conversions_value
+        FROM campaign
+        WHERE segments.date BETWEEN '${from}' AND '${to}'
+          AND campaign.status != 'REMOVED'
+      `),
+    adsQuery(`
+        SELECT campaign.id, campaign.resource_name, campaign.name,
+          ad_group.id, ad_group.resource_name, ad_group.name, ad_group.status,
+          ad_group.type
+        FROM ad_group
+        WHERE ad_group.status != 'REMOVED'
+        ORDER BY campaign.name, ad_group.name
+      `),
+    adsQuery(`
+        SELECT ad_group.resource_name, metrics.cost_micros, metrics.impressions,
+          metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.conversions,
+          metrics.cost_per_conversion, metrics.conversions_value
+        FROM ad_group
+        WHERE segments.date BETWEEN '${from}' AND '${to}'
+          AND ad_group.status != 'REMOVED'
+      `),
+    adsQuery(`
+        SELECT campaign.id, campaign.resource_name, campaign.name,
+          ad_group.id, ad_group.resource_name, ad_group.name,
+          ad_group_ad.resource_name, ad_group_ad.status,
+          ad_group_ad.primary_status, ad_group_ad.primary_status_reasons,
+          ad_group_ad.policy_summary.approval_status,
+          ad_group_ad.policy_summary.review_status,
+          ad_group_ad.policy_summary.policy_topic_entries,
+          ad_group_ad.ad.id, ad_group_ad.ad.resource_name, ad_group_ad.ad.name,
+          ad_group_ad.ad.type, ad_group_ad.ad.final_urls,
+          ad_group_ad.ad.responsive_search_ad.headlines,
+          ad_group_ad.ad.responsive_search_ad.descriptions,
+          ad_group_ad.ad.responsive_search_ad.path1,
+          ad_group_ad.ad.responsive_search_ad.path2,
+          ad_group_ad.ad_strength
+        FROM ad_group_ad
+        WHERE ad_group_ad.status != 'REMOVED'
+        ORDER BY campaign.name, ad_group.name
+      `),
+    adsQuery(`
+        SELECT ad_group_ad.resource_name, metrics.cost_micros, metrics.impressions,
+          metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.conversions,
+          metrics.cost_per_conversion, metrics.conversions_value
+        FROM ad_group_ad
+        WHERE segments.date BETWEEN '${from}' AND '${to}'
+          AND ad_group_ad.status != 'REMOVED'
+      `),
+    adsQuery(`
+        SELECT campaign.id, campaign.resource_name, campaign.name,
+          ad_group.id, ad_group.resource_name, ad_group.name,
+          ad_group_criterion.criterion_id, ad_group_criterion.resource_name,
+          ad_group_criterion.status, ad_group_criterion.negative,
+          ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
+          ad_group_criterion.quality_info.quality_score,
+          ad_group_criterion.quality_info.creative_quality_score,
+          ad_group_criterion.quality_info.post_click_quality_score
+        FROM keyword_view
+        WHERE ad_group_criterion.status != 'REMOVED'
+        ORDER BY campaign.name, ad_group.name
+      `),
+    adsQuery(`
+        SELECT ad_group_criterion.resource_name, metrics.cost_micros,
+          metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc,
+          metrics.conversions, metrics.cost_per_conversion,
+          metrics.conversions_value
+        FROM keyword_view
+        WHERE segments.date BETWEEN '${from}' AND '${to}'
+          AND ad_group_criterion.status != 'REMOVED'
+      `),
+    options.includeSearchTerms
+      ? adsQuery(`
+        SELECT search_term_view.resource_name, search_term_view.search_term,
+          search_term_view.status, campaign.id, campaign.name,
+          ad_group.id, ad_group.name, metrics.cost_micros, metrics.impressions,
+          metrics.clicks, metrics.ctr, metrics.conversions
+        FROM search_term_view
+        WHERE segments.date BETWEEN '${from}' AND '${to}'
+          AND metrics.impressions > 0
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 250
+      `)
+      : Promise.resolve([] as Record<string, unknown>[]),
+    options.includeAssets
+      ? adsQuery(`
+        SELECT asset.id, asset.resource_name, asset.name, asset.type,
+          asset.source, asset.policy_summary.approval_status,
+          asset.policy_summary.review_status
+        FROM asset
+        ORDER BY asset.id DESC
+        LIMIT 250
+      `)
+      : Promise.resolve([] as Record<string, unknown>[]),
+  ]);
+
+  const campaignMetricMap = new Map(
+    campaignMetrics.map((row) => {
+      const campaign = row.campaign as Record<string, unknown>;
+      return [
+        text(campaign.resourceName),
+        row.metrics as Record<string, unknown>,
+      ];
+    }),
+  );
+  const adGroupMetricMap = new Map(
+    adGroupMetrics.map((row) => {
+      const adGroup = row.adGroup as Record<string, unknown>;
+      return [
+        text(adGroup.resourceName),
+        row.metrics as Record<string, unknown>,
+      ];
+    }),
+  );
+  const adMetricMap = new Map(
+    adMetrics.map((row) => {
+      const adGroupAd = row.adGroupAd as Record<string, unknown>;
+      return [
+        text(adGroupAd.resourceName),
+        row.metrics as Record<string, unknown>,
+      ];
+    }),
+  );
+  const keywordMetricMap = new Map(
+    keywordMetrics.map((row) => {
+      const criterion = row.adGroupCriterion as Record<string, unknown>;
+      return [
+        text(criterion.resourceName),
+        row.metrics as Record<string, unknown>,
+      ];
+    }),
+  );
+  const metricShape = (metrics: Record<string, unknown> = {}) => {
+    const cost = micros(metrics.costMicros);
+    const conversions = num(metrics.conversions);
+    const conversionValue = num(metrics.conversionsValue);
+    return {
+      cost,
+      impressions: num(metrics.impressions),
+      clicks: num(metrics.clicks),
+      ctrPct: num(metrics.ctr) * 100,
+      avgCpc: micros(metrics.averageCpc),
+      conversions,
+      cpa: conversions > 0 ? cost / conversions : 0,
+      conversionValue,
+      conversionValueAvailable:
+        metrics.conversionsValue !== undefined &&
+        metrics.conversionsValue !== null,
+      roas: cost > 0 ? conversionValue / cost : 0,
+    };
+  };
+
+  const normalizedCampaigns = campaignInventory.map((row) => {
+    const campaign = row.campaign as Record<string, unknown>;
+    const budget = (row.campaignBudget ?? {}) as Record<string, unknown>;
+    const resourceName = text(campaign.resourceName);
+    return {
+      id: resourceName || text(campaign.id),
+      campaignId: text(campaign.id),
+      resourceName,
+      campaignName: text(campaign.name),
+      campaignStatus: text(campaign.status),
+      channelType: text(campaign.advertisingChannelType),
+      budget: micros(budget.amountMicros),
+      budgetResourceName: text(budget.resourceName),
+      startDate: text(campaign.startDate),
+      endDate: text(campaign.endDate),
+      biddingStrategy: text(campaign.biddingStrategyType),
+      accountName: `Google Ads ${customerId}`,
+      pulledAt: new Date().toISOString(),
+      ...metricShape(campaignMetricMap.get(resourceName)),
+    };
+  });
+
+  const normalizedAdGroups = adGroups.map((row) => {
+    const campaign = row.campaign as Record<string, unknown>;
+    const adGroup = row.adGroup as Record<string, unknown>;
+    const resourceName = text(adGroup.resourceName);
+    return {
+      id: resourceName || text(adGroup.id),
+      campaignId: text(campaign.id),
+      campaignResourceName: text(campaign.resourceName),
+      campaignName: text(campaign.name),
+      adGroupId: text(adGroup.id),
+      resourceName,
+      adGroupName: text(adGroup.name),
+      adGroupStatus: text(adGroup.status),
+      adGroupType: text(adGroup.type),
+      pulledAt: new Date().toISOString(),
+      ...metricShape(adGroupMetricMap.get(resourceName)),
+    };
+  });
+
+  const normalizedAds = ads.map((row) => {
+    const campaign = row.campaign as Record<string, unknown>;
+    const adGroup = row.adGroup as Record<string, unknown>;
+    const adGroupAd = row.adGroupAd as Record<string, unknown>;
+    const ad = (adGroupAd.ad ?? {}) as Record<string, unknown>;
+    const rsa = (ad.responsiveSearchAd ?? {}) as Record<string, unknown>;
+    const policy = (adGroupAd.policySummary ?? {}) as Record<string, unknown>;
+    const policyTopics = Array.isArray(policy.policyTopicEntries)
+      ? policy.policyTopicEntries
+          .map((entry) => {
+            const topic = entry as Record<string, unknown>;
+            return text(topic.topic);
+          })
+          .filter(Boolean)
+      : [];
+    const finalUrls = arrayOfText(ad.finalUrls);
+    return {
+      id: text(adGroupAd.resourceName) || text(ad.resourceName) || text(ad.id),
+      adId: text(ad.id),
+      resourceName: text(ad.resourceName),
+      adGroupAdResourceName: text(adGroupAd.resourceName),
+      adName:
+        text(ad.name) ||
+        assetTexts(rsa.headlines)[0]?.text ||
+        `Ad ${text(ad.id)}`,
+      adType: text(ad.type),
+      campaignId: text(campaign.id),
+      campaignResourceName: text(campaign.resourceName),
+      campaignName: text(campaign.name),
+      adGroupId: text(adGroup.id),
+      adGroupResourceName: text(adGroup.resourceName),
+      adGroupName: text(adGroup.name),
+      status: text(adGroupAd.status),
+      primaryStatus: text(adGroupAd.primaryStatus),
+      primaryStatusReasons: arrayOfText(adGroupAd.primaryStatusReasons),
+      approvalStatus: text(policy.approvalStatus),
+      reviewStatus: text(policy.reviewStatus),
+      policyTopics,
+      strength: text(adGroupAd.adStrength),
+      finalUrl: finalUrls[0] ?? "",
+      finalUrls,
+      displayUrl: finalUrls[0] ?? "",
+      path1: text(rsa.path1),
+      path2: text(rsa.path2),
+      headlineAssets: assetTexts(rsa.headlines),
+      descriptionAssets: assetTexts(rsa.descriptions),
+      headlines: assetTexts(rsa.headlines)
+        .map((item) => item.text)
+        .join(" | "),
+      descriptions: assetTexts(rsa.descriptions)
+        .map((item) => item.text)
+        .join(" | "),
+      publishSource: "Google Ads API",
+      lastSynced: new Date().toISOString(),
+      ...metricShape(adMetricMap.get(text(adGroupAd.resourceName))),
+    };
+  });
+
+  const normalizedKeywords = keywords.map((row) => {
+    const campaign = row.campaign as Record<string, unknown>;
+    const adGroup = row.adGroup as Record<string, unknown>;
+    const criterion = row.adGroupCriterion as Record<string, unknown>;
+    const keyword = (criterion.keyword ?? {}) as Record<string, unknown>;
+    const quality = (criterion.qualityInfo ?? {}) as Record<string, unknown>;
+    return {
+      id: text(criterion.resourceName) || text(criterion.criterionId),
+      criterionId: text(criterion.criterionId),
+      resourceName: text(criterion.resourceName),
+      keywordText: text(keyword.text),
+      matchType: text(keyword.matchType),
+      status: text(criterion.status),
+      negative: Boolean(criterion.negative),
+      campaignId: text(campaign.id),
+      campaignResourceName: text(campaign.resourceName),
+      campaignName: text(campaign.name),
+      adGroupId: text(adGroup.id),
+      adGroupResourceName: text(adGroup.resourceName),
+      adGroupName: text(adGroup.name),
+      qualityScore: num(quality.qualityScore),
+      creativeQuality: text(quality.creativeQualityScore),
+      landingPageQuality: text(quality.postClickQualityScore),
+      ...metricShape(keywordMetricMap.get(text(criterion.resourceName))),
+    };
+  });
+
+  const normalizedSearchTerms = searchTerms.map((row) => {
+    const view = row.searchTermView as Record<string, unknown>;
+    const campaign = row.campaign as Record<string, unknown>;
+    const adGroup = row.adGroup as Record<string, unknown>;
+    return {
+      id: text(view.resourceName) || text(view.searchTerm),
+      resourceName: text(view.resourceName),
+      term: text(view.searchTerm),
+      status: text(view.status),
+      campaignId: text(campaign.id),
+      campaignName: text(campaign.name),
+      adGroupId: text(adGroup.id),
+      adGroupName: text(adGroup.name),
+      ...metricShape(row.metrics as Record<string, unknown>),
+    };
+  });
+
+  const normalizedAssets = assets.map((row) => {
+    const asset = row.asset as Record<string, unknown>;
+    const policy = (asset.policySummary ?? {}) as Record<string, unknown>;
+    return {
+      id: text(asset.resourceName) || text(asset.id),
+      assetId: text(asset.id),
+      resourceName: text(asset.resourceName),
+      name: text(asset.name) || `${text(asset.type)} asset`,
+      type: text(asset.type),
+      source: text(asset.source),
+      approvalStatus: text(policy.approvalStatus),
+      reviewStatus: text(policy.reviewStatus),
+    };
+  });
+
+  return {
+    source: "live",
+    accountName: `Google Ads ${customerId}`,
+    dateRange: { from, to },
+    fetchedAt: new Date().toISOString(),
+    campaigns: normalizedCampaigns,
+    adGroups: normalizedAdGroups,
+    ads: normalizedAds,
+    keywords: normalizedKeywords,
+    searchTerms: normalizedSearchTerms,
+    assets: normalizedAssets,
+  };
 }
 
 // ─── Campaign Performance ─────────────────────────────────────────────────────
@@ -237,27 +652,38 @@ export async function fetchHourlyPerformance(from: string, to: string) {
 
 // ─── Add Keyword ──────────────────────────────────────────────────────────────
 
-export async function addKeyword(adGroupId: string, text: string, matchType: "BROAD" | "PHRASE" | "EXACT") {
+export async function addKeyword(
+  adGroupId: string,
+  text: string,
+  matchType: "BROAD" | "PHRASE" | "EXACT",
+) {
   const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
   const token = await getAccessToken();
 
-  const res = await fetch(`${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`, {
-    method: "POST",
-    headers: requestHeaders(token),
-    body: JSON.stringify({
-      operations: [{
-        create: {
-          adGroup: `customers/${customerId}/adGroups/${adGroupId}`,
-          status: "ENABLED",
-          keyword: { text, matchType },
-        },
-      }],
-    }),
-  });
+  const res = await fetch(
+    `${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`,
+    {
+      method: "POST",
+      headers: requestHeaders(token),
+      body: JSON.stringify({
+        operations: [
+          {
+            create: {
+              adGroup: `customers/${customerId}/adGroups/${adGroupId}`,
+              status: "ENABLED",
+              keyword: { text, matchType },
+            },
+          },
+        ],
+      }),
+    },
+  );
 
   if (!res.ok) {
-    const err = await res.json() as { error?: { message: string } };
-    throw new Error(err?.error?.message ?? `Failed to add keyword (${res.status})`);
+    const err = (await res.json()) as { error?: { message: string } };
+    throw new Error(
+      err?.error?.message ?? `Failed to add keyword (${res.status})`,
+    );
   }
 }
 
@@ -267,32 +693,34 @@ export async function addNegativeKeyword(campaignId: string, text: string) {
   const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
   const token = await getAccessToken();
 
-  const res = await fetch(`${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`, {
-    method: "POST",
-    headers: requestHeaders(token),
-    body: JSON.stringify({
-      operations: [{
-        create: {
-          campaign: `customers/${customerId}/campaigns/${campaignId}`,
-          negative: true,
-          keyword: { text, matchType: "BROAD" },
-        },
-      }],
-    }),
-  });
+  const res = await fetch(
+    `${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`,
+    {
+      method: "POST",
+      headers: requestHeaders(token),
+      body: JSON.stringify({
+        operations: [
+          {
+            create: {
+              campaign: `customers/${customerId}/campaigns/${campaignId}`,
+              negative: true,
+              keyword: { text, matchType: "BROAD" },
+            },
+          },
+        ],
+      }),
+    },
+  );
 
   if (!res.ok) {
-    const err = await res.json() as { error?: { message: string } };
-    throw new Error(err?.error?.message ?? `Failed to add negative keyword (${res.status})`);
+    const err = (await res.json()) as { error?: { message: string } };
+    throw new Error(
+      err?.error?.message ?? `Failed to add negative keyword (${res.status})`,
+    );
   }
 }
 
-// ─── Create Responsive Search Ad ─────────────────────────────────────────────
-
-export type GoogleAdTextAsset = {
-  text: string;
-  pinnedField?: "HEADLINE_1" | "HEADLINE_2" | "HEADLINE_3" | "DESCRIPTION_1" | "DESCRIPTION_2" | null;
-};
+// ─── Google Ads write helpers ────────────────────────────────────────────────
 
 export class GoogleAdsWriteError extends Error {
   requestId: string | null;
@@ -325,7 +753,8 @@ export async function fetchConversionTrackingSummary() {
   return {
     configured: actions.length > 0,
     enabledActionCount: actions.length,
-    primaryActionCount: actions.filter((action) => action.primaryForGoal).length,
+    primaryActionCount: actions.filter((action) => action.primaryForGoal)
+      .length,
     actions,
     leadUrlVerified: false,
   };
@@ -345,21 +774,36 @@ export async function addKeywordsBatch(
   }));
   const mutate = async (validateOnly: boolean) => {
     const token = await getAccessToken();
-    const response = await fetch(`${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`, {
-      method: "POST",
-      headers: requestHeaders(token),
-      body: JSON.stringify({ operations, validateOnly, partialFailure: false }),
-    });
+    const response = await fetch(
+      `${BASE_URL}/customers/${customerId}/adGroupCriteria:mutate`,
+      {
+        method: "POST",
+        headers: requestHeaders(token),
+        body: JSON.stringify({
+          operations,
+          validateOnly,
+          partialFailure: false,
+        }),
+      },
+    );
     if (!response.ok) {
-      const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-      throw new GoogleAdsWriteError(data?.error?.message || `Google Ads rejected the keywords (${response.status}).`);
+      const data = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new GoogleAdsWriteError(
+        data?.error?.message ||
+          `Google Ads rejected the keywords (${response.status}).`,
+      );
     }
   };
   await mutate(true);
   await mutate(false);
 }
 
-export async function addNegativeKeywordsBatch(campaignId: string, keywords: string[]) {
+export async function addNegativeKeywordsBatch(
+  campaignId: string,
+  keywords: string[],
+) {
   const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
   const operations = keywords.map((text) => ({
     create: {
@@ -370,14 +814,26 @@ export async function addNegativeKeywordsBatch(campaignId: string, keywords: str
   }));
   const mutate = async (validateOnly: boolean) => {
     const token = await getAccessToken();
-    const response = await fetch(`${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`, {
-      method: "POST",
-      headers: requestHeaders(token),
-      body: JSON.stringify({ operations, validateOnly, partialFailure: false }),
-    });
+    const response = await fetch(
+      `${BASE_URL}/customers/${customerId}/campaignCriteria:mutate`,
+      {
+        method: "POST",
+        headers: requestHeaders(token),
+        body: JSON.stringify({
+          operations,
+          validateOnly,
+          partialFailure: false,
+        }),
+      },
+    );
     if (!response.ok) {
-      const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-      throw new GoogleAdsWriteError(data?.error?.message || `Google Ads rejected the negatives (${response.status}).`);
+      const data = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new GoogleAdsWriteError(
+        data?.error?.message ||
+          `Google Ads rejected the negatives (${response.status}).`,
+      );
     }
   };
   await mutate(true);
@@ -388,7 +844,10 @@ function escapeGaql(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
-export async function resolveSearchAdTarget(campaignName: string, adGroupName: string) {
+export async function resolveSearchAdTarget(
+  campaignName: string,
+  adGroupName: string,
+) {
   const rows = await adsQuery(`
     SELECT campaign.id, campaign.name, ad_group.id, ad_group.name
     FROM ad_group
@@ -398,8 +857,14 @@ export async function resolveSearchAdTarget(campaignName: string, adGroupName: s
       AND ad_group.status != 'REMOVED'
     LIMIT 2
   `);
-  if (rows.length === 0) throw new GoogleAdsWriteError("The selected campaign and ad group were not found in Google Ads.");
-  if (rows.length > 1) throw new GoogleAdsWriteError("More than one matching ad group was found. Use a unique campaign and ad group.");
+  if (rows.length === 0)
+    throw new GoogleAdsWriteError(
+      "The selected campaign and ad group were not found in Google Ads.",
+    );
+  if (rows.length > 1)
+    throw new GoogleAdsWriteError(
+      "More than one matching ad group was found. Use a unique campaign and ad group.",
+    );
   const campaign = rows[0].campaign as Record<string, unknown>;
   const adGroup = rows[0].adGroup as Record<string, unknown>;
   return {
@@ -410,123 +875,38 @@ export async function resolveSearchAdTarget(campaignName: string, adGroupName: s
   };
 }
 
-type CreateRsaParams = {
-  adGroupId: string;
-  headlines: GoogleAdTextAsset[];
-  descriptions: GoogleAdTextAsset[];
-  finalUrl: string;
-  path1?: string;
-  path2?: string;
-};
-
-function rsaOperation(params: CreateRsaParams) {
-  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
-  const mapAsset = (asset: GoogleAdTextAsset) => ({
-    text: asset.text,
-    ...(asset.pinnedField ? { pinnedField: asset.pinnedField } : {}),
-  });
-  return {
-    create: {
-      adGroup: `customers/${customerId}/adGroups/${params.adGroupId}`,
-      status: "PAUSED" as const,
-      ad: {
-        finalUrls: [params.finalUrl],
-        responsiveSearchAd: {
-          headlines: params.headlines.map(mapAsset),
-          descriptions: params.descriptions.map(mapAsset),
-          ...(params.path1 ? { path1: params.path1 } : {}),
-          ...(params.path2 ? { path2: params.path2 } : {}),
-        },
-      },
-    },
-  };
-}
-
-async function mutateResponsiveSearchAd(params: CreateRsaParams, validateOnly: boolean) {
-  const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
-  const token = await getAccessToken();
-  const response = await fetch(`${BASE_URL}/customers/${customerId}/adGroupAds:mutate`, {
-    method: "POST",
-    headers: requestHeaders(token),
-    body: JSON.stringify({
-      operations: [rsaOperation(params)],
-      validateOnly,
-      partialFailure: false,
-      responseContentType: "RESOURCE_NAME_ONLY",
-    }),
-  });
-  const requestId = response.headers.get("request-id") || response.headers.get("x-request-id");
-  const data = await response.json().catch(() => null) as {
-    results?: Array<{ resourceName?: string }>;
-    error?: { message?: string };
-  } | null;
-  if (!response.ok) {
-    throw new GoogleAdsWriteError(
-      data?.error?.message || `Google Ads rejected the ad request (${response.status}).`,
-      requestId,
-    );
-  }
-  return { resourceName: data?.results?.[0]?.resourceName ?? "", requestId };
-}
-
-export async function createResponsiveSearchAd(params: CreateRsaParams) {
-  await mutateResponsiveSearchAd(params, true);
-  const result = await mutateResponsiveSearchAd(params, false);
-  if (!result.resourceName) {
-    throw new GoogleAdsWriteError("Google Ads did not return the created ad resource name.", result.requestId);
-  }
-  return result;
-}
-
-export async function verifyPausedSearchAd(resourceName: string) {
-  let rows: Record<string, unknown>[] = [];
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    rows = await adsQuery(`
-      SELECT ad_group_ad.resource_name, ad_group_ad.status, ad_group_ad.ad.id,
-        ad_group_ad.ad.final_urls, campaign.name, ad_group.name
-      FROM ad_group_ad
-      WHERE ad_group_ad.resource_name = '${escapeGaql(resourceName)}'
-      LIMIT 1
-    `);
-    if (rows.length === 1) break;
-    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 500));
-  }
-  if (rows.length !== 1) throw new GoogleAdsWriteError("The created ad could not be verified in Google Ads.");
-  const adGroupAd = rows[0].adGroupAd as Record<string, unknown>;
-  const ad = adGroupAd.ad as Record<string, unknown>;
-  if (String(adGroupAd.status) !== "PAUSED") {
-    throw new GoogleAdsWriteError("Google Ads returned the created ad with an unexpected status.");
-  }
-  return {
-    resourceName: String(adGroupAd.resourceName || resourceName),
-    adId: String(ad.id || resourceName.split("~").pop() || ""),
-    status: "PAUSED" as const,
-    finalUrls: Array.isArray(ad.finalUrls) ? ad.finalUrls.map(String) : [],
-  };
-}
-
 // ─── Campaign Status ──────────────────────────────────────────────────────────
 
-export async function setCampaignStatus(campaignId: string, status: "ENABLED" | "PAUSED") {
+export async function setCampaignStatus(
+  campaignId: string,
+  status: "ENABLED" | "PAUSED",
+) {
   const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID!.replace(/-/g, "");
   const token = await getAccessToken();
 
-  const res = await fetch(`${BASE_URL}/customers/${customerId}/campaigns:mutate`, {
-    method: "POST",
-    headers: requestHeaders(token),
-    body: JSON.stringify({
-      operations: [{
-        update: {
-          resourceName: `customers/${customerId}/campaigns/${campaignId}`,
-          status,
-        },
-        updateMask: "status",
-      }],
-    }),
-  });
+  const res = await fetch(
+    `${BASE_URL}/customers/${customerId}/campaigns:mutate`,
+    {
+      method: "POST",
+      headers: requestHeaders(token),
+      body: JSON.stringify({
+        operations: [
+          {
+            update: {
+              resourceName: `customers/${customerId}/campaigns/${campaignId}`,
+              status,
+            },
+            updateMask: "status",
+          },
+        ],
+      }),
+    },
+  );
 
   if (!res.ok) {
-    const err = await res.json() as { error?: { message: string } };
-    throw new Error(err?.error?.message ?? `Failed to update campaign (${res.status})`);
+    const err = (await res.json()) as { error?: { message: string } };
+    throw new Error(
+      err?.error?.message ?? `Failed to update campaign (${res.status})`,
+    );
   }
 }

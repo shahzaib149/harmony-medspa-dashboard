@@ -16,6 +16,8 @@ const AUTH_CALL_RE = /require(?:Role|AuthenticatedUser|Admin|Editor)\s*\(/;
 // documented reason. Keep this list SHORT and justified — do not add a route
 // here just to silence the test.
 const EXEMPT: Record<string, string> = {
+  "auth/login/route.ts":
+    "public credential exchange endpoint; validates origin, credentials, and active profile before setting a session",
   // Thin delegates that forward the (unchanged) Request to an already-protected
   // handler which performs the auth check.
   "airtable/message-log/route.ts":

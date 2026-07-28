@@ -10,6 +10,7 @@ import {
   Loader2,
   LockKeyhole,
   Pencil,
+  RotateCcw,
   Save,
   Send,
   ShieldCheck,
@@ -20,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import {
+  isVerifiedPublishedAd,
   unconfirmedApprovals,
   validatePendingAdPackage,
   type DescriptionPin,
@@ -120,7 +122,7 @@ function PublishConfirm({
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--warning-text)" }}>Medium risk · Google Ads write</p>
             <h2 id="publish-confirm-title" className="mt-1 text-xl font-bold" style={{ color: "var(--text-primary)" }}>Create this ad as paused?</h2>
-            <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>This will create a new responsive search ad in Google Ads with status PAUSED. It will not go live until enabled in Google Ads.</p>
+            <p className="mt-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>This sends the complete ad package to the Make publishing workflow. The dashboard will wait for Airtable to confirm a verified Google Ads resource with status PAUSED.</p>
           </div>
           <button aria-label="Close" disabled={loading} onClick={onCancel} className="grid size-11 place-items-center rounded-xl" style={{ color: "var(--text-muted)" }}><X size={20} /></button>
         </header>
@@ -141,7 +143,7 @@ function PublishConfirm({
         </div>
         <footer className="mobile-safe-bottom flex flex-col-reverse gap-2 border-t p-4 min-[390px]:flex-row min-[390px]:justify-end sm:p-5" style={{ background: "var(--surface-raised)", borderColor: "var(--border-subtle)" }}>
           <button disabled={loading} onClick={onCancel} className="min-h-11 rounded-xl border px-5 text-sm font-bold" style={{ borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}>Cancel</button>
-          <button disabled={loading} onClick={onConfirm} className="flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-60" style={{ background: "var(--brand-primary)", color: "var(--primary-foreground)" }}>{loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}{loading ? "Creating paused ad…" : "Create Paused Ad"}</button>
+          <button disabled={loading} onClick={onConfirm} className="flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-60" style={{ background: "var(--brand-primary)", color: "var(--primary-foreground)" }}>{loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}{loading ? "Publishing to Google Ads…" : "Publish as Paused Ad"}</button>
         </footer>
       </div>
     </div>
@@ -166,12 +168,20 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
   const [recommendationAction, setRecommendationAction] = useState<RecommendationAction>(null);
   const [tracking, setTracking] = useState<TrackingStatus>({ loading: false, configured: false, enabledActionCount: 0, primaryActionCount: 0, leadUrlVerified: false });
 
-  async function authHeaders() {
-    const { data } = await supabase.auth.getSession();
-    return {
-      "Content-Type": "application/json",
-      ...(data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+  async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+    const send = async (refresh: boolean) => {
+      const { data } = refresh
+        ? await supabase.auth.refreshSession()
+        : await supabase.auth.getSession();
+      const headers = new Headers(init.headers);
+      if (data.session?.access_token) {
+        headers.set("Authorization", `Bearer ${data.session.access_token}`);
+      }
+      return fetch(input, { ...init, headers, credentials: "same-origin" });
     };
+
+    const response = await send(false);
+    return response.status === 401 ? send(true) : response;
   }
 
   useEffect(() => {
@@ -254,8 +264,8 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
   async function save() {
     setWorking("save"); setError(null);
     try {
-      const response = await fetch("/api/airtable/pending-ads", {
-        method: "PATCH", credentials: "same-origin", headers: await authHeaders(),
+      const response = await authenticatedFetch("/api/airtable/pending-ads", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update", id: pendingAdId, reviewPackage: draft }),
       });
       const data = await response.json() as { ad?: PendingAd; error?: string; requestId?: string };
@@ -270,8 +280,8 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
   async function reject() {
     setWorking("reject"); setError(null);
     try {
-      const response = await fetch("/api/airtable/pending-ads", {
-        method: "PATCH", credentials: "same-origin", headers: await authHeaders(),
+      const response = await authenticatedFetch("/api/airtable/pending-ads", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reject", id: pendingAdId, reason: rejectReason }),
       });
       const data = await response.json() as { error?: string; requestId?: string };
@@ -283,23 +293,64 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
   }
 
   async function publish() {
+    if (!ad || !draft) return;
     setWorking("publish"); setError(null);
     try {
-      const response = await fetch("/api/google-ads/create-ad", {
-        method: "POST", credentials: "same-origin", headers: await authHeaders(),
-        body: JSON.stringify({ pendingAdId, explicitConfirmation: true }),
+      const startResponse = await authenticatedFetch("/api/airtable/ad-reviews", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: ad.publication_status === "Failed" ? "retry" : "publish_requested", id: pendingAdId }),
       });
-      const data = await response.json() as { error?: string; message?: string; detail?: string; resourceName?: string; requestId?: string };
-      if (!response.ok) {
-        setPublishOpen(false);
-        setError({ title: data.error || "Ad could not be created.", message: data.message || "The pending status was preserved. Review the request and retry.", requestId: data.requestId });
-        return;
+      const startData = await startResponse.json().catch(() => null) as {
+        ad?: PendingAd;
+        error?: string;
+      } | null;
+      if (!startResponse.ok || !startData?.ad) {
+        if (startData?.ad) onChanged(startData.ad);
+        throw new Error(startData?.error || "Publishing could not be started.");
       }
-      setPublishOpen(false); onResolved(pendingAdId);
-      setResult({ title: data.message || "Paused ad created in Google Ads.", message: data.detail || "This ad is not live yet. Hayden can review and enable it from Google Ads.", resourceName: data.resourceName });
-    } catch {
+      onChanged(startData.ad);
       setPublishOpen(false);
-      setError({ title: "Ad could not be created.", message: "The request could not be completed. The ad remains in Pending Review." });
+      setResult({ title: "Publishing to Google Ads…", message: "The package reached the publishing workflow. Waiting for verified PAUSED status from Airtable." });
+
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const pollResponse = await authenticatedFetch(`/api/airtable/ad-reviews?id=${encodeURIComponent(pendingAdId)}`, { cache: "no-store" });
+        const pollData = await pollResponse.json().catch(() => null) as { ad?: PendingAd } | null;
+        if (!pollResponse.ok || !pollData?.ad) continue;
+        onChanged(pollData.ad);
+        if (isVerifiedPublishedAd(pollData.ad)) {
+          void authenticatedFetch("/api/airtable/ad-reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "acknowledge_result", id: pendingAdId }) });
+          setResult({ title: "Published as paused", message: "Google Ads creation was verified from Airtable. The ad remains PAUSED and is not serving.", resourceName: pollData.ad.ad_resource_name });
+          onResolved(pendingAdId);
+          return;
+        }
+        if (pollData.ad.publication_status === "Failed") {
+          void authenticatedFetch("/api/airtable/ad-reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "acknowledge_result", id: pendingAdId }) });
+          setError({ title: "Publishing failed", message: pollData.ad.publish_error || "The publishing workflow could not create this ad. Review the Failed tab before retrying." });
+          onResolved(pendingAdId);
+          return;
+        }
+      }
+      const timeoutResponse = await authenticatedFetch("/api/airtable/ad-reviews", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark_failed", id: pendingAdId, error: "The publishing workflow did not report a verified result within 60 seconds." }),
+      });
+      const timeoutData = await timeoutResponse.json().catch(() => null) as { ad?: PendingAd } | null;
+      if (timeoutResponse.ok && timeoutData?.ad) {
+        onChanged(timeoutData.ad);
+        setError({ title: "Publishing timed out", message: "No verified Google Ads result arrived within 60 seconds. The ad was moved to Failed and can be retried safely." });
+      } else {
+        setError({ title: "Status check timed out", message: "A final Google Ads result could not be confirmed. Sync status before retrying so the same ad is not submitted twice." });
+      }
+      onResolved(pendingAdId);
+    } catch (caught) {
+      setPublishOpen(false);
+      const message = caught instanceof Error ? caught.message : "The publishing workflow could not be reached.";
+      setError({ title: "Publishing could not start", message });
+      onResolved(pendingAdId);
     } finally { setWorking(null); }
   }
 
@@ -307,8 +358,8 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
     if (!recommendationAction) return;
     setWorking("recommendation"); setError(null);
     try {
-      const response = await fetch("/api/google-ads/pending-recommendations", {
-        method: "POST", credentials: "same-origin", headers: await authHeaders(),
+      const response = await authenticatedFetch("/api/google-ads/pending-recommendations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pendingAdId, action: recommendationAction, explicitConfirmation: true }),
       });
       const data = await response.json() as { error?: string; message?: string; count?: number; requestId?: string };
@@ -326,7 +377,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
         <header className="mobile-safe-top flex items-start gap-3 border-b px-4 py-3 sm:px-6 sm:py-5" style={{ background: "var(--surface-raised)", borderColor: "var(--border-subtle)" }}>
           <div className="mt-0.5 hidden rounded-xl p-2 sm:block" style={{ color: "var(--brand-primary)", background: "var(--brand-primary-soft)" }}><FileCheck2 size={20} /></div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--warning-text)", background: "var(--warning-bg)" }}>{ad.status}</span><span className="text-xs" style={{ color: "var(--text-muted)" }}>Created {ad.created_at}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: ad.publication_status === "Failed" ? "var(--danger-text)" : ad.publication_status === "Published" ? "var(--success-text)" : "var(--warning-text)", background: ad.publication_status === "Failed" ? "var(--danger-bg)" : ad.publication_status === "Published" ? "var(--success-bg)" : "var(--warning-bg)" }}>{ad.publication_status}{ad.publication_status === "Published" ? " · Paused" : ""}</span><span className="text-xs" style={{ color: "var(--text-muted)" }}>Created {ad.created_at}</span></div>
             <h2 id="pending-ad-title" className="mt-2 truncate text-lg font-bold sm:text-xl" style={{ color: "var(--text-primary)" }}>{draft.internalTitle}</h2>
             <p className="mt-1 truncate text-xs sm:text-sm" style={{ color: "var(--text-muted)" }}>{draft.campaignName} · {draft.adGroupName}</p>
           </div>
@@ -345,7 +396,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Ad name<input disabled={!editing} value={draft.internalTitle} onChange={(e) => updateDraft((r) => ({ ...r, internalTitle: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Strategy label<input disabled={!editing} value={draft.strategyLabel} onChange={(e) => updateDraft((r) => ({ ...r, strategyLabel: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Campaign<input disabled value={draft.campaignName} className={`${fieldClass} mt-1.5`} /></label>
-                  <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Ad group<input disabled value={draft.adGroupName} className={`${fieldClass} mt-1.5`} /></label>
+                  <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Ad group<input disabled={!editing} value={draft.adGroupName} onChange={(event) => updateDraft((review) => ({ ...review, adGroupName: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold sm:col-span-2" style={{ color: "var(--text-secondary)" }}>Final URL<input disabled={!editing} type="url" value={draft.finalUrl} onChange={(e) => updateDraft((r) => ({ ...r, finalUrl: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Display path 1<div className="mt-1.5 flex items-center gap-2"><input disabled={!editing} value={draft.path1} onChange={(e) => updateDraft((r) => ({ ...r, path1: e.target.value }))} className={fieldClass} /><Count value={draft.path1} max={15} /></div></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Display path 2<div className="mt-1.5 flex items-center gap-2"><input disabled={!editing} value={draft.path2} onChange={(e) => updateDraft((r) => ({ ...r, path2: e.target.value }))} className={fieldClass} /><Count value={draft.path2} max={15} /></div></label>
@@ -428,11 +479,13 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
 
         <footer className="mobile-safe-bottom flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4" style={{ background: "var(--surface-raised)", borderColor: "var(--border-subtle)" }}>
           <button onClick={onClose} className="min-h-11 rounded-xl border px-4 text-sm font-bold sm:order-none" style={{ color: "var(--text-secondary)", borderColor: "var(--border-subtle)" }}>Close</button>
-          {isAdmin && !result?.resourceName && result?.title !== "Ad rejected" && <div className="grid grid-cols-2 gap-2 sm:flex">
+          {isAdmin && ad.publication_status === "Pending Review" && result?.title !== "Ad rejected" && <div className="grid grid-cols-2 gap-2 sm:flex">
             <button onClick={() => setRejectOpen(true)} disabled={Boolean(working)} className="min-h-11 rounded-xl border px-4 text-sm font-bold" style={{ color: "var(--danger-text)", borderColor: "var(--danger-border)", background: "var(--danger-bg)" }}>Reject</button>
             {editing ? <button onClick={save} disabled={!dirty || Boolean(working)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-bold disabled:opacity-50" style={{ color: "var(--brand-primary-strong)", borderColor: "var(--border-strong)" }}>{working === "save" ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Save changes</button> : <button onClick={() => setEditing(true)} disabled={Boolean(working)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-bold" style={{ color: "var(--text-primary)", borderColor: "var(--border-strong)" }}><Pencil size={15} />Edit</button>}
             <button onClick={() => setPublishOpen(true)} disabled={!ready || Boolean(working) || editing} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-45" style={{ background: "var(--brand-primary)", color: "var(--primary-foreground)" }}><Send size={15} />Publish as Paused Ad</button>
           </div>}
+          {isAdmin && ad.publication_status === "Failed" && <button onClick={() => setPublishOpen(true)} disabled={!ready || Boolean(working)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-45" style={{ background: "var(--brand-primary)", color: "var(--primary-foreground)" }}><RotateCcw size={15} />Retry Publishing</button>}
+          {ad.publication_status === "Publishing" && <div className="flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold" style={{ color: "var(--warning-text)", background: "var(--warning-bg)" }}><Loader2 size={15} className="animate-spin" />Publishing to Google Ads…</div>}
         </footer>
       </div>
 
