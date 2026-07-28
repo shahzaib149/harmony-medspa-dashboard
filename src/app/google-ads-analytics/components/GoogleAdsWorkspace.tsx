@@ -42,9 +42,7 @@ import type {
   AdGroup,
   Campaign,
   Creative,
-  GoogleAsset,
   Keyword,
-  SearchTerm,
   SelectedEntity,
   WorkspaceSnapshot,
 } from "../workspace-types";
@@ -67,8 +65,6 @@ export type WorkspaceTab =
   | "ad-groups"
   | "ads"
   | "keywords"
-  | "search-terms"
-  | "assets"
   | "workflow"
   | "ai-suggestions";
 
@@ -82,8 +78,6 @@ const TABS: Array<{
   { id: "ad-groups", label: "Ad groups", icon: Layers3 },
   { id: "ads", label: "Ads", icon: Sparkles },
   { id: "keywords", label: "Keywords", icon: KeyRound },
-  { id: "search-terms", label: "Search terms", icon: Search },
-  { id: "assets", label: "Assets", icon: Layers3 },
   { id: "workflow", label: "Publishing", icon: Workflow },
   { id: "ai-suggestions", label: "AI suggestions", icon: BrainCircuit },
 ];
@@ -2401,192 +2395,6 @@ function InsightStrip({
   );
 }
 
-const searchTermSearch = (row: SearchTerm) =>
-  `${row.term} ${row.campaignName} ${row.adGroupName} ${row.resourceName}`;
-const searchTermStatus = (row: SearchTerm) => row.status || "UNKNOWN";
-
-function SearchTermsTable({ rows }: { rows: SearchTerm[] }) {
-  const filters = useEntityFilters(
-    "search-terms",
-    rows,
-    searchTermSearch,
-    searchTermStatus,
-  );
-  const table = usePagedEntities(filters.filtered, (item) => item.term);
-  const campaigns = [...new Set(rows.map((item) => item.campaignName))].filter(
-    Boolean,
-  );
-  return (
-    <EntitySection
-      eyebrow="Query intelligence"
-      title="Search terms"
-      description="Actual user queries remain connected to their campaign and ad group without expanding the keyword list payload."
-    >
-      <FilterBar
-        {...filters}
-        campaigns={campaigns}
-        extra={<SortSelect value={table.sort} onChange={table.setSort} />}
-        onExport={() =>
-          exportRows(
-            "google-ads-search-terms.csv",
-            filters.filtered as unknown as Array<Record<string, unknown>>,
-          )
-        }
-      />
-      <div className="space-y-3 md:hidden">
-        {table.rows.map((item) => (
-          <article
-            key={item.id}
-            className="rounded-2xl border p-4"
-            style={{
-              borderColor: "var(--border-subtle)",
-              background: "var(--surface-1)",
-            }}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="min-w-0 break-words text-base font-bold leading-6">
-                {item.term}
-              </h3>
-              <StatusBadge value={item.status} />
-            </div>
-            <p className="mt-2 break-words text-sm" style={{ color: "var(--text-muted)" }}>
-              {item.campaignName} · {item.adGroupName}
-            </p>
-            <dl className="mt-4 grid grid-cols-2 gap-3 min-[420px]:grid-cols-3">
-              {[
-                ["Spend", money(item.cost)],
-                ["Clicks", number(item.clicks)],
-                ["Conversions", number(item.conversions)],
-                [
-                  "CTR",
-                  item.impressions
-                    ? pct((item.clicks / item.impressions) * 100)
-                    : "—",
-                ],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                    {label}
-                  </dt>
-                  <dd className="mt-1 text-sm font-bold tabular-nums">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </article>
-        ))}
-      </div>
-      <DataTable
-        columns={[
-          "Search term",
-          "Campaign / ad group",
-          "Status",
-          "Spend",
-          "Impressions",
-          "Clicks",
-          "CTR",
-          "Conversions",
-        ]}
-      >
-        {table.rows.map((item) => (
-          <tr key={item.id} className="border-b">
-            <td className="max-w-80"><strong>{item.term}</strong><ResourceName value={item.resourceName} /></td>
-            <td><strong>{item.campaignName}</strong><small>{item.adGroupName}</small></td>
-            <td><StatusBadge value={item.status} /></td>
-            <MetricCell value={money(item.cost)} />
-            <MetricCell value={number(item.impressions)} />
-            <MetricCell value={number(item.clicks)} />
-            <MetricCell value={item.impressions ? pct((item.clicks / item.impressions) * 100) : "—"} />
-            <MetricCell value={number(item.conversions)} />
-          </tr>
-        ))}
-      </DataTable>
-      <PageControls
-        page={table.page}
-        pageCount={table.pageCount}
-        pageSize={table.pageSize}
-        total={table.total}
-        onChange={table.setPage}
-        onPageSizeChange={table.setPageSize}
-      />
-      {!filters.filtered.length && (
-        <EmptyState
-          title="No search terms match these filters"
-          body="Try a wider campaign or status selection. Search terms only appear when impressions exist in the selected range."
-        />
-      )}
-    </EntitySection>
-  );
-}
-
-function AssetsTable({ rows }: { rows: GoogleAsset[] }) {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
-  const debouncedSearch = useDebouncedValue(search, 300);
-  const filtered = useMemo(() => {
-    const needle = debouncedSearch.trim().toLowerCase();
-    return rows.filter((item) => {
-      const state = `${item.approvalStatus} ${item.reviewStatus}`.toUpperCase();
-      return (
-        (!needle || `${item.name} ${item.type} ${item.resourceName}`.toLowerCase().includes(needle)) &&
-        (!status || state.includes(status))
-      );
-    });
-  }, [debouncedSearch, rows, status]);
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, pageCount - 1);
-  const visible = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
-  useEffect(() => setPage(0), [debouncedSearch, pageSize, status]);
-  return (
-    <EntitySection
-      eyebrow="Creative inventory"
-      title="Assets"
-      description="Google asset identity and policy state load independently from ad copy and performance detail."
-    >
-      <div
-        className="grid grid-cols-1 gap-3 rounded-2xl border p-3 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1fr)_180px_auto_auto]"
-        style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }}
-      >
-        <label className="relative min-w-0">
-          <Search size={15} className="absolute left-3 top-3.5" style={{ color: "var(--text-muted)" }} />
-          <span className="sr-only">Search assets</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search assets" className="h-11 w-full rounded-xl border pl-9 pr-3 text-sm" />
-        </label>
-        <select aria-label="Filter asset policy status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-11 w-full rounded-xl border px-3 text-sm">
-          <option value="">All statuses</option>
-          <option value="APPROVED">Approved</option>
-          <option value="DISAPPROVED">Disapproved</option>
-          <option value="REVIEW">Under review</option>
-        </select>
-        <button type="button" onClick={() => exportRows("google-ads-assets.csv", filtered as unknown as Array<Record<string, unknown>>)} className="flex h-11 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold">
-          <Download size={14} /> CSV
-        </button>
-        {(search || status) && (
-          <button type="button" onClick={() => { setSearch(""); setStatus(""); }} className="h-11 rounded-xl border px-3 text-sm font-bold" style={{ color: "var(--brand-primary-strong)" }}>
-            Clear filters
-          </button>
-        )}
-      </div>
-      <div className="space-y-3 md:hidden">
-        {visible.map((item) => (
-          <article key={item.id} className="rounded-2xl border p-4" style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }}>
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[11px] font-bold uppercase" style={{ color: "var(--text-muted)" }}>{labelize(item.type)}</p><h3 className="mt-1 break-words font-bold">{item.name}</h3></div><StatusBadge value={item.approvalStatus || item.reviewStatus} /></div>
-            <div className="mt-3"><ResourceName value={item.resourceName} /></div>
-          </article>
-        ))}
-      </div>
-      <DataTable columns={["Asset", "Type", "Source", "Approval", "Review"]}>
-        {visible.map((item) => (
-          <tr key={item.id} className="border-b"><NameCell title={item.name} id={item.assetId} resource={item.resourceName} /><td>{labelize(item.type)}</td><td>{labelize(item.source)}</td><td><StatusBadge value={item.approvalStatus} /></td><td><StatusBadge value={item.reviewStatus} /></td></tr>
-        ))}
-      </DataTable>
-      <PageControls page={safePage} pageCount={pageCount} pageSize={pageSize} total={filtered.length} onChange={setPage} onPageSizeChange={setPageSize} />
-      {!filtered.length && <EmptyState title="No assets match these filters" body="Clear the current filters or refresh the workspace inventory." />}
-    </EntitySection>
-  );
-}
-
 function PublishingWorkflow() {
   const stages = [
     ["Draft / review", "Airtable", "Copy and approvals checked"],
@@ -2976,10 +2784,6 @@ export default function GoogleAdsWorkspace({
           onOpen={open}
         />
       )}
-      {activeTab === "search-terms" && (
-        <SearchTermsTable rows={snapshot.searchTerms} />
-      )}
-      {activeTab === "assets" && <AssetsTable rows={snapshot.assets} />}
       {activeTab === "workflow" && <PublishingWorkflow />}
       {activeTab === "ai-suggestions" && (
         <AISuggestionsTab

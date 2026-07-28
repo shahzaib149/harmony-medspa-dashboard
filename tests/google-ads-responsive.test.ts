@@ -57,8 +57,6 @@ test("all Google Ads workspace routes use the shared page", () => {
     "ad-groups",
     "ads",
     "keywords",
-    "search-terms",
-    "assets",
     "publishing",
     "ai-suggestions",
   ];

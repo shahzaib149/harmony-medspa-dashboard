@@ -46,8 +46,6 @@ const VALID_TABS: WorkspaceTab[] = [
   "ad-groups",
   "ads",
   "keywords",
-  "search-terms",
-  "assets",
   "workflow",
   "ai-suggestions",
 ];
@@ -58,8 +56,6 @@ const TAB_ROUTES: Record<WorkspaceTab, string> = {
   "ad-groups": "/google-ads-analytics/ad-groups",
   ads: "/google-ads-analytics/ads",
   keywords: "/google-ads-analytics/keywords",
-  "search-terms": "/google-ads-analytics/search-terms",
-  assets: "/google-ads-analytics/assets",
   workflow: "/google-ads-analytics/publishing",
   "ai-suggestions": "/google-ads-analytics/ai-suggestions",
 };
@@ -341,7 +337,7 @@ async function getJson<T>(url: string): Promise<T> {
 async function loadWorkspaceSnapshot(
   days: number,
   force: boolean,
-  view?: "ads" | "search-terms" | "assets",
+  view?: "ads",
 ): Promise<WorkspaceResult> {
   const viewQuery = view ? `&view=${view}&page=0&pageSize=25&sort=spend` : "";
   const livePromise = getJson<WorkspaceSnapshot>(
@@ -414,7 +410,7 @@ async function loadWorkspaceSnapshot(
 export async function fetchWorkspaceSnapshot(
   days: number,
   force = false,
-  view?: "ads" | "search-terms" | "assets",
+  view?: "ads",
 ): Promise<WorkspaceResult> {
   const key = `${days}:${view || "full"}`;
   const cached = workspaceCache.get(key);
@@ -464,11 +460,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
         const result = await fetchWorkspaceSnapshot(
           days,
           quiet,
-          activeTab === "ads" ||
-            activeTab === "search-terms" ||
-            activeTab === "assets"
-            ? activeTab
-            : undefined,
+          activeTab === "ads" ? activeTab : undefined,
         );
         setSnapshot(result.snapshot);
       } catch (error) {

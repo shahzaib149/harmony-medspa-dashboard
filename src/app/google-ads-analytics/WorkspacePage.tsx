@@ -26,14 +26,6 @@ const META: Record<WorkspaceTab, { title: string; subtitle: string }> = {
     title: "Google Ads Keywords",
     subtitle: "Unique keyword criteria grouped by campaign and ad group",
   },
-  "search-terms": {
-    title: "Google Ads Search Terms",
-    subtitle: "Range-scoped user queries joined to campaigns and ad groups",
-  },
-  assets: {
-    title: "Google Ads Assets",
-    subtitle: "Canonical creative assets with source and policy status",
-  },
   workflow: {
     title: "Google Ads Publishing",
     subtitle:
@@ -60,8 +52,6 @@ const TAB_PATHS: Record<WorkspaceTab, string> = {
   "ad-groups": "/google-ads-analytics/ad-groups",
   ads: "/google-ads-analytics/ads",
   keywords: "/google-ads-analytics/keywords",
-  "search-terms": "/google-ads-analytics/search-terms",
-  assets: "/google-ads-analytics/assets",
   workflow: "/google-ads-analytics/publishing",
   "ai-suggestions": "/google-ads-analytics/ai-suggestions",
 };

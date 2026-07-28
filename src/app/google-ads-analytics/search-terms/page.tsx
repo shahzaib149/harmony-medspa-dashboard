@@ -1,5 +1,0 @@
-import WorkspacePage from "../WorkspacePage";
-
-export default function Page() {
-  return <WorkspacePage tab="search-terms" />;
-}
