@@ -36,3 +36,7 @@ export function getCampaign(slug: string): CampaignDefinition | undefined {
 export function isCampaignSlug(value: string): value is CampaignSlug {
   return Boolean(getCampaign(value));
 }
+
+export function campaignRequiresSmsPermission(slug: string) {
+  return getCampaign(slug)?.channels.includes("SMS") === true;
+}

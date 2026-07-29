@@ -115,6 +115,7 @@ export interface LeadCampaignSummary {
 // ── Bulk enrollment ────────────────────────────────────────────────────
 
 export interface BulkEnrollNewLead {
+  rowId?: string;
   name: string;
   email?: string;
   phone?: string;
@@ -123,9 +124,17 @@ export interface BulkEnrollNewLead {
   notes?: string;
 }
 
+export type AirtableRecordId = string;
+
+export interface SelectedLeadInput {
+  airtableRecordId: AirtableRecordId;
+}
+
 export interface BulkEnrollmentRequest {
-  leadIds: string[];
+  leadIds: AirtableRecordId[];
   newLeads: BulkEnrollNewLead[];
+  /** Required because the active nurture campaign contains SMS steps. */
+  smsPermissionVerified: boolean;
   /** Canonical UTC instant stored in Airtable. */
   scheduledAtUtc: string;
   /** IANA timezone used to interpret the selected wall-clock values. */
@@ -165,6 +174,11 @@ export interface BulkEnrollmentResult {
   code?: string;
   message?: string;
   retryable?: boolean;
+  error?: {
+    code: string;
+    message: string;
+    details: string;
+  };
 }
 
 export const NURTURE_STEPS = [

@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as ({
     rows?: Row[];
     selectedRowIds?: string[];
+    smsPermissionVerified?: boolean;
   } & Partial<NurtureSchedulePayload>) | null;
 
   if (!body || !Array.isArray(body.rows) || !Array.isArray(body.selectedRowIds)) {
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
     body: JSON.stringify({
       leadIds: [],
       newLeads: rows,
+      smsPermissionVerified: body.smsPermissionVerified,
       scheduledAtUtc: body.scheduledAtUtc,
       scheduledTimezone: body.scheduledTimezone,
       scheduledLocalDate: body.scheduledLocalDate,

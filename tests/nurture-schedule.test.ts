@@ -26,6 +26,16 @@ test("New York wall-clock input produces the expected confirmation and UTC insta
   );
 });
 
+test("the reported Kriselia Marte schedule converts 4 PM New York to the expected UTC instant", () => {
+  const schedule = createNurtureSchedule({
+    scheduledLocalDate: "2026-07-29",
+    scheduledLocalTime: "16:00",
+    scheduledTimezone: "America/New_York",
+  });
+
+  assert.equal(schedule.scheduledAtUtc, "2026-07-29T20:00:00.000Z");
+});
+
 test("browser timezone never changes the campaign schedule", () => {
   const originalTimezone = process.env.TZ;
   try {
@@ -73,6 +83,14 @@ test("nonexistent and ambiguous daylight-saving wall-clock times are rejected", 
 });
 
 test("invalid calendar values, timezones, and past schedules are rejected", () => {
+  assert.throws(
+    () => createNurtureSchedule({ ...newYorkInput, scheduledLocalDate: "" }),
+    /valid First Send Date/,
+  );
+  assert.throws(
+    () => createNurtureSchedule({ ...newYorkInput, scheduledLocalTime: "" }),
+    /valid First Send Time/,
+  );
   assert.throws(
     () =>
       createNurtureSchedule({

@@ -8,6 +8,10 @@ import {
   NurtureScheduleError,
   toNurtureSchedulePayload,
 } from "@/lib/campaigns/nurture-schedule";
+import {
+  enrollmentDisplayCounts,
+  retryableEnrollmentFailures,
+} from "@/lib/campaigns/enrollment-results";
 import type { BulkEnrollmentResult } from "@/lib/types/campaigns";
 type Lead = {
   id: string;
@@ -279,11 +283,13 @@ export default function AddLeadsToCampaignModal({
           ? {
               rows: csvRows,
               selectedRowIds: [...csvSelected],
+              smsPermissionVerified: permission,
               ...toNurtureSchedulePayload(scheduleState.schedule),
             }
           : {
               leadIds: tab === "existing" ? [...selected] : [],
               newLeads: tab === "new" ? [newLead] : [],
+              smsPermissionVerified: permission,
               ...toNurtureSchedulePayload(scheduleState.schedule),
             };
       const response = await fetch(url, {
@@ -310,8 +316,10 @@ export default function AddLeadsToCampaignModal({
   }
 
   function retryFailed(failed: BulkEnrollmentResult["failed"]) {
-    if (failed.length && tab === "csv") setCsvSelected(new Set(failed.flatMap((entry) => entry.rowId ? [entry.rowId] : [])));
-    if (failed.length && tab === "existing") setSelected(new Set(failed.flatMap((entry) => entry.leadId ? [entry.leadId] : [])));
+    const retryable = retryableEnrollmentFailures(failed);
+    if (!retryable.length) return;
+    if (tab === "csv") setCsvSelected(new Set(retryable.flatMap((entry) => entry.rowId ? [entry.rowId] : [])));
+    if (tab === "existing") setSelected(new Set(retryable.flatMap((entry) => entry.leadId ? [entry.leadId] : [])));
     setResult(null);
     setError("");
     setRetryable(false);
@@ -985,6 +993,8 @@ function Result({
 }) {
   const partial = result.failed.length > 0 && result.enrolled.length > 0;
   const completeFailure = result.failed.length > 0 && result.enrolled.length === 0;
+  const counts = enrollmentDisplayCounts(result);
+  const retryableFailures = retryableEnrollmentFailures(result.failed);
   return (
     <div className="overflow-y-auto p-6">
       <div className="flex items-start gap-3">
@@ -994,27 +1004,27 @@ function Result({
             {partial ? "Enrollment partially completed" : completeFailure ? "Enrollment could not be completed" : "Nurture started"}
           </h3>
           <p className="mt-1 text-sm text-(--text-secondary)">
-            {result.enrolled.length} Lead{result.enrolled.length === 1 ? " was" : "s were"} enrolled successfully.
+            {counts.enrolled} Lead{counts.enrolled === 1 ? " was" : "s were"} enrolled successfully.
           </p>
           <p className="mt-1 text-xs text-(--text-muted)">Request ID: {result.requestId}</p>
         </div>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <p className="rounded-xl bg-(--healthy-soft) p-4 text-(--healthy)">
-          {result.enrolled.length} enrolled
+          {counts.enrolled} enrolled
         </p>
         <p className="rounded-xl bg-(--warning-soft) p-4 text-(--warning)">
-          {result.skipped.length} skipped
+          {counts.skipped} skipped
         </p>
         <p className="rounded-xl bg-(--danger-soft) p-4 text-(--danger)">
-          {result.failed.length} failed
+          {counts.failed} failed
         </p>
       </div>
       <div className="mt-4 grid gap-2 rounded-xl border border-(--border-subtle) bg-(--surface-2) p-4 text-sm text-(--text-secondary) sm:grid-cols-2">
-        <p>{result.summary.newLeadsCreated} new Leads created</p>
-        <p>{result.summary.existingLeads} existing Leads used</p>
-        <p>{result.summary.duplicatesSkipped} duplicates skipped</p>
-        <p>{result.summary.alreadyEnrolled} already enrolled</p>
+        <p>{counts.newLeadsCreated} new Leads created</p>
+        <p>{counts.existingLeads} existing Leads used</p>
+        <p>{counts.duplicatesSkipped} duplicates skipped</p>
+        <p>{counts.alreadyEnrolled} already enrolled</p>
       </div>
       {[...result.skipped, ...result.failed].map((item, index) => (
         <p key={index} className="mt-2 text-sm text-(--text-secondary)">
@@ -1022,7 +1032,7 @@ function Result({
         </p>
       ))}
       <div className="mt-6 flex flex-col gap-2 min-[380px]:flex-row min-[380px]:justify-end">
-        {(result.failed.length > 0 || result.retryable) && <button onClick={onRetry} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-(--brand-primary) px-5 py-2 font-bold text-(--brand-primary)"><RefreshCw size={15} />{result.failed.length ? "Retry failed rows" : "Retry selected Leads"}</button>}
+        {retryableFailures.length > 0 && <button onClick={onRetry} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-(--brand-primary) px-5 py-2 font-bold text-(--brand-primary)"><RefreshCw size={15} />Retry failed rows</button>}
         <button onClick={onClose} className="min-h-11 rounded-xl bg-(--brand-primary) px-5 py-2 font-bold text-(--primary-foreground)">Close</button>
       </div>
     </div>

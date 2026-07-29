@@ -3,13 +3,21 @@ import { after } from "next/server";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import {
   airtableFetch,
-  linkedIds,
   listRecords,
   mapLead,
   normalizeUsPhone,
-  safeAirtableError,
   type AirtableRecord,
 } from "@/lib/airtable/leads-base";
+import {
+  AirtableRequestError,
+  activeNurtureLeadIds,
+  airtableTransportFailure,
+  buildNurtureEnrollmentFields,
+  isAirtableRecordId,
+  NURTURE_ACTIVE_STATUS,
+  NURTURE_FIELDS,
+  parseAirtableErrorResponse,
+} from "@/lib/airtable/nurture-enrollment";
 import { isAirtableConfigured } from "@/lib/airtable/config";
 import type {
   BulkEnrollmentRequest,
@@ -21,6 +29,7 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { createServiceClient } from "@/lib/supabase/server";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
 import { enrollmentClaimIdentity } from "@/lib/campaigns/enrollment-idempotency";
+import { campaignRequiresSmsPermission } from "@/lib/campaigns/registry";
 import {
   NURTURE_TIMEZONE,
   NurtureScheduleError,
@@ -72,10 +81,6 @@ async function withProviderTimeout<T>(operation: PromiseLike<T>, message: string
   ]);
 }
 
-function validRecordId(value: string) {
-  return /^rec[a-zA-Z0-9]+$/.test(value);
-}
-
 function normalizeEmail(value: string | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
@@ -119,6 +124,14 @@ async function listByTerms(table: string, terms: string[], deadline: number) {
     records.push(...await listRecords(table, new URLSearchParams({ filterByFormula: formula })));
   }
   return records;
+}
+
+async function activeEnrollmentLeadIds(deadline: number) {
+  ensureWithinDeadline(deadline);
+  const params = new URLSearchParams({ filterByFormula: `{${NURTURE_FIELDS.status}}='${NURTURE_ACTIVE_STATUS}'` });
+  params.append("fields[]", NURTURE_FIELDS.lead);
+  const records = await listRecords("Nurture Enrollments", params);
+  return activeNurtureLeadIds(records);
 }
 
 function normalizeNewInputs(inputs: BulkEnrollNewLead[], scheduledAtUtc: string, result: BulkEnrollmentResult) {
@@ -287,10 +300,58 @@ async function batchWrite(
   ensureWithinDeadline(deadline);
   const response = await airtableFetch(encodeURIComponent(table), {
     method,
-    body: JSON.stringify({ records, typecast: true }),
+    body: JSON.stringify({ records, typecast: false }),
   });
-  if (!response.ok) throw new Error(safeAirtableError(response.status));
+  if (!response.ok) throw new AirtableRequestError(await parseAirtableErrorResponse(response));
   return response.json() as Promise<{ records: AirtableRecord[] }>;
+}
+
+function operationFailure(error: unknown, fallback: string) {
+  if (error instanceof AirtableRequestError) {
+    return {
+      code: error.airtable.code,
+      message: error.airtable.message,
+      details: error.airtable.details,
+      reason: error.airtable.details,
+      retryable: error.airtable.retryable,
+    };
+  }
+  const transportFailure = airtableTransportFailure(error);
+  if (transportFailure) return transportFailure;
+  return {
+    code: "ENROLLMENT_FAILED",
+    message: fallback,
+    details: fallback,
+    reason: error instanceof Error ? error.message : fallback,
+    retryable: true,
+  };
+}
+
+function recordFailure(result: BulkEnrollmentResult, failure: ReturnType<typeof operationFailure>) {
+  result.code ??= failure.code;
+  result.message ??= failure.message;
+  result.error ??= { code: failure.code, message: failure.message, details: failure.details };
+  result.retryable = Boolean(result.retryable || failure.retryable);
+}
+
+function logAirtableFailure(error: unknown, context: {
+  requestId: string;
+  table: string;
+  fieldNames: string[];
+  leadRecordIds: string[];
+  nextSendAt?: string;
+}) {
+  if (!(error instanceof AirtableRequestError)) return;
+  console.error("[nurture-enrollment] Airtable request rejected", {
+    requestId: context.requestId,
+    airtableStatus: error.airtable.status,
+    airtableErrorType: error.airtable.type || "unknown",
+    airtableErrorMessage: error.airtable.providerMessage || "No provider message returned",
+    table: context.table,
+    fieldNames: context.fieldNames,
+    leadRecordIds: context.leadRecordIds,
+    nextSendAt: context.nextSendAt,
+  });
 }
 
 function auditResult(actor: Awaited<ReturnType<typeof requireRole>>["profile"], request: Request, result: BulkEnrollmentResult) {
@@ -321,6 +382,9 @@ function auditResult(actor: Awaited<ReturnType<typeof requireRole>>["profile"], 
 
 function responseStatus(result: BulkEnrollmentResult) {
   if (result.summary.enrollmentsCreated) return 201;
+  if (result.code === "AIRTABLE_AUTH_ERROR") return 502;
+  if (result.code === "AIRTABLE_TIMEOUT") return 504;
+  if (result.code === "AIRTABLE_RATE_LIMITED" || result.code === "AIRTABLE_REQUEST_FAILED") return 503;
   if (result.summary.failed) return 422;
   return 200;
 }
@@ -340,6 +404,15 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as (BulkEnrollmentRequest & { enrollmentNote?: string }) | null;
   if (!body || !Array.isArray(body.leadIds) || !Array.isArray(body.newLeads)) {
     return Response.json({ success: false, code: "INVALID_REQUEST", message: "Invalid enrollment request", retryable: false, requestId }, { status: 400 });
+  }
+  if (campaignRequiresSmsPermission(CAMPAIGN_SLUG) && body.smsPermissionVerified !== true) {
+    return Response.json({
+      success: false,
+      code: "SMS_PERMISSION_REQUIRED",
+      message: "Verify SMS permission for all selected Leads before enrolling them.",
+      retryable: false,
+      requestId,
+    }, { status: 400 });
   }
   if (body.scheduledTimezone !== NURTURE_TIMEZONE) {
     return Response.json({ success: false, code: "INVALID_SCHEDULE", message: "The nurture campaign timezone must be America/New_York", retryable: false, requestId }, { status: 400 });
@@ -390,7 +463,7 @@ export async function POST(request: Request) {
     const existingInputs: EnrollmentInput[] = [];
     const seenLeadIds = new Set<string>();
     for (const leadId of body.leadIds) {
-      if (!validRecordId(leadId)) {
+      if (!isAirtableRecordId(leadId)) {
         result.failed.push({ leadId, reason: "Lead ID is invalid", retryable: false });
         result.summary.invalid += 1;
       } else if (seenLeadIds.has(leadId)) {
@@ -468,7 +541,7 @@ export async function POST(request: Request) {
 
     for (const batch of chunkAirtableRecords(createInputs)) {
       try {
-        const created = await batchWrite("POST", "Leads", batch.map((input) => {
+        const leadRecordsToCreate = batch.map((input) => {
           const fields: Record<string, unknown> = {
             Name: input.name,
             Email: input.email,
@@ -481,7 +554,8 @@ export async function POST(request: Request) {
           if (input.message) fields.Message = input.message;
           if (input.notes) fields.Notes = input.notes;
           return { fields };
-        }), deadline);
+        });
+        const created = await batchWrite("POST", "Leads", leadRecordsToCreate, deadline);
         created.records.forEach((record, index) => {
           const input = batch[index];
           if (!input) return;
@@ -494,19 +568,24 @@ export async function POST(request: Request) {
           releaseKeys.push(input.claimKey);
         });
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "Lead creation failed";
+        const failure = operationFailure(error, "Lead creation failed");
+        recordFailure(result, failure);
+        logAirtableFailure(error, {
+          requestId,
+          table: "Leads",
+          fieldNames: ["Name", "Email", "Phone", "Status", "Source", "Lead Created At", "Replied", "Message", "Notes"],
+          leadRecordIds: [],
+        });
         batch.forEach((input) => {
-          result.failed.push(item(input, reason, true));
+          result.failed.push(item(input, failure.reason, failure.retryable));
           releaseKeys.push(input.claimKey);
         });
       }
     }
 
-    const activeTerms = resolved.map((input) => `FIND('${escapeFormula(input.leadId)}',ARRAYJOIN({Lead}))`);
-    const activeRecords = activeTerms.length
-      ? await listByTerms("Nurture Enrollments", activeTerms.map((term) => `AND({Status}='Active',${term})`), deadline)
-      : [];
-    const activeIds = new Set(activeRecords.flatMap((record) => linkedIds(record.fields.Lead)));
+    // Airtable formulas stringify linked records as their primary display values,
+    // not record IDs. Read active links and compare their canonical IDs in code.
+    const activeIds = resolved.length ? await activeEnrollmentLeadIds(deadline) : new Set<string>();
     const eligible = resolved.filter((input) => {
       if (!activeIds.has(input.leadId)) return true;
       result.skipped.push(item(input, "Already active in nurture"));
@@ -521,29 +600,41 @@ export async function POST(request: Request) {
       try {
         await batchWrite("PATCH", "Leads", batch.map((input) => ({ id: input.leadId, fields: { Status: "Contacted" } })), deadline);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "Lead update failed";
+        const failure = operationFailure(error, "Lead update failed");
+        recordFailure(result, failure);
+        logAirtableFailure(error, {
+          requestId,
+          table: "Leads",
+          fieldNames: ["Status"],
+          leadRecordIds: batch.map((input) => input.leadId),
+        });
         batch.forEach((input) => {
           updateFailures.add(input.claimKey);
-          result.failed.push(item(input, reason, true));
+          result.failed.push(item(input, failure.reason, failure.retryable));
           releaseKeys.push(input.claimKey);
         });
       }
     }
 
-    const enrollmentInputs = eligible.filter((input) => !updateFailures.has(input.claimKey));
+    const readyForEnrollment = eligible.filter((input) => !updateFailures.has(input.claimKey));
+    const latestActiveIds = readyForEnrollment.length ? await activeEnrollmentLeadIds(deadline) : new Set<string>();
+    const enrollmentInputs = readyForEnrollment.filter((input) => {
+      if (!latestActiveIds.has(input.leadId)) return true;
+      result.skipped.push(item(input, "Already active in nurture"));
+      result.summary.alreadyEnrolled += 1;
+      completedClaims.push({ input, leadId: input.leadId });
+      return false;
+    });
     for (const batch of chunkAirtableRecords(enrollmentInputs)) {
       try {
-        const createdAt = new Date().toISOString();
-        const created = await batchWrite("POST", "Nurture Enrollments", batch.map((input) => ({
-          fields: {
-            Lead: [input.leadId],
-            Status: "Active",
-            "Current Step": "Day 1 SMS",
-            "Next Send At": schedule.scheduledAtUtc,
-            "Created At": createdAt,
-            Notes: body.enrollmentNote || "Manually enrolled from Harmony dashboard",
-          },
-        })), deadline);
+        const records = batch.map((input) => ({
+          fields: buildNurtureEnrollmentFields({
+            leadRecordId: input.leadId,
+            nextSendAt: schedule.scheduledAtUtc,
+            notes: body.enrollmentNote || "Manually enrolled from Harmony dashboard",
+          }),
+        }));
+        const created = await batchWrite("POST", "Nurture Enrollments", records, deadline);
         created.records.forEach((record, index) => {
           const input = batch[index];
           if (!input) return;
@@ -555,9 +646,17 @@ export async function POST(request: Request) {
           releaseKeys.push(input.claimKey);
         });
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "Enrollment creation failed";
+        const failure = operationFailure(error, "Enrollment creation failed");
+        recordFailure(result, failure);
+        logAirtableFailure(error, {
+          requestId,
+          table: "Nurture Enrollments",
+          fieldNames: Object.values(NURTURE_FIELDS),
+          leadRecordIds: batch.map((input) => input.leadId),
+          nextSendAt: schedule.scheduledAtUtc,
+        });
         batch.forEach((input) => {
-          result.failed.push(item(input, reason, true));
+          result.failed.push(item(input, failure.reason, failure.retryable));
           releaseKeys.push(input.claimKey);
         });
       }
@@ -575,11 +674,25 @@ export async function POST(request: Request) {
     const keysToRelease = [...new Set([...releaseKeys, ...claimedKeys.filter((key) => !completedKeys.has(key))])];
     await settleClaims(requestId, schedule.scheduledAtUtc, completedClaims, keysToRelease).catch(() => undefined);
     const timeout = error instanceof EnrollmentTimeoutError || (error instanceof DOMException && error.name === "TimeoutError");
+    const failure = timeout
+      ? {
+          code: "AIRTABLE_TIMEOUT",
+          message: "Enrollment took too long to complete.",
+          details: "Retry the failed rows; completed rows will not be duplicated.",
+          reason: "Enrollment took too long to complete.",
+          retryable: true,
+        }
+      : operationFailure(error, "Could not complete enrollment");
+    recordFailure(result, failure);
+    logAirtableFailure(error, {
+      requestId,
+      table: "Nurture Enrollments",
+      fieldNames: Object.values(NURTURE_FIELDS),
+      leadRecordIds: [],
+      nextSendAt: schedule.scheduledAtUtc,
+    });
     result.summary.failed = result.failed.length;
-    result.code = timeout ? "ENROLLMENT_TIMEOUT" : "ENROLLMENT_FAILED";
-    result.message = timeout ? "Enrollment took too long to complete." : error instanceof Error ? error.message : "Could not complete enrollment";
-    result.retryable = true;
     auditResult(actor, request, result);
-    return Response.json(result, { status: timeout ? 504 : 503, headers: { "Cache-Control": "no-store", "X-Request-Id": requestId } });
+    return Response.json(result, { status: responseStatus(result), headers: { "Cache-Control": "no-store", "X-Request-Id": requestId } });
   }
 }

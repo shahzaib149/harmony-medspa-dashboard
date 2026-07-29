@@ -1,4 +1,5 @@
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey } from "@/lib/airtable/config";
+import { AirtableRequestError, parseAirtableErrorResponse } from "@/lib/airtable/nurture-enrollment";
 
 export type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
 
@@ -63,7 +64,7 @@ export async function listRecords(table: string, params = new URLSearchParams())
     page.set("pageSize", "100");
     if (offset) page.set("offset", offset);
     const response = await airtableFetch(`${encodeURIComponent(table)}?${page}`);
-    if (!response.ok) throw new Error(safeAirtableError(response.status));
+    if (!response.ok) throw new AirtableRequestError(await parseAirtableErrorResponse(response));
     const data = await response.json() as { records: AirtableRecord[]; offset?: string };
     records.push(...data.records);
     offset = data.offset;
