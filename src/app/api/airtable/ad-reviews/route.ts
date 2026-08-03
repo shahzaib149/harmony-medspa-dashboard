@@ -13,8 +13,11 @@ import {
   type AdReviewStatusFilter,
 } from "@/lib/airtable/pending-ads";
 import {
+  buildSerializedDescriptionAssets,
+  buildSerializedHeadlineAssets,
   isGoogleAdResourceName,
   isVerifiedPublishedAd,
+  parseReviewPackage,
   unconfirmedApprovals,
   validatePendingAdPackage,
   type PendingAd,
@@ -50,6 +53,9 @@ function historyFields(ad: PendingAd, entry: { type: string; at: string; actor: 
 
 function publishingPayload(ad: PendingAd, requestedAt: string, publishedBy: string) {
   const review = ad.reviewPackage;
+  const headlineAssetsJson = buildSerializedHeadlineAssets(review.headlines);
+  const descriptionAssetsJson = buildSerializedDescriptionAssets(review.descriptions);
+
   return {
     event: "publish_as_paused_ad_requested",
     action: "CREATE_PAUSED_RESPONSIVE_SEARCH_AD",
@@ -71,12 +77,16 @@ function publishingPayload(ad: PendingAd, requestedAt: string, publishedBy: stri
     lastStatusSyncField: "Last Status Sync",
     pendingAdId: ad.id,
     businessName: ad.business_name,
+    campaignId: review.campaignId?.trim() || "",
     campaignName: review.campaignName,
+    adGroupId: review.adGroupId?.trim() || "",
     adGroupName: review.adGroupName,
     adType: "RESPONSIVE_SEARCH_AD",
     finalUrl: review.finalUrl,
     path1: review.path1,
     path2: review.path2,
+    headlineAssetsJson,
+    descriptionAssetsJson,
     ...Object.fromEntries(review.headlines.map((item, index) => [`headline${index + 1}`, item.text])),
     ...Object.fromEntries(review.headlines.map((item, index) => [`headline${index + 1}PinnedField`, item.pinnedField ?? ""])),
     allHeadlines: review.headlines.map((item) => item.text),
@@ -123,13 +133,24 @@ type WorkflowAction = "publish_requested" | "retry" | "return_pending" | "mark_f
 export async function PATCH(request: Request) {
   let actor;
   try { ({ profile: actor } = await requireRole(request, "admin")); } catch (error) { return authErrorResponse(error); }
-  const body = await request.json().catch(() => null) as { action?: WorkflowAction; id?: string; error?: string } | null;
+  const body = await request.json().catch(() => null) as { action?: WorkflowAction; id?: string; error?: string; reviewPackage?: unknown } | null;
   if (!body?.id || !body.action) return publicError("Ad ID and workflow action are required.", 400);
 
   let before: PendingAd;
   try { before = await getPendingAd(body.id); } catch (error) {
     console.error("[ad-reviews] record read failed", error);
     return airtablePublicError(error);
+  }
+
+  if (body.reviewPackage) {
+    const review = parseReviewPackage(body.reviewPackage);
+    if (review) {
+      try {
+        before = await updatePendingAd(before.id, reviewPackageFields(review));
+      } catch (error) {
+        console.error("[ad-reviews] package update failed", error);
+      }
+    }
   }
 
   const now = new Date().toISOString();
@@ -151,8 +172,13 @@ export async function PATCH(request: Request) {
       const validationErrors = validatePendingAdPackage(before.reviewPackage);
       const missingApprovals = unconfirmedApprovals(before.reviewPackage);
       if (validationErrors.length || missingApprovals.length) {
+        const details = [
+          ...validationErrors,
+          ...missingApprovals.map((item) => `Approval required: ${item.label}`),
+        ];
+        console.error("[ad-reviews] validation / approval check failed", details);
         return Response.json({
-          error: "The ad is not ready to publish.",
+          error: `The ad is not ready to publish: ${details.join("; ")}`,
           validationErrors,
           missingApprovals: missingApprovals.map((item) => item.label),
         }, { status: 400 });

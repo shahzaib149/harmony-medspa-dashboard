@@ -35,11 +35,22 @@ async function fetchAirtablePage(url: string, cacheMode: AirtableCacheMode) {
   throw new Error("Airtable request failed");
 }
 
+const recordsCache = new Map<string, { expiresAt: number; records: RawRecord[] }>();
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes in-memory cache
+
 export async function fetchAllRecords(
   tableName: string,
   query = new URLSearchParams(),
-  options: { cache?: AirtableCacheMode } = {},
+  options: { cache?: AirtableCacheMode; forceRefresh?: boolean } = {},
 ): Promise<RawRecord[]> {
+  const cacheKey = `${tableName}:${query.toString()}`;
+  if (!options.forceRefresh) {
+    const cached = recordsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.records;
+    }
+  }
+
   const records: RawRecord[] = [];
   let offset: string | undefined;
 
@@ -67,6 +78,11 @@ export async function fetchAllRecords(
     records.push(...data.records);
     offset = data.offset;
   } while (offset);
+
+  recordsCache.set(cacheKey, {
+    records,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
 
   return records;
 }

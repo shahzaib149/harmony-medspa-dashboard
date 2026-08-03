@@ -616,6 +616,12 @@ function googleAdsFor(
   period: Period,
   periodLeads: Lead[],
 ): GoogleAdsSummary {
+  if (campaignRecords.length === 0) {
+    console.warn("[googleAdsFor] WARNING: Google Ads Campaign Analytics returned 0 records.");
+  }
+  if (creativeRecords.length === 0) {
+    console.warn("[googleAdsFor] WARNING: Google Ads Ad Creative Analytics returned 0 records.");
+  }
   const campaigns = campaignRecords
     .map((record) => ({
       name: str(record.fields, "campaignName", "Campaign Name", "Campaign") || "Unnamed campaign",
@@ -631,8 +637,8 @@ function googleAdsFor(
         "All Conversion Value",
       ),
       syncedAt: adsDate(record.fields, record.createdTime),
-    }))
-    .filter((record) => inWindow(record.syncedAt, period.from, period.to));
+    }));
+ 
   const creatives = creativeRecords
     .map((record) => ({
       name: str(record.fields, "adName", "Ad Name", "Ad", "Name") || "Unnamed creative",
@@ -944,10 +950,10 @@ export async function getOverviewData(
           )
         : unavailable(),
       airtable && process.env.AIRTABLE_BASE_ID
-        ? fetchAllRecords("Google Ads Campaign Analytics")
+        ? fetchAllRecords("Google Ads Campaign Analytics", undefined, { cache: "no-store" })
         : unavailable(),
       airtable && process.env.AIRTABLE_BASE_ID
-        ? fetchAllRecords("Google Ads Ad Creative Analytics")
+        ? fetchAllRecords("Google Ads Ad Creative Analytics", undefined, { cache: "no-store" })
         : unavailable(),
     ]);
 
@@ -1017,8 +1023,13 @@ export async function getOverviewData(
   const unknown = channels.reduce((sum, channel) => sum + channel.unknown, 0);
   const knownFinal = successful + failed;
   const googleAdsSummary =
-    adsResult.status === "fulfilled" && creativeResult.status === "fulfilled"
-      ? googleAdsFor(adsResult.value, creativeResult.value, period, periodLeads)
+    adsResult.status === "fulfilled"
+      ? googleAdsFor(
+          adsResult.value,
+          creativeResult.status === "fulfilled" ? creativeResult.value : [],
+          period,
+          periodLeads
+        )
       : null;
   const audit = await auditPromise;
   const recentActivity = [

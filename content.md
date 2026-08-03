@@ -1,6 +1,6 @@
 # Harmony MedSpa Dashboard - Project Overview
 
-Last updated: July 16, 2026
+Last updated: July 30, 2026
 
 ## What This Project Is
 
@@ -30,6 +30,7 @@ Airtable is the primary live operational and reporting data source. It currently
 - Nurture Enrollments.
 - Clinic Metrics.
 - Google Ads campaign, ad-group, creative, and keyword reporting.
+- Google Ads Campaigns (`tblm43og162cYHNIc`) and Google Ads Ad Groups (`tblGOKdlLB0W0PQag`) live tables.
 - Pending ad-review and ad-preview records.
 
 `AIRTABLE_LEADS_BASE_ID` is used for lead operations, message history, nurture enrollment, campaigns, and clinic metrics. `AIRTABLE_BASE_ID` is used for Google Ads reporting and pending ads.
@@ -233,18 +234,18 @@ The nurture sequence steps are:
 
 ### `/google-ads-analytics`
 
-The Google Ads workspace combines Airtable-backed reporting with live Google Ads actions and AI assistance.
+The Google Ads workspace combines Airtable-backed reporting with live Google Ads actions, live Campaign/Ad Group selection, and AI assistance.
 
 Tabs include:
 
-- Campaigns.
-- Ad Groups.
+- Campaigns (pulls live records from `/api/airtable/campaigns`).
+- Ad Groups (pulls live records from `/api/airtable/ad-groups` with joined parent Campaign Name).
 - Creatives.
 - Keywords.
 - AI Suggestions.
-- Pending Review.
+- Workflow / Publishing (features live dependent Campaign → Ad Group selection for pending ad review and Make.com publishing).
 
-Reporting supports 7-, 14-, 30-, and 90-day windows and shows metrics such as spend, impressions, clicks, conversions, CPL, ROAS, status, and synchronization times. Pending ads can be reviewed, and AI tools can generate suggestions and draft ad content.
+Reporting supports 7-, 14-, 30-, and 90-day windows and shows metrics such as spend, impressions, clicks, conversions, CPL, ROAS, status, and synchronization times. Pending ads can be reviewed with live campaign/ad-group selection, and AI tools can generate suggestions and draft ad content.
 
 `/google-ads-analytics/creative-detail` provides creative overview, copy assets, performance signals, and daily performance details for a selected ad.
 
@@ -341,8 +342,11 @@ The form validates email and US phone numbers and includes a honeypot field for 
 
 ### Google Ads and AI
 
+- `GET /api/airtable/campaigns`: lists records from "Google Ads Campaigns" (`tblm43og162cYHNIc`).
+- `GET /api/airtable/ad-groups`: lists records from "Google Ads Ad Groups" (`tblGOKdlLB0W0PQag`) with joined parent Campaign Name, supporting `?campaignId={Campaign ID}` filtering.
 - `/api/airtable?table=campaigns|ad-groups|creatives|keywords|ad-preview`.
 - `/api/airtable/pending-ads`.
+- `/api/airtable/ad-reviews`.
 - `/api/google-ads/campaigns`.
 - `/api/google-ads/keywords`.
 - `/api/google-ads/campaign-status`.

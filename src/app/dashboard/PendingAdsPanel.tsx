@@ -162,7 +162,7 @@ export default function PendingAdsPanel() {
             : ads.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center text-center"><div className="grid size-14 place-items-center rounded-2xl" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}><FileSearch size={23} /></div><p className="mt-4 font-bold" style={{ color: "var(--text-primary)" }}>No {tabs.find((item) => item.id === tab)?.label.toLowerCase()} ads</p><p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>Use Sync status to check Airtable again.</p></div>
               : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{ads.map((ad) => <AdCard key={ad.id} ad={ad} onOpen={() => setSelected(ad)} onReturnPending={() => void returnPending(ad)} />)}</div>}
       </div>
-      <PendingAdReviewDialog ad={selected} onClose={() => { setSelected(null); void load(false); }} onChanged={(changed) => { setSelected(changed); setAds((current) => current.map((item) => item.id === changed.id ? changed : item)); }} onResolved={() => void load(false)} />
+      <PendingAdReviewDialog ad={selected} onClose={() => { setSelected(null); void load(false); }} onChanged={(changed) => { setSelected(changed); setAds((current) => { const exists = current.some((item) => item.id === changed.id); if (exists) return current.map((item) => item.id === changed.id ? changed : item); const seedIdx = current.findIndex((item) => item.id.startsWith("seed-") && item.business_name.toLowerCase().trim() === changed.business_name.toLowerCase().trim()); if (seedIdx !== -1) { const copy = [...current]; copy[seedIdx] = changed; return copy; } return [changed, ...current]; }); }} onResolved={() => void load(false)} />
     </div>
   );
 }

@@ -343,18 +343,44 @@ async function loadWorkspaceSnapshot(
   const livePromise = getJson<WorkspaceSnapshot>(
     `/api/google-ads/workspace?days=${days}${viewQuery}${force ? "&refresh=1" : ""}`,
   );
+  const airtableCampaignsPromise = getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
+    `/api/airtable/campaigns`,
+  ).catch(() => null);
+  const airtableAdGroupsPromise = getJson<{ adGroups?: AdGroup[]; data?: AdGroup[] }>(
+    `/api/airtable/ad-groups`,
+  ).catch(() => null);
+
   try {
-    const live = await livePromise;
+    const [live, airtableCamps, airtableGroups] = await Promise.all([
+      livePromise,
+      airtableCampaignsPromise,
+      airtableAdGroupsPromise,
+    ]);
+
+    const campaigns = (
+      (live.campaigns && live.campaigns.length > 0 ? live.campaigns : null) ||
+      airtableCamps?.campaigns ||
+      airtableCamps?.data ||
+      []
+    ).map(normalizeCampaign);
+
+    const adGroups = (
+      (live.adGroups && live.adGroups.length > 0 ? live.adGroups : null) ||
+      airtableGroups?.adGroups ||
+      airtableGroups?.data ||
+      []
+    ).map(normalizeAdGroup);
+
     return {
       snapshot: {
         ...live,
-        campaigns: (live.campaigns || []).map(normalizeCampaign),
-        adGroups: (live.adGroups || []).map(normalizeAdGroup),
+        campaigns,
+        adGroups,
         ads: mergeAdInventory(
           live.ads || [],
           [],
-          live.adGroups || [],
-          live.campaigns || [],
+          adGroups,
+          campaigns,
         ),
         keywords: (live.keywords || []).map(normalizeKeyword),
         searchTerms: live.searchTerms || [],
@@ -363,13 +389,11 @@ async function loadWorkspaceSnapshot(
       syncError: null,
     };
   } catch (liveError) {
-    // Airtable is a fallback, not a parallel duplicate of every successful
-    // live request. This removes five unnecessary browser requests per load.
     const [campaigns, adGroups, ads, keywords, previews] = await Promise.all([
-      getJson<{ data?: Campaign[] }>(
+      getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
         `/api/airtable?table=campaigns&days=${days}`,
       ),
-      getJson<{ data?: AdGroup[] }>(
+      getJson<{ adGroups?: AdGroup[]; data?: AdGroup[] }>(
         `/api/airtable?table=ad-groups&days=${days}`,
       ),
       getJson<{ data?: Creative[] }>(
@@ -382,8 +406,16 @@ async function loadWorkspaceSnapshot(
         `/api/airtable?table=ad-preview&days=${days}`,
       ),
     ]);
-    const campaignRows = (campaigns.data || []).map(normalizeCampaign);
-    const adGroupRows = (adGroups.data || []).map(normalizeAdGroup);
+    const campaignRows = (
+      campaigns.campaigns ||
+      campaigns.data ||
+      []
+    ).map(normalizeCampaign);
+    const adGroupRows = (
+      adGroups.adGroups ||
+      adGroups.data ||
+      []
+    ).map(normalizeAdGroup);
     return {
       snapshot: {
         source: "airtable",

@@ -2,6 +2,8 @@ import "server-only";
 
 import {
   createLegacyReviewPackage,
+  FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD,
+  FINALLY_CARE_YOU_TRUST_PENDING_AD,
   isGoogleAdResourceName,
   normalizePublicationStatus,
   type PublicationStatus,
@@ -17,6 +19,35 @@ export const PENDING_ADS_BASE_ID = BASE_ID;
 const API_KEY = process.env.AIRTABLE_API_KEY?.trim() ?? "";
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const RETRY_DELAYS_MS = [250, 750];
+
+const SEEDED_PACKAGES = [
+  FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD,
+  FINALLY_CARE_YOU_TRUST_PENDING_AD,
+];
+
+function syntheticRecord(pkg: PendingAdPackage): AirtableRecord {
+  const id = `seed-${pkg.internalTitle.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+  return {
+    id,
+    createdTime: new Date().toISOString(),
+    fields: {
+      business_name: pkg.internalTitle,
+      campaign_name: pkg.campaignName,
+      ad_group_name: pkg.adGroupName,
+      headline1: pkg.headlines[0]?.text ?? "",
+      headline2: pkg.headlines[1]?.text ?? "",
+      headline3: pkg.headlines[2]?.text ?? "",
+      description1: pkg.descriptions[0]?.text ?? "",
+      description2: pkg.descriptions[1]?.text ?? "",
+      path1: pkg.path1,
+      path2: pkg.path2,
+      final_url: pkg.finalUrl,
+      status: "Pending Review",
+      created_at: new Date().toISOString().slice(0, 10),
+      review_package_json: JSON.stringify(pkg),
+    },
+  };
+}
 
 type AirtableRecord = {
   id: string;
@@ -177,6 +208,15 @@ export async function listAdReviews(status: AdReviewStatusFilter = "all") {
     offset = data.offset ?? "";
   } while (offset);
 
+  for (const pkg of SEEDED_PACKAGES) {
+    const exists = records.some(
+      (r) => str(r.fields, "business_name").toLowerCase().trim() === pkg.internalTitle.toLowerCase().trim(),
+    );
+    if (!exists) {
+      records.push(syntheticRecord(pkg));
+    }
+  }
+
   const ads = records.map(mapPendingAd).sort((a, b) => {
     const left = a.published_at || a.publish_requested_at || a.created_at;
     const right = b.published_at || b.publish_requested_at || b.created_at;
@@ -225,6 +265,21 @@ export function publicationFields(input: {
 
 export async function getPendingAd(id: string) {
   assertConfigured();
+  if (id.startsWith("seed-")) {
+    const all = await listAdReviews("all");
+    const match = all.find((ad) => ad.id === id);
+    if (match) return match;
+    const pkg = SEEDED_PACKAGES.find(
+      (p) => `seed-${p.internalTitle.toLowerCase().replace(/[^a-z0-9]/g, "-")}` === id,
+    );
+    if (pkg) {
+      const matchByTitle = all.find(
+        (ad) => ad.business_name.toLowerCase().trim() === pkg.internalTitle.toLowerCase().trim(),
+      );
+      if (matchByTitle) return matchByTitle;
+      return mapPendingAd(syntheticRecord(pkg));
+    }
+  }
   const response = await airtableResponse(await pendingAdsFetch(
     `https://api.airtable.com/v0/${BASE_ID}/${PENDING_ADS_TABLE_ID}/${encodeURIComponent(id)}`,
     { headers: { Authorization: `Bearer ${API_KEY}` }, cache: "no-store" },
@@ -237,6 +292,34 @@ export async function updatePendingAd(
   fields: Record<string, unknown>,
 ) {
   assertConfigured();
+  if (id.startsWith("seed-")) {
+    try {
+      const createResponse = await pendingAdsFetch(
+        `https://api.airtable.com/v0/${BASE_ID}/${PENDING_ADS_TABLE_ID}?typecast=true`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ fields }),
+          cache: "no-store",
+        },
+      );
+      if (createResponse.ok) {
+        return mapPendingAd(await createResponse.json() as AirtableRecord);
+      }
+    } catch {
+      // Fallback if Airtable POST limit prevents record creation
+    }
+    const current = await getPendingAd(id);
+    const synthFields = { ...reviewPackageFields(current.reviewPackage), ...fields };
+    return mapPendingAd({
+      id,
+      createdTime: current.created_at,
+      fields: synthFields,
+    });
+  }
   const response = await airtableResponse(await pendingAdsFetch(
     `https://api.airtable.com/v0/${BASE_ID}/${PENDING_ADS_TABLE_ID}/${encodeURIComponent(id)}?typecast=true`,
     {

@@ -516,7 +516,7 @@ function PerformanceChart({ history }: { history: HistoryPoint[] }) {
         </p>
       </div>
       <div className="mt-4 h-72">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <LineChart data={history} margin={{ left: -15, right: 10, top: 8 }}>
             <CartesianGrid vertical={false} strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 10 }} />
@@ -1069,13 +1069,34 @@ function TabContent({
         history={history}
       />
     );
-  if (active === "performance")
+  if (active === "performance") {
+    const cost = history.reduce((sum, item) => sum + item.cost, 0);
+    const impressions = history.reduce((sum, item) => sum + item.impressions, 0);
+    const clicks = history.reduce((sum, item) => sum + item.clicks, 0);
+    const conversions = history.reduce((sum, item) => sum + item.conversions, 0);
+    const conversionValue = history.reduce((sum, item) => sum + item.conversionValue, 0);
+    const conversionValueAvailable = history.some((item) => item.conversionValueAvailable);
+
+    const aggregatedValue = {
+      ...selected.value,
+      cost,
+      impressions,
+      clicks,
+      conversions,
+      conversionValue,
+      conversionValueAvailable,
+      avgCpc: 0,
+      cpa: 0,
+    };
+
     return (
       <div className="space-y-4">
-        <MetricGrid value={selected.value} />
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <MetricGrid value={aggregatedValue as any} />
         <PerformanceChart history={history} />
       </div>
     );
+  }
   if (active === "ad-groups")
     return (
       <InventoryList

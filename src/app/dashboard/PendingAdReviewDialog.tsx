@@ -167,6 +167,108 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
   const [publishOpen, setPublishOpen] = useState(false);
   const [recommendationAction, setRecommendationAction] = useState<RecommendationAction>(null);
   const [tracking, setTracking] = useState<TrackingStatus>({ loading: false, configured: false, enabledActionCount: 0, primaryActionCount: 0, leadUrlVerified: false });
+  const [campaignsList, setCampaignsList] = useState<Array<{ id: string; campaignId: string; campaignName: string; status: string }>>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [adGroupsList, setAdGroupsList] = useState<Array<{ id: string; adGroupId: string; adGroupName: string; campaignId: string; status: string }>>([]);
+  const [adGroupsLoading, setAdGroupsLoading] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
+  const [selectedAdGroupId, setSelectedAdGroupId] = useState<string>("");
+
+  useEffect(() => {
+    if (!selectedAdId) return;
+    let cancelled = false;
+    setCampaignsLoading(true);
+    void fetch("/api/airtable/campaigns", { credentials: "same-origin", cache: "no-store" })
+      .then((res) => res.json())
+      .then((data: { campaigns?: Array<{ id: string; campaignId: string; campaignName: string; status: string }> }) => {
+        if (cancelled) return;
+        const list = data.campaigns || [];
+        setCampaignsList(list);
+
+        const currentCampName = ad?.reviewPackage.campaignName || "";
+        const match = list.find(
+          (c) => c.campaignName.toLowerCase() === currentCampName.toLowerCase() || c.campaignId === currentCampName
+        );
+        if (match) {
+          setSelectedCampaignId(match.campaignId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCampaignsList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCampaignsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ad?.reviewPackage.campaignName, selectedAdId]);
+
+  useEffect(() => {
+    if (!selectedCampaignId) {
+      setAdGroupsList([]);
+      setSelectedAdGroupId("");
+      return;
+    }
+    let cancelled = false;
+    setAdGroupsLoading(true);
+    void fetch(`/api/airtable/ad-groups?campaignId=${encodeURIComponent(selectedCampaignId)}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data: { adGroups?: Array<{ id: string; adGroupId: string; adGroupName: string; campaignId: string; status: string }> }) => {
+        if (cancelled) return;
+        const list = data.adGroups || [];
+        setAdGroupsList(list);
+
+        const currentGroupName = draft?.adGroupName || ad?.reviewPackage.adGroupName || "";
+        const match = list.find(
+          (g) => g.adGroupName.toLowerCase() === currentGroupName.toLowerCase() || g.adGroupId === currentGroupName
+        );
+        if (match) {
+          setSelectedAdGroupId(match.adGroupId);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAdGroupsList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAdGroupsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCampaignId, ad?.reviewPackage.adGroupName, draft?.adGroupName]);
+
+  const handleCampaignSelect = (campId: string) => {
+    setSelectedCampaignId(campId);
+    setSelectedAdGroupId("");
+    const selectedCamp = campaignsList.find((c) => c.campaignId === campId);
+    if (selectedCamp) {
+      updateDraft((review) => ({
+        ...review,
+        campaignName: selectedCamp.campaignName,
+        campaignId: selectedCamp.campaignId,
+        adGroupName: "",
+        adGroupId: "",
+      }));
+    }
+  };
+
+  const handleAdGroupSelect = (groupId: string) => {
+    setSelectedAdGroupId(groupId);
+    const selectedGroup = adGroupsList.find((g) => g.adGroupId === groupId);
+    if (selectedGroup) {
+      updateDraft((review) => ({
+        ...review,
+        adGroupName: selectedGroup.adGroupName,
+        adGroupId: selectedGroup.adGroupId,
+      }));
+    }
+  };
 
   async function authenticatedFetch(input: RequestInfo | URL, init: RequestInit = {}) {
     const send = async (refresh: boolean) => {
@@ -296,10 +398,30 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
     if (!ad || !draft) return;
     setWorking("publish"); setError(null);
     try {
+      let currentAdId = pendingAdId;
+      if (dirty) {
+        const saveResponse = await authenticatedFetch("/api/airtable/pending-ads", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "update", id: currentAdId, reviewPackage: draft }),
+        });
+        const saveData = await saveResponse.json().catch(() => null) as { ad?: PendingAd; error?: string } | null;
+        if (saveResponse.ok && saveData?.ad) {
+          setDraft(cloneReview(saveData.ad.reviewPackage));
+          setDirty(false);
+          onChanged(saveData.ad);
+          currentAdId = saveData.ad.id;
+        }
+      }
+
       const startResponse = await authenticatedFetch("/api/airtable/ad-reviews", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: ad.publication_status === "Failed" ? "retry" : "publish_requested", id: pendingAdId }),
+        body: JSON.stringify({
+          action: ad.publication_status === "Failed" ? "retry" : "publish_requested",
+          id: currentAdId,
+          reviewPackage: draft,
+        }),
       });
       const startData = await startResponse.json().catch(() => null) as {
         ad?: PendingAd;
@@ -309,6 +431,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
         if (startData?.ad) onChanged(startData.ad);
         throw new Error(startData?.error || "Publishing could not be started.");
       }
+      currentAdId = startData.ad.id;
       onChanged(startData.ad);
       setPublishOpen(false);
       setResult({ title: "Publishing to Google Ads…", message: "The package reached the publishing workflow. Waiting for verified PAUSED status from Airtable." });
@@ -316,27 +439,27 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
       const deadline = Date.now() + 60_000;
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 2500));
-        const pollResponse = await authenticatedFetch(`/api/airtable/ad-reviews?id=${encodeURIComponent(pendingAdId)}`, { cache: "no-store" });
+        const pollResponse = await authenticatedFetch(`/api/airtable/ad-reviews?id=${encodeURIComponent(currentAdId)}`, { cache: "no-store" });
         const pollData = await pollResponse.json().catch(() => null) as { ad?: PendingAd } | null;
         if (!pollResponse.ok || !pollData?.ad) continue;
         onChanged(pollData.ad);
         if (isVerifiedPublishedAd(pollData.ad)) {
-          void authenticatedFetch("/api/airtable/ad-reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "acknowledge_result", id: pendingAdId }) });
+          void authenticatedFetch("/api/airtable/ad-reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "acknowledge_result", id: currentAdId }) });
           setResult({ title: "Published as paused", message: "Google Ads creation was verified from Airtable. The ad remains PAUSED and is not serving.", resourceName: pollData.ad.ad_resource_name });
-          onResolved(pendingAdId);
+          onResolved(currentAdId);
           return;
         }
         if (pollData.ad.publication_status === "Failed") {
-          void authenticatedFetch("/api/airtable/ad-reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "acknowledge_result", id: pendingAdId }) });
+          void authenticatedFetch("/api/airtable/ad-reviews", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "acknowledge_result", id: currentAdId }) });
           setError({ title: "Publishing failed", message: pollData.ad.publish_error || "The publishing workflow could not create this ad. Review the Failed tab before retrying." });
-          onResolved(pendingAdId);
+          onResolved(currentAdId);
           return;
         }
       }
       const timeoutResponse = await authenticatedFetch("/api/airtable/ad-reviews", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark_failed", id: pendingAdId, error: "The publishing workflow did not report a verified result within 60 seconds." }),
+        body: JSON.stringify({ action: "mark_failed", id: currentAdId, error: "The publishing workflow did not report a verified result within 60 seconds." }),
       });
       const timeoutData = await timeoutResponse.json().catch(() => null) as { ad?: PendingAd } | null;
       if (timeoutResponse.ok && timeoutData?.ad) {
@@ -345,7 +468,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
       } else {
         setError({ title: "Status check timed out", message: "A final Google Ads result could not be confirmed. Sync status before retrying so the same ad is not submitted twice." });
       }
-      onResolved(pendingAdId);
+      onResolved(currentAdId);
     } catch (caught) {
       setPublishOpen(false);
       const message = caught instanceof Error ? caught.message : "The publishing workflow could not be reached.";
@@ -395,8 +518,66 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Ad name<input disabled={!editing} value={draft.internalTitle} onChange={(e) => updateDraft((r) => ({ ...r, internalTitle: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Strategy label<input disabled={!editing} value={draft.strategyLabel} onChange={(e) => updateDraft((r) => ({ ...r, strategyLabel: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
-                  <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Campaign<input disabled value={draft.campaignName} className={`${fieldClass} mt-1.5`} /></label>
-                  <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Ad group<input disabled={!editing} value={draft.adGroupName} onChange={(event) => updateDraft((review) => ({ ...review, adGroupName: event.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
+                  <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>
+                    Campaign
+                    <select
+                      disabled={!editing || campaignsLoading}
+                      value={selectedCampaignId}
+                      onChange={(e) => handleCampaignSelect(e.target.value)}
+                      className={`${fieldClass} mt-1.5`}
+                    >
+                      <option value="">
+                        {campaignsLoading
+                          ? "Loading campaigns..."
+                          : draft.campaignName && !selectedCampaignId
+                            ? draft.campaignName
+                            : "Select Campaign"}
+                      </option>
+                      {campaignsList
+                        .filter(
+                          (c) =>
+                            c.status === "ENABLED" ||
+                            c.campaignId === selectedCampaignId ||
+                            c.campaignName === draft.campaignName
+                        )
+                        .map((c) => (
+                          <option key={c.id || c.campaignId} value={c.campaignId}>
+                            {c.campaignName} {c.status !== "ENABLED" ? `(${c.status})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>
+                    Ad group
+                    <select
+                      disabled={!editing || !selectedCampaignId || adGroupsLoading}
+                      value={selectedAdGroupId}
+                      onChange={(e) => handleAdGroupSelect(e.target.value)}
+                      className={`${fieldClass} mt-1.5`}
+                    >
+                      <option value="">
+                        {!selectedCampaignId
+                          ? "Select a campaign first"
+                          : adGroupsLoading
+                            ? "Loading ad groups..."
+                            : draft.adGroupName && !selectedAdGroupId
+                              ? draft.adGroupName
+                              : "Select Ad Group"}
+                      </option>
+                      {adGroupsList
+                        .filter(
+                          (g) =>
+                            g.status === "ENABLED" ||
+                            g.adGroupId === selectedAdGroupId ||
+                            g.adGroupName === draft.adGroupName
+                        )
+                        .map((g) => (
+                          <option key={g.id || g.adGroupId} value={g.adGroupId}>
+                            {g.adGroupName} {g.status !== "ENABLED" ? `(${g.status})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                   <label className="text-xs font-bold sm:col-span-2" style={{ color: "var(--text-secondary)" }}>Final URL<input disabled={!editing} type="url" value={draft.finalUrl} onChange={(e) => updateDraft((r) => ({ ...r, finalUrl: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Display path 1<div className="mt-1.5 flex items-center gap-2"><input disabled={!editing} value={draft.path1} onChange={(e) => updateDraft((r) => ({ ...r, path1: e.target.value }))} className={fieldClass} /><Count value={draft.path1} max={15} /></div></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Display path 2<div className="mt-1.5 flex items-center gap-2"><input disabled={!editing} value={draft.path2} onChange={(e) => updateDraft((r) => ({ ...r, path2: e.target.value }))} className={fieldClass} /><Count value={draft.path2} max={15} /></div></label>
@@ -421,9 +602,9 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                 {isAdmin && draft.recommendedNegativeKeywords.length > 0 && <button onClick={() => setRecommendationAction("add_negatives")} className="mt-4 min-h-11 rounded-xl border px-4 text-sm font-bold" style={{ color: "var(--danger-text)", borderColor: "var(--danger-border)" }}>Add negatives to campaign</button>}
               </Section>
 
-              <Section title="Recommended assets" eyebrow="Review only · not published with RSA">
+              <Section title="Recommended campaign assets (managed separately — not published with this ad)" eyebrow="Review only · not published with RSA">
                 <div className="space-y-3">{draft.assets.sitelinks.map((link) => <div key={link.title} className="rounded-xl border p-3" style={{ background: "var(--surface-2)", borderColor: "var(--border-subtle)" }}><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{link.title}</p>{link.needsUrl ? <span className="text-xs font-bold" style={{ color: "var(--warning-text)" }}>Needs URL</span> : link.url ? <a href={link.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold" style={{ color: "var(--brand-primary-strong)" }}>Open <ExternalLink size={12} /></a> : null}</div><p className="mt-1 break-all text-xs" style={{ color: "var(--text-muted)" }}>{link.url || "No approved URL"}</p><p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>{link.description1} · {link.description2}</p></div>)}</div>
-                <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Callouts</p><div className="mt-2 flex flex-wrap gap-2">{draft.assets.callouts.map((item) => <span key={item} className="rounded-full px-3 py-1.5 text-xs" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>{item}</span>)}</div></div>
+                <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Callouts</p><div className="mt-2 flex flex-wrap gap-2">{draft.assets.callouts.map((item, index) => { const text = typeof item === "string" ? item : item.calloutText; return <span key={text || index} className="rounded-full px-3 py-1.5 text-xs" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>{text}</span>; })}</div></div>
                 <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{draft.assets.structuredSnippet.header}</p><p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>{draft.assets.structuredSnippet.values.join(" · ")}</p></div>
                 <div className="mt-4 rounded-xl border p-3" style={{ color: draft.assets.callAsset.phoneNumber ? "var(--success-text)" : "var(--warning-text)", background: draft.assets.callAsset.phoneNumber ? "var(--success-bg)" : "var(--warning-bg)", borderColor: draft.assets.callAsset.phoneNumber ? "var(--success-border)" : "var(--warning-border)" }}>
                   <div className="flex gap-3">

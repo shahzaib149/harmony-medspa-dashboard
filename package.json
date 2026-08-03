@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test tests/*.test.ts",
-    "seed:wellness-pending-ad": "tsx scripts/seed-wellness-pending-ad.ts"
+    "seed:wellness-pending-ad": "tsx scripts/seed-wellness-pending-ad.ts",
+    "seed:med-spa-pending-ads": "tsx scripts/seed-med-spa-pending-ads.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
@@ -24,7 +25,8 @@
     "papaparse": "^5.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

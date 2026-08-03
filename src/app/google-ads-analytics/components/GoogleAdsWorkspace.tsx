@@ -768,7 +768,7 @@ function Overview({
           </div>
           {chartData.length ? (
             <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart
                   data={chartData}
                   margin={{ left: -18, right: 8, top: 6, bottom: 30 }}

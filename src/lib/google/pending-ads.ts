@@ -53,7 +53,9 @@ export type PendingAdPackage = {
   internalTitle: string;
   strategyLabel: string;
   campaignName: string;
+  campaignId?: string;
   adGroupName: string;
+  adGroupId?: string;
   adType: "Responsive Search Ad";
   finalUrl: string;
   path1: string;
@@ -65,15 +67,17 @@ export type PendingAdPackage = {
   recommendedNegativeKeywords: string[];
   assets: {
     sitelinks: Array<{
-      title: string;
-      url: string | null;
-      needsUrl: boolean;
+      title?: string;
+      linkText?: string;
+      url?: string | null;
+      needsUrl?: boolean;
       description1: string;
       description2: string;
+      finalUrls?: string[];
     }>;
-    callouts: string[];
+    callouts: Array<string | { calloutText: string }>;
     structuredSnippet: { header: string; values: string[] };
-    callAsset: { enabled: false; phoneNumber: string | null; warning: string };
+    callAsset: { enabled?: boolean; phoneNumber: string | null; warning?: string };
   };
   approvalChecklist: Array<{
     key: ApprovalKey;
@@ -88,6 +92,99 @@ export type PendingAdPackage = {
     publishedAt: string;
     publishedBy: string;
   };
+};
+
+export function formatHeadlinesForWebhook(headlines: Array<ReviewTextAsset<HeadlinePin>>): Array<{ text: string; pinnedField?: "HEADLINE_1" | "HEADLINE_2" | "HEADLINE_3" }> {
+  return (headlines || [])
+    .filter((item) => item && typeof item.text === "string" && item.text.trim().length > 0)
+    .slice(0, 15)
+    .map((item) => {
+      const obj: { text: string; pinnedField?: "HEADLINE_1" | "HEADLINE_2" | "HEADLINE_3" } = {
+        text: item.text.trim(),
+      };
+      if (item.pinnedField) {
+        obj.pinnedField = item.pinnedField;
+      }
+      return obj;
+    });
+}
+
+export function formatDescriptionsForWebhook(descriptions: Array<ReviewTextAsset<DescriptionPin>>): Array<{ text: string; pinnedField?: "DESCRIPTION_1" | "DESCRIPTION_2" }> {
+  return (descriptions || [])
+    .filter((item) => item && typeof item.text === "string" && item.text.trim().length > 0)
+    .slice(0, 4)
+    .map((item) => {
+      const obj: { text: string; pinnedField?: "DESCRIPTION_1" | "DESCRIPTION_2" } = {
+        text: item.text.trim(),
+      };
+      if (item.pinnedField) {
+        obj.pinnedField = item.pinnedField;
+      }
+      return obj;
+    });
+}
+
+export function formatAssetsForWebhook(assets: Partial<PendingAdPackage["assets"]>) {
+  return {
+    sitelinks: assets?.sitelinks ?? [],
+    callouts: assets?.callouts ?? [],
+    structuredSnippet: assets?.structuredSnippet ?? { header: "Services", values: [] },
+    callAsset: assets?.callAsset ?? { enabled: false, phoneNumber: null },
+  };
+}
+
+export function buildSerializedHeadlineAssets(headlines: Array<ReviewTextAsset<HeadlinePin>>): string {
+  return JSON.stringify(formatHeadlinesForWebhook(headlines));
+}
+
+export function buildSerializedDescriptionAssets(descriptions: Array<ReviewTextAsset<DescriptionPin>>): string {
+  return JSON.stringify(formatDescriptionsForWebhook(descriptions));
+}
+
+export type PublishAdWebhookPayload = {
+  event: string;
+  action: string;
+  idempotencyKey: string;
+  requestedStatus: string;
+  source: string;
+  sentAt: string;
+  publishRequestedAt: string;
+  publishedBy: string;
+  airtableBaseId: string;
+  airtableTableId: string;
+  publicationStatusField: string;
+  googleAdsStatusField: string;
+  googleResourceNameField: string;
+  publishedAtField: string;
+  publishedByField: string;
+  publishErrorField: string;
+  idempotencyKeyField: string;
+  lastStatusSyncField: string;
+  pendingAdId: string;
+  businessName: string;
+  campaignId: string;
+  campaignName: string;
+  adGroupId: string;
+  adGroupName: string;
+  adType: string;
+  finalUrl: string;
+  path1: string;
+  path2: string;
+  headlineAssetsJson: string;
+  descriptionAssetsJson: string;
+  allHeadlines: string[];
+  headlineAssets: Array<ReviewTextAsset<HeadlinePin>>;
+  allDescriptions: string[];
+  descriptionAssets: Array<ReviewTextAsset<DescriptionPin>>;
+  strategyLabel: string;
+  notes: string;
+  recommendedKeywords: Array<{ text: string; matchType: "PHRASE" | "EXACT" }>;
+  recommendedNegativeKeywords: string[];
+  assets: PendingAdPackage["assets"];
+  approvalChecklist: Array<{ key: ApprovalKey; label: string; confirmed: boolean }>;
+  history: PendingAdActivity[];
+  pendingAd: PendingAd;
+  reviewPackage: PendingAdPackage;
 };
 
 export type PendingAd = {
@@ -204,34 +301,74 @@ export function validatePendingAdPackage(review: PendingAdPackage) {
   const errors: string[] = [];
   const headlinePins = new Set<HeadlinePin>([null, "HEADLINE_1", "HEADLINE_2", "HEADLINE_3"]);
   const descriptionPins = new Set<DescriptionPin>([null, "DESCRIPTION_1", "DESCRIPTION_2"]);
+
   if (!review.internalTitle.trim()) errors.push("Ad name is required.");
   if (!review.campaignName.trim()) errors.push("Campaign is required.");
   if (!review.adGroupName.trim()) errors.push("Ad group is required.");
+
+  if (!review.adGroupId || !review.adGroupId.trim()) {
+    errors.push("Ad group ID is required.");
+  } else if (!/^\d+$/.test(review.adGroupId.trim())) {
+    errors.push("Ad group ID must be a numeric string (e.g. 198124172545).");
+  }
+
   try {
     const url = new URL(review.finalUrl);
     if (url.protocol !== "https:") errors.push("Final URL must use HTTPS.");
   } catch {
     errors.push("Final URL is invalid.");
   }
+
   if (review.path1.length > 15 || review.path2.length > 15) {
     errors.push("Display paths must be 15 characters or fewer.");
   }
-  if (review.headlines.length < 3 || review.headlines.length > 15) {
-    errors.push("Responsive search ads require 3 to 15 headlines.");
+
+  const nonEmptyHeadlines = review.headlines.filter((h) => h.text.trim());
+  if (nonEmptyHeadlines.length < 3 || nonEmptyHeadlines.length > 15) {
+    errors.push("Responsive search ads require 3 to 15 non-empty headlines.");
   }
-  if (review.descriptions.length < 2 || review.descriptions.length > 4) {
-    errors.push("Responsive search ads require 2 to 4 descriptions.");
+
+  const nonEmptyDescriptions = review.descriptions.filter((d) => d.text.trim());
+  if (nonEmptyDescriptions.length < 2 || nonEmptyDescriptions.length > 4) {
+    errors.push("Responsive search ads require 2 to 4 non-empty descriptions.");
   }
+
+  const pinnedHeadlines = new Set<string>();
   review.headlines.forEach((asset, index) => {
-    if (!asset.text.trim()) errors.push(`Headline ${index + 1} is empty.`);
-    if (asset.text.length > 30) errors.push(`Headline ${index + 1} exceeds 30 characters.`);
-    if (!headlinePins.has(asset.pinnedField)) errors.push(`Headline ${index + 1} has an unsupported pin position.`);
+    if (!asset.text.trim()) return;
+    if (asset.text.length > 30) {
+      errors.push(`Headline ${index + 1} exceeds 30 characters.`);
+    }
+    if (!headlinePins.has(asset.pinnedField)) {
+      errors.push(`Headline ${index + 1} has an unsupported pin position.`);
+    }
+    if (asset.pinnedField) {
+      if (pinnedHeadlines.has(asset.pinnedField)) {
+        errors.push(`Multiple headlines are pinned to position ${asset.pinnedField.replace("HEADLINE_", "H")}.`);
+      } else {
+        pinnedHeadlines.add(asset.pinnedField);
+      }
+    }
   });
+
+  const pinnedDescriptions = new Set<string>();
   review.descriptions.forEach((asset, index) => {
-    if (!asset.text.trim()) errors.push(`Description ${index + 1} is empty.`);
-    if (asset.text.length > 90) errors.push(`Description ${index + 1} exceeds 90 characters.`);
-    if (!descriptionPins.has(asset.pinnedField)) errors.push(`Description ${index + 1} has an unsupported pin position.`);
+    if (!asset.text.trim()) return;
+    if (asset.text.length > 90) {
+      errors.push(`Description ${index + 1} exceeds 90 characters.`);
+    }
+    if (!descriptionPins.has(asset.pinnedField)) {
+      errors.push(`Description ${index + 1} has an unsupported pin position.`);
+    }
+    if (asset.pinnedField) {
+      if (pinnedDescriptions.has(asset.pinnedField)) {
+        errors.push(`Multiple descriptions are pinned to position ${asset.pinnedField.replace("DESCRIPTION_", "D")}.`);
+      } else {
+        pinnedDescriptions.add(asset.pinnedField);
+      }
+    }
   });
+
   if (review.assets.callAsset.enabled) {
     errors.push("Call asset publishing is not enabled for this workflow.");
   }
@@ -243,6 +380,7 @@ export function validatePendingAdPackage(review: PendingAdPackage) {
       errors.push("Clinic phone number must be a valid 10-digit US number.");
     }
   }
+
   return errors;
 }
 
@@ -260,7 +398,9 @@ export const WELLNESS_PENDING_AD: PendingAdPackage = {
   internalTitle: "Wellness Free Consultation RSA",
   strategyLabel: "Free Consult + Emotional Hook + Local Trust",
   campaignName: "Wellness & Aesthetic - Roya",
+  campaignId: "24080482948",
   adGroupName: "Wellness - Vercel Landing",
+  adGroupId: "198124172545",
   adType: "Responsive Search Ad",
   finalUrl: "https://harmony-medspa.vercel.app/landing",
   path1: "Free-Consult",
@@ -268,7 +408,7 @@ export const WELLNESS_PENDING_AD: PendingAdPackage = {
   headlines: [
     { text: "Free Wellness Consultation", pinnedField: "HEADLINE_1" },
     { text: "Book Your Free Consult", pinnedField: "HEADLINE_2" },
-    { text: "Harmony MedSpa Sarasota", pinnedField: "HEADLINE_2" },
+    { text: "Harmony MedSpa Sarasota", pinnedField: "HEADLINE_3" },
     { text: "Feel Like Yourself Again", pinnedField: null },
     { text: "Personalized Wellness Care", pinnedField: null },
     { text: "Medical Weight Loss", pinnedField: null },
@@ -366,3 +506,196 @@ export const WELLNESS_PENDING_AD: PendingAdPackage = {
     },
   ],
 };
+
+export const FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD: PendingAdPackage = {
+  version: 1,
+  internalTitle: "Feel Like Yourself Again RSA",
+  strategyLabel: "Emotional Transformation + Free Consult + Local Trust",
+  campaignName: "Website new",
+  campaignId: "24080482948",
+  adGroupName: "Med Spa Sarasota",
+  adGroupId: "200264220913",
+  adType: "Responsive Search Ad",
+  finalUrl: "https://harmony-medspa.vercel.app/landing",
+  path1: "Free-Consult",
+  path2: "Sarasota",
+  headlines: [
+    { text: "Feel Like Yourself Again", pinnedField: null },
+    { text: "At Home In Your Own Skin", pinnedField: null },
+    { text: "Med Spa Sarasota", pinnedField: null },
+    { text: "Free Consultation Sarasota", pinnedField: null },
+    { text: "Look Natural, Feel Better", pinnedField: null },
+    { text: "Natural Results, Real Care", pinnedField: null },
+    { text: "Harmony Med Spa Sarasota", pinnedField: null },
+    { text: "Your Goals Come First", pinnedField: null },
+    { text: "Book Your Free Consult", pinnedField: null },
+    { text: "Confidence Starts Here", pinnedField: null },
+    { text: "Care Built Around You", pinnedField: null },
+    { text: "Board-Certified NP Care", pinnedField: null },
+    { text: "For Men and Women", pinnedField: null },
+    { text: "No Rush, No Pressure", pinnedField: null },
+    { text: "Request Your Visit Today", pinnedField: null },
+  ],
+  descriptions: [
+    { text: "Feel like yourself again with natural-looking care from our Sarasota medical team.", pinnedField: null },
+    { text: "Book a free consultation and talk through your goals with our Sarasota providers.", pinnedField: null },
+    { text: "Personalized aesthetic and wellness care for men and women of all ages in Sarasota.", pinnedField: null },
+    { text: "Request your visit online in about a minute. New patients welcome at Harmony.", pinnedField: null },
+  ],
+  notes: "Emotional Transformation RSA concept created for admin review. Confirm copy and factual claims before publishing.",
+  recommendedKeywords: [
+    ...[
+      "medical spa sarasota",
+      "med spa sarasota",
+      "best med spa sarasota",
+    ].map((text) => ({ text, matchType: "PHRASE" as const })),
+    ...[
+      "harmony med spa",
+      "harmony medspa sarasota",
+    ].map((text) => ({ text, matchType: "EXACT" as const })),
+  ],
+  recommendedNegativeKeywords: [
+    "jobs", "hiring", "salary", "career", "school", "training", "cheap", "diy",
+  ],
+  assets: {
+    sitelinks: [
+      {
+        title: "Book Free Consultation",
+        url: "https://www.harmonymedspafl.com/lead",
+        needsUrl: false,
+        description1: "Takes 60 seconds",
+        description2: "We respond same day",
+      },
+      {
+        title: "Aesthetic Treatments",
+        url: "https://www.harmonymedspafl.com/",
+        needsUrl: false,
+        description1: "Botox, fillers & lasers",
+        description2: "Natural-looking results",
+      },
+      {
+        title: "Meet Our Providers",
+        url: "https://www.harmonymedspafl.com/our-team.html",
+        needsUrl: false,
+        description1: "Board-certified NP team",
+        description2: "Trusted in Sarasota",
+      },
+    ],
+    callouts: ["Free Consultation", "Board-Certified NP", "Natural Results", "New Patients Welcome"],
+    structuredSnippet: {
+      header: "Services",
+      values: ["Botox & Fillers", "Skin Rejuvenation", "Laser Treatments", "Wellness Care"],
+    },
+    callAsset: {
+      enabled: false,
+      phoneNumber: null,
+      warning: "Clinic front-desk number required before adding call asset.",
+    },
+  },
+  approvalChecklist: makeApprovalChecklist(),
+  history: [
+    {
+      type: "pending_ad_created",
+      at: "2026-07-31T00:00:00.000Z",
+      actor: "AI ad workflow",
+      detail: "Feel Like Yourself Again RSA package created for admin review.",
+    },
+  ],
+};
+
+export const FINALLY_CARE_YOU_TRUST_PENDING_AD: PendingAdPackage = {
+  version: 1,
+  internalTitle: "Finally Care You Trust RSA",
+  strategyLabel: "Trust + No-Pressure Positioning + Free Consult",
+  campaignName: "Website new",
+  campaignId: "24080482948",
+  adGroupName: "Med Spa Sarasota",
+  adGroupId: "200264220913",
+  adType: "Responsive Search Ad",
+  finalUrl: "https://harmony-medspa.vercel.app/landing",
+  path1: "Med-Spa",
+  path2: "Sarasota",
+  headlines: [
+    { text: "Finally, Care You Trust", pinnedField: null },
+    { text: "Honest Answers, No Sales", pinnedField: null },
+    { text: "Medical Spa Sarasota", pinnedField: null },
+    { text: "Free Consult, No Pressure", pinnedField: null },
+    { text: "We Explain Everything", pinnedField: null },
+    { text: "Talk To A Real Provider", pinnedField: null },
+    { text: "Ask Us Anything First", pinnedField: null },
+    { text: "Sarasota Med Spa Team", pinnedField: null },
+    { text: "Full-Service Med Spa", pinnedField: null },
+    { text: "Book A Free Consult", pinnedField: null },
+    { text: "Trusted By Sarasota Patients", pinnedField: null },
+    { text: "Skin, Body & Wellness", pinnedField: null },
+    { text: "Start With Questions", pinnedField: null },
+    { text: "Request Your Consult", pinnedField: null },
+    { text: "Natural, Not Overdone", pinnedField: null },
+  ],
+  descriptions: [
+    { text: "We explain everything honestly and never pressure you. Book a free consultation today.", pinnedField: null },
+    { text: "Talk with a board-certified nurse practitioner about what you actually need.", pinnedField: null },
+    { text: "Skin, body and wellness care in one Sarasota clinic. Ask us anything, no obligation.", pinnedField: null },
+    { text: "Request your free consultation online in about a minute. Trusted by Sarasota patients.", pinnedField: null },
+  ],
+  notes: "Trust + No-Pressure Positioning RSA concept created for admin review. Confirm copy and factual claims before publishing.",
+  recommendedKeywords: [
+    ...[
+      "medical spa sarasota",
+      "med spa sarasota fl",
+      "trusted med spa sarasota",
+    ].map((text) => ({ text, matchType: "PHRASE" as const })),
+    ...[
+      "harmony med spa",
+      "harmony medspa sarasota",
+    ].map((text) => ({ text, matchType: "EXACT" as const })),
+  ],
+  recommendedNegativeKeywords: [
+    "jobs", "hiring", "salary", "career", "school", "training", "cheap", "diy",
+  ],
+  assets: {
+    sitelinks: [
+      {
+        title: "Book Free Consultation",
+        url: "https://www.harmonymedspafl.com/lead",
+        needsUrl: false,
+        description1: "Takes 60 seconds",
+        description2: "We respond same day",
+      },
+      {
+        title: "Aesthetic Treatments",
+        url: "https://www.harmonymedspafl.com/",
+        needsUrl: false,
+        description1: "Botox, fillers & lasers",
+        description2: "Natural-looking results",
+      },
+      {
+        title: "Meet Our Providers",
+        url: "https://www.harmonymedspafl.com/our-team.html",
+        needsUrl: false,
+        description1: "Board-certified NP team",
+        description2: "Trusted in Sarasota",
+      },
+    ],
+    callouts: ["Free Consultation", "Board-Certified NP", "No Sales Pressure", "Trusted Care"],
+    structuredSnippet: {
+      header: "Services",
+      values: ["Botox & Fillers", "Skin Rejuvenation", "Laser Treatments", "Wellness Care"],
+    },
+    callAsset: {
+      enabled: false,
+      phoneNumber: null,
+      warning: "Clinic front-desk number required before adding call asset.",
+    },
+  },
+  approvalChecklist: makeApprovalChecklist(),
+  history: [
+    {
+      type: "pending_ad_created",
+      at: "2026-07-31T00:00:00.000Z",
+      actor: "AI ad workflow",
+      detail: "Finally Care You Trust RSA package created for admin review.",
+    },
+  ],
+};
+

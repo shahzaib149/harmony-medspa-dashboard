@@ -93,8 +93,8 @@ export async function PATCH(request: Request) {
     );
   }
 
-  if (before.status !== "Pending Review") {
-    return Response.json({ error: "Only pending ads can be changed." }, { status: 409 });
+  if (before.publication_status === "Published") {
+    return Response.json({ error: "Published ads cannot be changed." }, { status: 409 });
   }
 
   try {

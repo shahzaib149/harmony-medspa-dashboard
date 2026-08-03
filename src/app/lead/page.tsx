@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { trackLeadConversion } from "@/lib/analytics/gtag";
 
 const TREATMENTS = [
   "General Inquiry",
@@ -119,6 +120,7 @@ function LeadFormInner() {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       }
+      trackLeadConversion();
       setStatus("success");
       setTimeout(() => { window.location.href = bookingUrl; }, 1600);
     } catch {

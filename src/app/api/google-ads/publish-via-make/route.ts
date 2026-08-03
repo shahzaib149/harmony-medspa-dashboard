@@ -1,5 +1,10 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import {
+  formatAssetsForWebhook,
+  formatDescriptionsForWebhook,
+  formatHeadlinesForWebhook,
+} from "@/lib/google/pending-ads";
 import { postPublishAdToMake } from "@/lib/make/publish-ad";
 
 const MAX_REQUEST_BYTES = 250_000;
@@ -21,10 +26,36 @@ export async function POST(request: Request) {
     return Response.json({ error: "Only responsive search ads can use this publishing workflow." }, { status: 400 });
   }
 
+  const headlineAssets = formatHeadlinesForWebhook(
+    Array.isArray(payload.headlineAssets)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (payload.headlineAssets as any)
+      : Array.isArray(payload.allHeadlines)
+        ? (payload.allHeadlines as string[]).map((text) => ({ text, pinnedField: null }))
+        : []
+  );
+
+  const descriptionAssets = formatDescriptionsForWebhook(
+    Array.isArray(payload.descriptionAssets)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (payload.descriptionAssets as any)
+      : Array.isArray(payload.allDescriptions)
+        ? (payload.allDescriptions as string[]).map((text) => ({ text, pinnedField: null }))
+        : []
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const formattedAssets = formatAssetsForWebhook((payload.assets as any) || {});
+
   const sentAt = new Date().toISOString();
   try {
     await postPublishAdToMake({
       ...payload,
+      campaignId: String(payload.campaignId || "").trim(),
+      adGroupId: String(payload.adGroupId || "").trim(),
+      headlineAssets,
+      descriptionAssets,
+      assets: formattedAssets,
       event: String(payload.event || "publish_ad_requested"),
       requestedStatus: "PAUSED",
       sentAt,
