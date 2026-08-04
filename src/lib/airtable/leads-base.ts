@@ -41,7 +41,7 @@ export async function airtableFetch(path: string, init?: RequestInit) {
         ...init,
         signal,
         headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json", ...init?.headers },
-        cache: "no-store",
+        ...(init?.cache ? {} : method === "GET" ? { next: { revalidate: 180, tags: ["airtable-leads"] } } : { cache: "no-store" }),
       });
       const mayRetryWrite = method === "GET" || response.status === 429;
       if (attempt === maxAttempts || !RETRYABLE_STATUS.has(response.status) || !mayRetryWrite) return response;
@@ -59,8 +59,15 @@ export async function airtableFetch(path: string, init?: RequestInit) {
 const listRecordsCache = new Map<string, { records: AirtableRecord[]; expiresAt: number }>();
 const LIST_CACHE_TTL_MS = 60_000;
 
+import { revalidateTag } from "next/cache";
+
 export function invalidateLeadsBaseCache() {
   listRecordsCache.clear();
+  try {
+    revalidateTag("airtable-leads", "default");
+  } catch (error) {
+    // ignore outside next.js request context
+  }
 }
 
 export async function listRecords(table: string, params = new URLSearchParams(), options: { forceRefresh?: boolean } = {}) {
