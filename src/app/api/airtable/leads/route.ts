@@ -1,7 +1,7 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
 import type { LeadCampaignSummary } from "@/lib/types/campaigns";
-import { normalizeUsPhone } from "@/lib/airtable/leads-base";
+import { normalizeUsPhone, invalidateLeadsBaseCache } from "@/lib/airtable/leads-base";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { normalizeLeadView } from "@/lib/leads/view";
 import { buildLeadFormula } from "@/lib/leads/query";
@@ -206,6 +206,7 @@ export async function POST(request: Request) {
       }
       created += data.records?.length ?? records.length;
     }
+    invalidateLeadsBaseCache();
     await logAuditEvent({ actor, action: "leads_imported", category: "leads", resource: { type: "lead_import", label: "CSV import" }, summary: `Imported ${created} leads from CSV`, metadata: { total_rows: validated.length, imported_rows: created, skipped_duplicates: 0, failed_rows: validated.length - created }, request });
     return Response.json({ success: true, created }, { status: 201 });
   }
@@ -223,6 +224,7 @@ export async function POST(request: Request) {
     await logAuditEvent({ actor, action: "action_failed", category: "leads", resource: { type: "lead", label: validated.name }, summary: "Manual lead creation could not be completed", metadata: { operation: "lead_created" }, result: "failed", request });
     return Response.json({ error: data.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
+  invalidateLeadsBaseCache();
   await logAuditEvent({ actor, action: "lead_created", category: "leads", resource: { type: "lead", id: data.id, label: validated.name }, summary: `Created lead ${validated.name}`, after: { name: validated.name, email: validated.email, phone: validated.phone, source: "Manual Entry", status: "New" }, request });
   return Response.json({ success: true, id: data.id }, { status: 201 });
 }
@@ -268,6 +270,7 @@ export async function PATCH(request: Request) {
     await logAuditEvent({ actor, action: "action_failed", category: "leads", resource: { type: "lead", id: String(id), label: str(beforeFields, "Name") }, summary: "Lead update could not be completed", metadata: { operation: "lead_updated", changed_fields: Object.keys(fields) }, result: "failed", request });
     return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
+  invalidateLeadsBaseCache();
   const fieldNames: Record<string, string> = { Status: "status", Replied: "replied", Name: "name", Email: "email", Phone: "phone", Message: "message", Source: "source", Notes: "notes" };
   const before = Object.fromEntries(Object.keys(fields).map((field) => [fieldNames[field] || field, beforeFields[field] ?? null]));
   const after = Object.fromEntries(Object.entries(fields).map(([field, value]) => [fieldNames[field] || field, value]));
@@ -304,6 +307,7 @@ export async function DELETE(request: Request) {
     return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
 
+  invalidateLeadsBaseCache();
   await logAuditEvent({ actor, action: "lead_deleted", category: "leads", resource: { type: "lead", id, label: existing ? str(existing.fields, "Name") : null }, summary: `Deleted ${existing ? str(existing.fields, "Name") || "a lead" : "a lead"}`, before: existing ? { name: str(existing.fields, "Name"), email: str(existing.fields, "Email"), phone: str(existing.fields, "Phone"), status: str(existing.fields, "Status"), source: str(existing.fields, "Source") } : undefined, request });
   return Response.json({ success: true });
 }

@@ -1,9 +1,9 @@
-import { fetchAllRecords, str } from "@/lib/airtable/client";
+import { isAirtableConfigured } from "@/lib/airtable/config";
+import { campaignData, summarizeCampaigns } from "@/lib/campaigns/data";
+import { CAMPAIGNS } from "@/lib/campaigns/registry";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 export const dynamic = "force-dynamic";
-
-const CAMPAIGNS_TABLE = "Google Ads Campaigns";
 
 export async function GET(request: Request) {
   try {
@@ -12,41 +12,25 @@ export async function GET(request: Request) {
     return authErrorResponse(error);
   }
 
+  if (!isAirtableConfigured()) {
+    return Response.json({
+      campaigns: CAMPAIGNS.map((item) => ({
+        ...item,
+        totalLeads: 0,
+        activeLeads: 0,
+        completedLeads: 0,
+        messagesSent: 0,
+        lastActivity: null,
+        metrics: {}
+      })),
+      configured: false
+    });
+  }
+
   try {
-    const rawRecords = await fetchAllRecords(CAMPAIGNS_TABLE, new URLSearchParams(), {
-      cache: "no-store",
-    });
-
-    const campaigns = rawRecords.map((record) => {
-      const f = record.fields;
-      const campaignName = str(f, "Campaign Name", "campaignName") || `Campaign ${record.id}`;
-      const campaignId = str(f, "Campaign ID", "campaignId") || record.id;
-      const campaignResourceName = str(f, "Campaign Resource Name", "campaignResourceName");
-      const status = (str(f, "Status", "status") || "ENABLED").toUpperCase();
-      const channelType = (str(f, "Channel Type", "channelType") || "SEARCH").toUpperCase();
-      const lastSyncedAt = str(f, "Last Synced At", "lastSyncedAt", "pulledAt") || record.createdTime;
-      const linkedAdGroups = Array.isArray(f["Google Ads Ad Groups"]) ? f["Google Ads Ad Groups"] : [];
-
-      return {
-        id: record.id,
-        campaignName,
-        name: campaignName,
-        campaignId,
-        campaignResourceName,
-        resourceName: campaignResourceName,
-        status,
-        campaignStatus: status,
-        channelType,
-        lastSyncedAt,
-        pulledAt: lastSyncedAt,
-        googleAdsAdGroups: linkedAdGroups,
-        adGroupsCount: linkedAdGroups.length,
-      };
-    });
-
-    return Response.json({ campaigns, data: campaigns });
+    const campaigns = summarizeCampaigns(await campaignData());
+    return Response.json({ campaigns });
   } catch (error) {
-    console.error("[airtable/campaigns] Failed to fetch campaigns:", error);
-    return Response.json({ error: "Could not load Google Ads campaigns data" }, { status: 500 });
+    return Response.json({ error: "Could not load campaign data" }, { status: 500 });
   }
 }

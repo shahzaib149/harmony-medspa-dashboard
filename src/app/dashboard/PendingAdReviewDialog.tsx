@@ -178,7 +178,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
     if (!selectedAdId) return;
     let cancelled = false;
     setCampaignsLoading(true);
-    void fetch("/api/airtable/campaigns", { credentials: "same-origin", cache: "no-store" })
+    void fetch("/api/airtable/google-ads-campaigns", { credentials: "same-origin", cache: "no-store" })
       .then((res) => res.json())
       .then((data: { campaigns?: Array<{ id: string; campaignId: string; campaignName: string; status: string }> }) => {
         if (cancelled) return;

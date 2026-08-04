@@ -344,7 +344,7 @@ async function loadWorkspaceSnapshot(
     `/api/google-ads/workspace?days=${days}${viewQuery}${force ? "&refresh=1" : ""}`,
   );
   const airtableCampaignsPromise = getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
-    `/api/airtable/campaigns`,
+    `/api/airtable/google-ads-campaigns`,
   ).catch(() => null);
   const airtableAdGroupsPromise = getJson<{ adGroups?: AdGroup[]; data?: AdGroup[] }>(
     `/api/airtable/ad-groups`,

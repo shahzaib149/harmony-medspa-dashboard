@@ -191,7 +191,7 @@ export default function CampaignsClient() {
               key={campaign.slug}
               href={`/campaigns/${campaign.slug}`}
               className="block rounded-2xl border p-4 transition-colors hover:bg-white/[.02] sm:p-5"
-              style={{ background: PANEL, borderColor: `${campaign.accent}33` }}
+              style={{ background: PANEL, borderColor: `${campaign.accent ?? "#C9A84C"}33` }}
             >
               <article>
                 <div className="flex items-start justify-between gap-3">
@@ -199,8 +199,8 @@ export default function CampaignsClient() {
                     <div
                       className="grid size-11 shrink-0 place-items-center rounded-xl"
                       style={{
-                        background: `${campaign.accent}18`,
-                        color: campaign.accent,
+                        background: `${campaign.accent ?? "#C9A84C"}18`,
+                        color: campaign.accent ?? "#C9A84C",
                       }}
                     >
                       {campaign.slug === "speed-to-lead" ? (
@@ -230,10 +230,12 @@ export default function CampaignsClient() {
                   className="mt-4 flex flex-wrap gap-2 text-[11px]"
                   style={{ color: MUTED }}
                 >
-                  <span className="rounded-full bg-white/5 px-2 py-1">
-                    {campaign.type}
-                  </span>
-                  {campaign.channels.map((channel) => (
+                  {campaign.type && (
+                    <span className="rounded-full bg-white/5 px-2 py-1">
+                      {campaign.type}
+                    </span>
+                  )}
+                  {(campaign.channels ?? []).map((channel) => (
                     <span
                       key={channel}
                       className="rounded-full bg-white/5 px-2 py-1"

@@ -1,6 +1,6 @@
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
-import { airtableFetch, linkedIds, listRecords, safeAirtableError, textField } from "@/lib/airtable/leads-base";
+import { airtableFetch, linkedIds, listRecords, safeAirtableError, textField, invalidateLeadsBaseCache } from "@/lib/airtable/leads-base";
 
 async function remove(table: string, ids: string[]) {
   let deleted = 0;
@@ -30,6 +30,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const response = await airtableFetch(`${encodeURIComponent("Leads")}/${id}`, { method: "DELETE" });
     if (!response.ok) throw new Error(`Lead: ${safeAirtableError(response.status)}`);
     result.leadDeleted = true;
+    invalidateLeadsBaseCache();
     await logAuditEvent({ actor, action: "lead_deleted", category: "leads", resource: { type: "lead", id, label }, summary: `Permanently deleted ${label || "a lead"} and linked activity`, before: lead ? { name: label, email: textField(lead.fields, "Email"), phone: textField(lead.fields, "Phone"), status: textField(lead.fields, "Status") } : undefined, metadata: result, request });
     return Response.json(result);
   } catch (error) {

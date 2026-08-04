@@ -56,7 +56,22 @@ export async function airtableFetch(path: string, init?: RequestInit) {
   throw new Error("Airtable request failed");
 }
 
-export async function listRecords(table: string, params = new URLSearchParams()) {
+const listRecordsCache = new Map<string, { records: AirtableRecord[]; expiresAt: number }>();
+const LIST_CACHE_TTL_MS = 60_000;
+
+export function invalidateLeadsBaseCache() {
+  listRecordsCache.clear();
+}
+
+export async function listRecords(table: string, params = new URLSearchParams(), options: { forceRefresh?: boolean } = {}) {
+  const cacheKey = `${table}:${params.toString()}`;
+  if (!options.forceRefresh) {
+    const cached = listRecordsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.records;
+    }
+  }
+
   const records: AirtableRecord[] = [];
   let offset: string | undefined;
   do {
@@ -69,6 +84,8 @@ export async function listRecords(table: string, params = new URLSearchParams())
     records.push(...data.records);
     offset = data.offset;
   } while (offset);
+
+  listRecordsCache.set(cacheKey, { records, expiresAt: Date.now() + LIST_CACHE_TTL_MS });
   return records;
 }
 

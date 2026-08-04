@@ -4,6 +4,7 @@ import {
   linkedIds,
   safeAirtableError,
   textField,
+  invalidateLeadsBaseCache,
   type AirtableRecord,
 } from "@/lib/airtable/leads-base";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
@@ -218,6 +219,7 @@ export async function PATCH(
     );
   }
 
+  invalidateLeadsBaseCache();
   await logAuditEvent({
     actor,
     action:
@@ -292,6 +294,7 @@ export async function DELETE(
     );
   }
 
+  invalidateLeadsBaseCache();
   await logAuditEvent({
     actor,
     action: "orphan_enrollment_deleted",

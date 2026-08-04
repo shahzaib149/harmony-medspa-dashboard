@@ -6,6 +6,7 @@ import {
   listRecords,
   mapLead,
   normalizeUsPhone,
+  invalidateLeadsBaseCache,
   type AirtableRecord,
 } from "@/lib/airtable/leads-base";
 import {
@@ -666,6 +667,7 @@ export async function POST(request: Request) {
     result.summary.failed = result.failed.length;
     result.success = result.failed.length === 0;
     result.partial = result.enrolled.length > 0 && result.failed.length > 0;
+    if (result.enrolled.length > 0) invalidateLeadsBaseCache();
     await settleClaims(requestId, schedule.scheduledAtUtc, completedClaims, releaseKeys);
     auditResult(actor, request, result);
     return Response.json(result, { status: responseStatus(result), headers: { "Cache-Control": "no-store", "X-Request-Id": requestId } });

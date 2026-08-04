@@ -127,19 +127,50 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
   }, [cleanupToast]);
   const visible = useMemo(
     () =>
-      data?.leads.filter((item) => {
-        const nurture = "airtableRecordId" in item,
-          lead = nurture ? item.lead : item,
-          itemStatus = nurture ? item.status : item.status,
-          itemStep = nurture ? item.currentStep : "",
-          haystack =
-            `${lead?.name ?? ""} ${lead?.email ?? ""} ${lead?.phone ?? ""}`.toLowerCase();
-        return (
-          (status === "All" || itemStatus === status) &&
-          (step === "All" || itemStep === step) &&
-          haystack.includes(query.toLowerCase())
-        );
-      }) ?? [],
+      data?.leads
+        .filter((item) => {
+          const nurture = "airtableRecordId" in item,
+            lead = nurture ? item.lead : item,
+            itemStatus = nurture ? item.status : item.status,
+            itemStep = nurture ? item.currentStep : "",
+            haystack =
+              `${lead?.name ?? ""} ${lead?.email ?? ""} ${lead?.phone ?? ""}`.toLowerCase();
+          return (
+            (status === "All" || itemStatus === status) &&
+            (step === "All" || itemStep === step) &&
+            haystack.includes(query.toLowerCase())
+          );
+        })
+        .sort((a, b) => {
+          const statusRank = (item: typeof a) => {
+            const itemStatus = "airtableRecordId" in item ? item.status : item.status;
+            if (itemStatus === "Active") return 1;
+            if (itemStatus === "Stopped") return 2;
+            if (itemStatus === "Completed") return 3;
+            return 4;
+          };
+          const rankA = statusRank(a);
+          const rankB = statusRank(b);
+          if (rankA !== rankB) return rankA - rankB;
+
+          const getTime = (item: typeof a) => {
+            if ("airtableRecordId" in item) {
+              const next = Date.parse(item.nextSendAt || "");
+              if (item.status === "Active" && Number.isFinite(next)) return next;
+              const last = Date.parse(item.lastSentAt || item.createdAt || "");
+              return Number.isFinite(last) ? last : 0;
+            }
+            const last = Date.parse(item.lastContactedAt || item.createdAt || "");
+            return Number.isFinite(last) ? last : 0;
+          };
+
+          const timeA = getTime(a);
+          const timeB = getTime(b);
+          if (rankA === 1) {
+            return timeA - timeB;
+          }
+          return timeB - timeA;
+        }) ?? [],
     [data, query, status, step],
   );
   const disconnectedEnrollments = useMemo(
