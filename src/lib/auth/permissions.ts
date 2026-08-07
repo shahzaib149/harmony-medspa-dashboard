@@ -7,6 +7,8 @@ export type PermissionAction =
   | "view:ads"
   | "approve:ads"
   | "view:settings"
+  | "view:blogs"
+  | "manage:blogs"
   | "manage:users"
   | "toggle:automations";
 
@@ -35,11 +37,13 @@ const permissions: Record<Role, PermissionAction[]> = {
     "view:ads",
     "approve:ads",
     "view:settings",
+    "view:blogs",
+    "manage:blogs",
     "manage:users",
     "toggle:automations",
   ],
-  editor: ["view:leads", "update:leads", "delete:leads", "view:ads"],
-  viewer: ["view:leads", "view:ads"],
+  editor: ["view:leads", "update:leads", "delete:leads", "view:ads", "view:blogs", "manage:blogs"],
+  viewer: ["view:leads", "view:ads", "view:blogs"],
 };
 
 export function isRole(value: unknown): value is Role {

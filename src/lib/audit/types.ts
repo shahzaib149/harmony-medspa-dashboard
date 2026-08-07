@@ -14,6 +14,7 @@ export const AUDIT_CATEGORIES = [
   "google_ads",
   "exports",
   "integrations",
+  "blogs",
   "system",
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];

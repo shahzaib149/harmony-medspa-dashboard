@@ -1,0 +1,4 @@
+interface:
+  display_name: "Harmony Dashboard Context"
+  short_description: "Build and maintain the Harmony growth dashboard"
+  default_prompt: "Use $harmony-dashboard-context to understand this project before making or explaining changes."

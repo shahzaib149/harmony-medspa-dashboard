@@ -19,6 +19,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Keep the local development cache separate from production builds. Running
+  // `next build` while the dashboard is open can otherwise replace Webpack's
+  // live assets and surface a generic browser "Failed to fetch" error.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   compress: true,
   poweredByHeader: false,
   images: {

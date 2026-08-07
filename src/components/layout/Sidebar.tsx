@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
+  BookOpenText,
   LogOut,
   Megaphone,
   Settings,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/google-ads-analytics", label: "Google Ads", icon: TrendingUp },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+  { href: "/blogs", label: "Blogs", icon: BookOpenText },
   { href: "/audit-log", label: "Audit Log", icon: ScrollText, adminOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
   // Google Business — hidden until GBP API access is granted. See docs/google-business-profile.md
