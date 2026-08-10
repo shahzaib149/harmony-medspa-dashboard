@@ -192,6 +192,7 @@ export default function LoginPage() {
           .login-background {
             object-fit: contain;
             object-position: center center;
+            transform: scale(1.16);
           }
 
           [data-theme="light"] .login-image-treatment {
