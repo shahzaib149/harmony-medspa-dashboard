@@ -71,6 +71,15 @@ export default function LoginPage() {
     <main className="login-shell relative flex h-dvh min-h-[100svh] items-center justify-center overflow-x-hidden overflow-y-auto px-4 py-4 md:justify-start md:px-[clamp(2rem,7vw,8rem)] lg:overflow-hidden">
       <Image
         src="/images/login/harmony-waiting-room-background-2026.webp"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="login-background-backdrop hidden object-cover md:block"
+        aria-hidden="true"
+      />
+      <Image
+        src="/images/login/harmony-waiting-room-background-2026.webp"
         alt="Harmony MedSpa waiting room in Sarasota"
         fill
         priority
@@ -83,6 +92,14 @@ export default function LoginPage() {
         .login-shell {
           isolation: isolate;
           background: #181613;
+        }
+
+        .login-background-backdrop {
+          z-index: -3;
+          object-position: center;
+          filter: blur(22px) brightness(0.72) saturate(0.92);
+          opacity: 0.82;
+          transform: scale(1.05);
         }
 
         .login-background {
@@ -173,16 +190,17 @@ export default function LoginPage() {
 
         @media (min-width: 768px) {
           .login-background {
+            object-fit: contain;
             object-position: center center;
           }
 
           [data-theme="light"] .login-image-treatment {
             background: linear-gradient(
               90deg,
-              rgba(245, 241, 233, 0.82) 0%,
-              rgba(236, 229, 217, 0.68) 30%,
-              rgba(31, 28, 24, 0.1) 62%,
-              rgba(20, 18, 16, 0.24) 100%
+              rgba(245, 241, 233, 0.48) 0%,
+              rgba(236, 229, 217, 0.3) 30%,
+              rgba(31, 28, 24, 0.05) 62%,
+              rgba(20, 18, 16, 0.12) 100%
             );
           }
 
