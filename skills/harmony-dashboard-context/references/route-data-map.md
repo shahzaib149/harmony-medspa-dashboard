@@ -1,6 +1,6 @@
 # Harmony Dashboard Route, Data, Permission, and File Map
 
-Last verified: August 7, 2026.
+Last verified: August 10, 2026.
 
 ## Contents
 

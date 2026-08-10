@@ -1,6 +1,6 @@
 # My Harmony MedSpa Dashboard: What I Built and Where I Am
 
-Last verified against the repository: August 7, 2026.
+Last verified against the repository: August 10, 2026.
 
 ## Contents
 
@@ -236,9 +236,9 @@ Entering a primary keyword prepares editable technical SEO suggestions, while th
 
 The reviewed launch package is `content/blog-drafts.json`. It contains five evergreen, 1,000-plus-word articles with six FAQs each, permanent images, source URLs, and medical-claim safeguards. All five were imported and verified as Airtable Draft records on August 7, 2026. The import script and authenticated UI importer are idempotent by slug and force Draft status.
 
-The public website is the separate sibling project `D:\HarmonyDashboard\harmony-medspa`, deployed at `https://harmony-medspa.vercel.app`. It keeps all legacy static blog pages and merges new Published Airtable articles into `/blog`. The dynamic `/blog/[slug]` route generates metadata, canonical, Open Graph/Twitter data, BlogPosting and BreadcrumbList JSON-LD, visible article blocks/FAQs, related links, and CTA. Published records enter `sitemap.xml`; Draft records never render publicly.
+The public website is the separate sibling project `D:\HarmonyDashboard\harmony-medspa`, deployed at `https://harmony-medspa.vercel.app`. It keeps all legacy static blog pages and merges new Published Airtable articles into `/blog`. The dynamic `/blog/[slug]` route generates metadata, canonical, Open Graph/Twitter data, BlogPosting and BreadcrumbList JSON-LD, visible article blocks/FAQs, related links, and CTA. Its visual markup deliberately copies the established legacy blog-detail template: typewriter hero and H2 headings, lede image placement, article typography, flat numbered FAQs, image-backed sidebar cards, responsive layout, and standard footer. Do not redesign existing legacy pages or the blog list when changing CMS rendering. Published records enter `sitemap.xml`; Draft records never render publicly.
 
-Manual publish, update, and unpublish actions call the website's authenticated `/api/blogs/revalidate` endpoint. The public site also has a five-minute cache fallback. Production requires server-side Airtable variables in the website project and the same strong `BLOG_REVALIDATE_SECRET` in both Vercel projects. Content creation and publishing are never automated.
+Manual publish, update, and unpublish actions call the website's authenticated `/api/blogs/revalidate` endpoint. The public site also has a five-minute cache fallback. The dashboard reports a warning rather than a false success when the public refresh is unavailable. Production requires server-side Airtable variables in the website project and the same strong `BLOG_REVALIDATE_SECRET` in both Vercel projects. Content creation and publishing are never automated.
 
 ### Google Ads: `/google-ads-analytics`
 

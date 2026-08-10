@@ -394,7 +394,10 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
     setLoadError("");
     try {
       const response = await fetch(`/api/airtable/blogs/${recordId}`, { cache: "no-store" });
-      const body = await response.json() as { blog?: BlogRecord; error?: string };
+      const body = await response.json() as {
+        blog?: BlogRecord;
+        error?: string;
+      };
       if (!response.ok || !body.blog) throw new Error(body.error || "Blog article could not be loaded.");
       const input = recordToInput(body.blog);
       setRecord(body.blog);
@@ -505,14 +508,27 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = await response.json() as { blog?: BlogRecord; error?: string };
+      const body = await response.json() as {
+        blog?: BlogRecord;
+        error?: string;
+        publicationSync?: { ok: boolean; skipped?: boolean; message?: string };
+      };
       if (!response.ok || !body.blog) throw new Error(body.error || "Blog article could not be saved.");
       const input = recordToInput(body.blog);
       setRecord(body.blog);
       setBlog(input);
       setOriginal(JSON.stringify(input));
       setConfirmAction(null);
-      setToast({ variant: "success", message: status === "Published" ? "Article published manually." : "Draft saved to Airtable." });
+      const publicSyncFailed = body.publicationSync && !body.publicationSync.ok;
+      setToast(publicSyncFailed
+        ? {
+            variant: "warning",
+            message: `${status === "Published" ? "Published in Airtable" : "Saved as a draft"}, but the public website refresh is pending. ${body.publicationSync?.message || "Check the website publishing configuration."}`,
+          }
+        : {
+            variant: "success",
+            message: status === "Published" ? "Article published and the public website was refreshed." : "Draft saved to Airtable.",
+          });
       if (mode === "new") router.replace(`/blogs/${body.blog.id}`);
       router.refresh();
     } catch (event) {

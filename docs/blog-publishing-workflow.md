@@ -24,6 +24,10 @@ After the Airtable table exists, an editor can open `/blogs` and select **Import
 5. The dashboard calls the public website's authenticated revalidation endpoint.
 6. The website purges its published-blog cache, adds the article to `/blog`, serves `/blog/{slug}`, and includes the URL in `sitemap.xml`.
 
+The dashboard confirms when the public refresh succeeds. If revalidation is missing or fails, Airtable keeps the saved publication state but the editor receives a warning that the website refresh is pending instead of a false all-clear message.
+
+New CMS detail pages deliberately reuse the established legacy blog-detail presentation: the same typewriter hero and section headings, content width and typography, lede image placement, flat FAQ treatment, image-backed sidebar cards, responsive behavior, and standard footer. Existing legacy blog files and the blog-list UI remain unchanged.
+
 Moving the record back to Draft follows the same revalidation path, causing the dynamic article to return 404 and disappear from the CMS portion of the blog index and sitemap.
 
 ## Shared environment variables
