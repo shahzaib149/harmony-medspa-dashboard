@@ -70,7 +70,7 @@ export default function LoginPage() {
   return (
     <main className="login-shell relative flex h-dvh min-h-[100svh] items-center justify-center overflow-x-hidden overflow-y-auto px-4 py-4 md:justify-start md:px-[clamp(2rem,7vw,8rem)] lg:overflow-hidden">
       <Image
-        src="/images/login/harmony-waiting-room-login.webp"
+        src="/images/login/harmony-waiting-room-background-2026.webp"
         alt="Harmony MedSpa waiting room in Sarasota"
         fill
         priority
