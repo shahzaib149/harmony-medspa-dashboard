@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CircleHelp,
   Code2,
+  Eye,
   Heading2,
   Heading3,
   ImagePlus,
@@ -556,7 +557,12 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
     <div className="blog-studio blog-editor space-y-4">
       {toast && <Toast variant={toast.variant} message={toast.message} onClose={() => setToast(null)} />}
       <div className="blog-editor-toolbar">
-        <Link href="/blogs" className="blog-back-link"><ArrowLeft size={17} /> Blog library</Link>
+        <div className="blog-editor-toolbar-links">
+          <Link href="/blogs" className="blog-back-link"><ArrowLeft size={17} /> Blog library</Link>
+          {mode === "edit" && recordId && (
+            <Link href={`/blogs/${recordId}`} className="blog-editor-preview-link"><Eye size={16} /> Preview</Link>
+          )}
+        </div>
         <div className="blog-editor-toolbar-meta">
           {dirty && <span className="blog-unsaved-badge">Unsaved changes</span>}
           <span className="blog-word-count">{validation.wordCount.toLocaleString()} words</span>
