@@ -5,8 +5,6 @@ import {
   ArrowRight,
   BookOpenText,
   FileText,
-  Loader2,
-  PackagePlus,
   PenLine,
   Plus,
   Search,
@@ -43,8 +41,6 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
   const [category, setCategory] = useState("All");
-  const [importing, setImporting] = useState(false);
-  const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,24 +58,6 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-
-  const importLaunchDrafts = useCallback(async () => {
-    if (!window.confirm("Import the five reviewed launch articles as Airtable drafts? Existing slugs will be skipped.")) return;
-    setImporting(true);
-    setError("");
-    setNotice("");
-    try {
-      const response = await fetch("/api/airtable/blogs/import", { method: "POST" });
-      const body = await response.json() as { created?: BlogSummary[]; skipped?: string[]; error?: string };
-      if (!response.ok) throw new Error(body.error || "Launch drafts could not be imported.");
-      setNotice(`Imported ${body.created?.length || 0} drafts${body.skipped?.length ? `; skipped ${body.skipped.length} existing article(s)` : ""}.`);
-      await load();
-    } catch (event) {
-      setError(event instanceof Error ? event.message : "Launch drafts could not be imported.");
-    } finally {
-      setImporting(false);
-    }
-  }, [load]);
 
   const categories = useMemo(
     () => [...new Set(blogs.map((blog) => blog.category).filter(Boolean))].sort(),
@@ -112,13 +90,8 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
           {canManage && (
             <div className="blog-library-actions">
               <Link href="/blogs/new" className="blog-primary-action"><Plus size={16} /> Create article</Link>
-              <button type="button" className="blog-secondary-action" disabled={importing} onClick={() => void importLaunchDrafts()}>
-                {importing ? <Loader2 className="animate-spin" size={16} /> : <PackagePlus size={16} />}
-                {importing ? "Importing drafts" : "Import launch drafts"}
-              </button>
             </div>
           )}
-          {notice && <p className="blog-import-notice" role="status">{notice}</p>}
         </div>
 
         <div className="blog-library-ledger" aria-label="Blog library summary">
