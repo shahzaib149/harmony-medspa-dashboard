@@ -1,5 +1,6 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { fetchGoogleAdsWorkspace } from "@/lib/google/ads-client";
+import { reportingDateRange } from "@/lib/google/ads-normalization";
 
 const WORKSPACE_TTL_MS = 2 * 60 * 1000;
 type WorkspacePayload = Awaited<ReturnType<typeof fetchGoogleAdsWorkspace>>;
@@ -62,7 +63,7 @@ function paginatedAds(
     : 25;
   const page = Math.max(0, Number(searchParams.get("page") || 0) || 0);
   const search = (searchParams.get("search") || "").trim().toLowerCase();
-  const status = (searchParams.get("status") || "").trim().toUpperCase();
+  const status = (searchParams.get("status") || "ENABLED").trim().toUpperCase();
   const campaign = searchParams.get("campaign") || "";
   const sort = searchParams.get("sort") || "spend";
   const filtered = data.ads.filter((item) => {
@@ -106,14 +107,7 @@ function paginatedAds(
   };
 }
 
-function dateRange(days: number) {
-  const safeDays = [7, 14, 30, 90].includes(days) ? days : 30;
-  const to = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - safeDays * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  return { from, to };
-}
+const dateRange = reportingDateRange;
 
 export async function GET(request: Request) {
   try {

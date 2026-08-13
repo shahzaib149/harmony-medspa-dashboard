@@ -24,6 +24,8 @@ export const config = {
     "/google-ads-analytics",
     "/google-ads/:path*",
     "/google-ads",
+    "/website-analytics/:path*",
+    "/website-analytics",
     "/ai-insights/:path*",
     "/ai-insights",
     "/settings/:path*",

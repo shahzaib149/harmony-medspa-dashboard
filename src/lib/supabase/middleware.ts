@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
-const protectedRoutePattern = /^\/(dashboard|leads|campaigns|nurture|message-logs|google-ads-analytics|ai-insights|settings|audit-log|google-business)(\/.*)?$/;
+const protectedRoutePattern = /^\/(dashboard|leads|campaigns|nurture|message-logs|google-ads-analytics|website-analytics|ai-insights|settings|audit-log|google-business)(\/.*)?$/;
 
 function hasSupabaseAuthCookie(request: NextRequest) {
   return request.cookies.getAll().some((cookie) => (

@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -86,6 +87,8 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
     [step, setStep] = useState("All"),
     [stopTarget, setStopTarget] = useState<NurtureEnrollment | null>(null),
     [stopping, setStopping] = useState(false),
+    [removeTarget, setRemoveTarget] = useState<NurtureEnrollment | null>(null),
+    [removing, setRemoving] = useState(false),
     [conversation, setConversation] = useState<Conversation | null>(null),
     [cleanup, setCleanup] = useState<{
       open: boolean;
@@ -219,6 +222,47 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
       setError(
         `Could not stop nurture for ${target.lead?.name ?? "this Lead"}. Try again.`,
       );
+  }
+  async function removeEnrollment() {
+    if (!removeTarget) return;
+    setRemoving(true);
+    setError("");
+    const target = removeTarget;
+    try {
+      const response = await fetch(
+        `/api/airtable/nurture-enrollments/${target.airtableRecordId}`,
+        { method: "DELETE" },
+      );
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error || "The enrollment could not be removed");
+      }
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              leads: current.leads.filter(
+                (item) =>
+                  !("airtableRecordId" in item) ||
+                  item.airtableRecordId !== target.airtableRecordId,
+              ),
+            }
+          : current,
+      );
+      setRemoveTarget(null);
+      setCleanupToast(
+        `${target.lead?.name ?? "Lead"} was removed from 14-Day Nurture.`,
+      );
+      window.setTimeout(() => void load(false), 0);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : `Could not remove ${target.lead?.name ?? "this Lead"} from the campaign.`,
+      );
+    } finally {
+      setRemoving(false);
+    }
   }
   if (loading)
     return (
@@ -388,13 +432,16 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
           status={status}
           step={step}
           stopping={stopping}
+          removing={removing}
           canAdd={role === "admin"}
+          canRemove={role === "admin"}
           canManageCleanup={role === "admin"}
           onQuery={setQuery}
           onStatus={setStatus}
           onStep={setStep}
           onAdd={() => setAddOpen(true)}
           onStop={setStopTarget}
+          onRemove={setRemoveTarget}
           onOpenCleanup={(enrollmentId = null, action = "review") =>
             setCleanup({ open: true, enrollmentId, action })
           }
@@ -479,6 +526,21 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
           Current step: <b>{stopTarget?.currentStep || "Not available"}</b>
         </p>
       </DestructiveConfirmDialog>
+      <DestructiveConfirmDialog
+        open={Boolean(removeTarget)}
+        title={`Remove ${removeTarget?.lead?.name ?? "this Lead"} from 14-Day Nurture?`}
+        description="This deletes the campaign enrollment, so no future nurture messages will be scheduled. The Lead and all existing communication history will remain available."
+        confirmLabel="Remove from campaign"
+        loading={removing}
+        loadingLabel="Removing…"
+        onCancel={() => setRemoveTarget(null)}
+        onConfirm={() => void removeEnrollment()}
+      >
+        <p>
+          Current step: <b>{removeTarget?.currentStep || "Not available"}</b>
+        </p>
+        <p className="mt-2">The Lead can be enrolled again later.</p>
+      </DestructiveConfirmDialog>
       {conversation && (
         <ConversationDrawer
           conversation={conversation}
@@ -505,13 +567,16 @@ function CampaignLeadsPanel(props: {
   status: string;
   step: string;
   stopping: boolean;
+  removing: boolean;
   canAdd: boolean;
+  canRemove: boolean;
   canManageCleanup: boolean;
   onQuery: (v: string) => void;
   onStatus: (v: string) => void;
   onStep: (v: string) => void;
   onAdd: () => void;
   onStop: (item: NurtureEnrollment) => void;
+  onRemove: (item: NurtureEnrollment) => void;
   onOpenCleanup: (
     enrollmentId?: string | null,
     action?: CleanupAction,
@@ -662,7 +727,10 @@ function CampaignLeadsPanel(props: {
           items={visibleValid}
           messages={props.messages}
           stopping={props.stopping}
+          removing={props.removing}
+          canRemove={props.canRemove}
           onStop={props.onStop}
+          onRemove={props.onRemove}
         />
       )}
     </div>
@@ -793,17 +861,31 @@ function NurtureOperationalTable({
   items,
   messages,
   stopping,
+  removing,
+  canRemove,
   onStop,
+  onRemove,
 }: {
   items: NurtureEnrollment[];
   messages: MessageLog[];
   stopping: boolean;
+  removing: boolean;
+  canRemove: boolean;
   onStop: (item: NurtureEnrollment) => void;
+  onRemove: (item: NurtureEnrollment) => void;
 }) {
   const router = useRouter(),
     [menu, setMenu] = useState<string | null>(null);
   function open(item: NurtureEnrollment) {
     if (item.lead) router.push(`/leads?lead=${item.lead.id}`);
+  }
+  function requestStop(item: NurtureEnrollment) {
+    setMenu(null);
+    onStop(item);
+  }
+  function requestRemove(item: NurtureEnrollment) {
+    setMenu(null);
+    onRemove(item);
   }
   return (
     <>
@@ -862,10 +944,19 @@ function NurtureOperationalTable({
                       {item.status === "Active" && (
                         <button
                           disabled={stopping}
-                          onClick={() => onStop(item)}
+                          onClick={() => requestStop(item)}
                           className="min-h-11 w-full rounded-lg px-3 text-left text-xs text-[#F58A91]"
                         >
                           Stop Nurture
+                        </button>
+                      )}
+                      {canRemove && (
+                        <button
+                          disabled={removing}
+                          onClick={() => requestRemove(item)}
+                          className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-xs text-[#F58A91]"
+                        >
+                          <Trash2 size={14} /> Remove from Campaign
                         </button>
                       )}
                     </div>
@@ -1053,10 +1144,19 @@ function NurtureOperationalTable({
                         {item.status === "Active" && (
                           <button
                             disabled={stopping}
-                            onClick={() => onStop(item)}
+                            onClick={() => requestStop(item)}
                             className="block w-full rounded-lg px-3 py-2 text-left text-xs text-[#F58A91]"
                           >
                             Stop Nurture
+                          </button>
+                        )}
+                        {canRemove && (
+                          <button
+                            disabled={removing}
+                            onClick={() => requestRemove(item)}
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#F58A91]"
+                          >
+                            <Trash2 size={14} /> Remove from Campaign
                           </button>
                         )}
                       </div>

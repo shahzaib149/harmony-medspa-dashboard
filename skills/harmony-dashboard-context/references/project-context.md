@@ -1,6 +1,6 @@
 # My Harmony MedSpa Dashboard: What I Built and Where I Am
 
-Last verified against the repository: August 10, 2026.
+Last verified against the repository: August 12, 2026.
 
 ## Contents
 
@@ -45,6 +45,7 @@ The main authenticated navigation contains:
 
 - Overview
 - Google Ads
+- Website Analytics
 - Leads
 - Campaigns
 - Blogs
@@ -86,7 +87,6 @@ I currently use Supabase for:
 - active/inactive staff access
 - append-only `public.audit_logs`
 - server-only `public.campaign_enrollment_claims` idempotency records
-- optional `google_ads_snapshots` written by the sync route
 
 The broad tables in `supabase/migrations/001_initial_schema.sql` describe an earlier or future Supabase-backed model. They do not mean live leads, nurture activity, clinic metrics, or advertising analytics have moved out of Airtable.
 
@@ -248,6 +248,14 @@ It supports 7-, 14-, 30-, and 90-day windows and combines Airtable reporting sna
 
 Metrics include spend, impressions, clicks, CTR, conversions, CPA/CPL, ROAS when conversion value exists, budgets, quality score, policy/approval status, and last synchronization time.
 
+### Website Analytics: `/website-analytics`
+
+I built a viewer-protected GA4 reporting workspace that queries the Google Analytics Data API directly with a two-minute server cache. It supports 7-, 14-, 30-, and 90-day windows and preserves the selected range and hostname in the URL.
+
+It reports active and new visitors, sessions, page views, engagement rate, bounce rate, average engagement time, `generate_lead` events, visit-to-lead rate, daily trends, acquisition sources/campaigns, devices, top pages, and tracked web streams.
+
+The hostname selector separates the legacy `www.harmonymedspafl.com` site from `harmony-medspa.vercel.app` even when both send data to the same GA4 property. If separate web streams are used, the workspace also surfaces stream names and IDs. Until the numeric property ID and read-only service-account credentials are configured, the page renders an actionable setup state instead of failing.
+
 ### Audit Log: `/audit-log`
 
 I built an admin-only Supabase activity viewer with server pagination, search, detailed filters, summary cards, desktop/mobile layouts, sanitized before/after details, safe metadata, and CSV export capped at 5,000 records.
@@ -320,6 +328,7 @@ The tests cover:
 - campaign progress logic
 - lead views, summaries, and duplicates
 - Google Ads normalization, IDs, inventory merging, and responsive contracts
+- GA4 normalization, hostname separation, rate calculations, and responsive route contracts
 - conversion tracking
 - pending-ad limits, pinning, approvals, phone rules, and webhook separation
 - blog SEO generation, FAQ validation, draft-package integrity, authorization, and manual publication state
@@ -368,7 +377,7 @@ Older standalone Message Logs and Nurture components remain, but their page URLs
 
 ## 10. Where I am now
 
-I am past the prototype stage. The core dashboard has real authentication, roles, live Airtable operations, campaign management, a manual blog CMS connected to the public website, Google Ads reporting and publishing, staff administration, audit history, responsive layouts, themes, and tests.
+I am past the prototype stage. The core dashboard has real authentication, roles, live Airtable operations, campaign management, a manual blog CMS connected to the public website, Google Ads reporting and publishing, a GA4 Website Analytics workspace ready for credentials, staff administration, audit history, responsive layouts, themes, and tests.
 
 My current work is production hardening and integration completion:
 

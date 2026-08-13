@@ -1,6 +1,6 @@
 # Harmony Dashboard Route, Data, Permission, and File Map
 
-Last verified: August 10, 2026.
+Last verified: August 12, 2026.
 
 ## Contents
 
@@ -25,7 +25,7 @@ src/lib/analytics/        Google conversion tracking
 src/lib/audit/            Audit types, sanitization, and server inserts
 src/lib/auth/             Roles, permissions, page guards, and API guards
 src/lib/campaigns/        Registry, aggregation, dates, scheduling, and idempotency
-src/lib/google/           Google Ads/GBP clients, normalization, OAuth, pending ads
+src/lib/google/           Google Ads, GA4, and GBP clients, normalization, OAuth, pending ads
 src/lib/leads/            Lead formulas, views, and summary aggregation
 src/lib/make/             Dedicated ad-publishing webhook client
 src/lib/supabase/         Browser, server, service-role, and middleware clients
@@ -63,6 +63,7 @@ Large interactive clients are separated from small authenticated server page wra
 | `/google-ads-analytics/keywords/[criterionId]` | Keyword detail/history | Viewer+ | `EntityPage.tsx`, `EntityDetailClient.tsx` |
 | `/google-ads-analytics/publishing` | Shared Publishing tab | Viewer; publish Admin | `WorkspacePage.tsx` |
 | `/google-ads-analytics/ai-suggestions` | Shared AI Suggestions tab | Viewer; generate Editor; publish Admin | `AISuggestionsTab.tsx` |
+| `/website-analytics` | GA4 website traffic, engagement, acquisition, content, devices, and lead reporting with hostname filters | Viewer+ | `WebsiteAnalyticsClient.tsx`, `WebsiteAnalyticsCharts.tsx` |
 | `/audit-log` | Admin activity viewer | Admin | `AuditLogClient.tsx` |
 | `/settings` | Account, password, theme, staff | Viewer; staff Admin | `SettingsClient.tsx` |
 | `/lead` | Public consultation form | Public | `src/app/lead/page.tsx` |
@@ -140,7 +141,11 @@ Middleware includes protected and compatibility routes. Protected server pages a
 - `POST /api/google-ads/campaign-status` — Editor.
 - `POST /api/google-ads/keywords` — Admin.
 - `POST /api/google-ads/pending-recommendations` — Admin.
-- `GET /api/google-ads/sync` — Editor; writes Supabase snapshots.
+
+### Google Analytics reporting
+
+- `GET /api/google-analytics/overview?days=7|14|30|90&hostname=...` - Viewer; live GA4 Data API reporting with a two-minute server cache and optional hostname isolation.
+- The route returns a safe `GA4_NOT_CONFIGURED` state until the numeric property ID and read-only service-account credentials are configured.
 
 ### Pending ads, approval, and publishing
 
@@ -208,7 +213,6 @@ The generic reporting route accepts field aliases and recomputes ratio metrics a
 | `public.profiles` | role and active access for auth identities |
 | `public.audit_logs` | append-only sanitized activity |
 | `public.campaign_enrollment_claims` | server-only retry/idempotency coordination |
-| `public.google_ads_snapshots` | optional sync-route persistence |
 
 ### Supabase planned or legacy tables
 
@@ -270,6 +274,12 @@ Never print `.env.local` when a presence check is enough.
 - `GOOGLE_ADS_REFRESH_TOKEN`
 - `GOOGLE_ADS_CUSTOMER_ID`
 - `GOOGLE_ADS_MCC_ID` (optional)
+
+### Google Analytics Data API
+
+- `GA4_PROPERTY_ID` - numeric GA4 property ID, not the `G-` measurement ID
+- `GA4_SERVICE_ACCOUNT_EMAIL` - read-only service-account email added as a GA4 property Viewer
+- `GA4_SERVICE_ACCOUNT_PRIVATE_KEY` - server-only JSON key private key with escaped newlines supported
 
 ### Google Business
 
@@ -357,6 +367,14 @@ Restart Next.js after server-variable changes.
 - `src/lib/airtable/pending-ads.ts`
 - `src/app/api/google-ads/**`
 - `src/lib/make/publish-ad.ts`
+
+### Website Analytics
+
+- `src/app/website-analytics/**`
+- `src/app/api/google-analytics/overview/route.ts`
+- `src/lib/google/analytics-client.ts`
+- `src/lib/google/analytics-normalization.ts`
+- `src/lib/google/analytics-types.ts`
 
 ### Audit, settings, lead form, GBP
 

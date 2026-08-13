@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  ChartNoAxesCombined,
   LayoutDashboard,
   BookOpenText,
   LogOut,
@@ -25,6 +26,7 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/google-ads-analytics", label: "Google Ads", icon: TrendingUp },
+  { href: "/website-analytics", label: "Website Analytics", icon: ChartNoAxesCombined },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/blogs", label: "Blogs", icon: BookOpenText },

@@ -1,4 +1,4 @@
-import { fetchAllRecords, str } from "@/lib/airtable/client";
+import { fetchAllRecords, num, str } from "@/lib/airtable/client";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +19,8 @@ export async function GET(request: Request) {
 
     const campaigns = rawRecords.map((record) => {
       const f = record.fields;
-      const campaignName = str(f, "Campaign Name", "campaignName") || `Campaign ${record.id}`;
-      const campaignId = str(f, "Campaign ID", "campaignId") || record.id;
+      const campaignName = str(f, "Campaign Name", "campaignName");
+      const campaignId = str(f, "Campaign ID", "campaignId");
       const campaignResourceName = str(f, "Campaign Resource Name", "campaignResourceName");
       const status = (str(f, "Status", "status") || "ENABLED").toUpperCase();
       const channelType = (str(f, "Channel Type", "channelType") || "SEARCH").toUpperCase();
@@ -38,11 +38,17 @@ export async function GET(request: Request) {
         campaignStatus: status,
         channelType,
         lastSyncedAt,
+        budget: num(f, "Daily Budget", "Budget"),
+        biddingStrategy: str(f, "Bidding Strategy", "Bidding"),
         pulledAt: lastSyncedAt,
         googleAdsAdGroups: linkedAdGroups,
         adGroupsCount: linkedAdGroups.length,
       };
-    });
+    }).filter(
+      (campaign) =>
+        Boolean(campaign.campaignId && campaign.campaignName) &&
+        campaign.campaignStatus !== "REMOVED",
+    );
 
     return Response.json({ campaigns, data: campaigns });
   } catch (error) {

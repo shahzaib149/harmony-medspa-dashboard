@@ -4,6 +4,7 @@ import {
   canonicalAdKey,
   canonicalKeywordKey,
   mergeInventoryAndPerformance,
+  isReportingDateInRange,
   type SnapshotMetric as Summable,
 } from "@/lib/google/ads-normalization";
 
@@ -48,6 +49,20 @@ function pickFilterDate(
     ""
   );
 }
+function pickPerformanceDate(fields: Record<string, unknown>): string {
+  return str(
+    fields,
+    "Date",
+    "date",
+    "Day",
+    "day",
+    "Segment Date",
+    "Reporting Date",
+    "Report Date",
+    "Period",
+  );
+}
+
 
 /** The time Make actually refreshed the row, independent of its reporting day. */
 function pickPulledAt(
@@ -90,7 +105,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const table = searchParams.get("table") as keyof typeof TABLE_NAMES | null;
   const days = Number(searchParams.get("days") ?? 30);
-  const cutoff = new Date(Date.now() - days * 86_400_000);
 
   if (!table || !TABLE_NAMES[table]) {
     return Response.json(
@@ -135,6 +149,7 @@ export async function GET(request: Request) {
         return {
           id: r.id,
           _ts,
+          _performanceDate: pickPerformanceDate(r.fields),
           _key:
             str(
               r.fields,
@@ -248,13 +263,13 @@ export async function GET(request: Request) {
         };
       });
 
-      // Filter to selected date window (skip if record has no timestamp)
-      const filtered = mapped.filter(
-        (r) => !r._ts || new Date(r._ts) >= cutoff,
+      const inventory = mapped.filter((r) => Boolean(r.campaignId || r.campaignName));
+      const filtered = inventory.filter((r) =>
+        isReportingDateInRange(String(r._performanceDate || ""), days),
       );
 
-      // Keep full inventory, but only aggregate metrics from the selected window.
-      const data = mergeInventoryAndPerformance(mapped, filtered);
+      // Keep complete valid inventory, but aggregate metrics only from Date.
+      const data = mergeInventoryAndPerformance(inventory, filtered);
 
       return Response.json({
         table,
@@ -290,6 +305,7 @@ export async function GET(request: Request) {
         return {
           id: r.id,
           _ts,
+          _performanceDate: pickPerformanceDate(r.fields),
           _key:
             str(
               r.fields,
@@ -367,10 +383,11 @@ export async function GET(request: Request) {
         };
       });
 
-      const filtered = mapped.filter(
-        (r) => !r._ts || new Date(r._ts) >= cutoff,
+      const inventory = mapped.filter((r) => Boolean(r.adGroupId || r.adGroupName));
+      const filtered = inventory.filter((r) =>
+        isReportingDateInRange(String(r._performanceDate || ""), days),
       );
-      const data = mergeInventoryAndPerformance(mapped, filtered);
+      const data = mergeInventoryAndPerformance(inventory, filtered);
 
       return Response.json({
         table,
@@ -422,6 +439,7 @@ export async function GET(request: Request) {
         return {
           id: r.id,
           _ts,
+          _performanceDate: pickPerformanceDate(r.fields),
           _key: canonicalAdKey({
             resourceName,
             adId,
@@ -431,7 +449,7 @@ export async function GET(request: Request) {
           adId,
           resourceName,
           adGroupAdResourceName: resourceName,
-          adName: str(r.fields, "adName", "Ad Name", "Ad", "Name"),
+          adName: str(r.fields, "Ad Name") || (adId ? `Ad ${adId}` : "Ad"),
           adType: str(r.fields, "adType", "Ad Type", "Type"),
           accountId,
           campaignId,
@@ -599,10 +617,11 @@ export async function GET(request: Request) {
           _raw: r.fields,
         };
       });
-      const filtered = mapped.filter(
-        (r) => !r._ts || new Date(r._ts) >= cutoff,
+      const inventory = mapped.filter((r) => Boolean(r.adId));
+      const filtered = inventory.filter((r) =>
+        isReportingDateInRange(String(r._performanceDate || ""), days),
       );
-      const data = mergeInventoryAndPerformance(mapped, filtered);
+      const data = mergeInventoryAndPerformance(inventory, filtered);
 
       return Response.json({
         table,
@@ -669,6 +688,7 @@ export async function GET(request: Request) {
         return {
           id: r.id,
           _ts,
+          _performanceDate: pickPerformanceDate(r.fields),
           _key: canonicalKeywordKey({
             resourceName,
             criterionId,
@@ -740,10 +760,11 @@ export async function GET(request: Request) {
         };
       });
 
-      const filtered = mapped.filter(
-        (r) => !r._ts || new Date(r._ts) >= cutoff,
+      const inventory = mapped.filter((r) => Boolean(r.criterionId || r.keywordText));
+      const filtered = inventory.filter((r) =>
+        isReportingDateInRange(String(r._performanceDate || ""), days),
       );
-      const data = mergeInventoryAndPerformance(mapped, filtered);
+      const data = mergeInventoryAndPerformance(inventory, filtered);
 
       return Response.json({
         table,

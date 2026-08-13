@@ -5,6 +5,8 @@ import {
   canonicalAdKey,
   canonicalKeywordKey,
   mergeInventoryAndPerformance,
+  isReportingDateInRange,
+  reportingDateRange,
   type SnapshotMetric,
 } from "../src/lib/google/ads-normalization";
 
@@ -104,4 +106,23 @@ test("inventory entities remain visible when the selected range has no metrics",
   assert.equal(entity.cost, 0);
   assert.equal(entity.impressions, 0);
   assert.equal(entity.conversionValueAvailable, false);
+});
+
+test("reporting ranges contain exactly the selected inclusive calendar days", () => {
+  const now = new Date("2026-08-13T12:00:00.000Z");
+  assert.deepEqual(reportingDateRange(7, now), {
+    from: "2026-08-07",
+    to: "2026-08-13",
+  });
+  assert.equal(isReportingDateInRange("2026-08-07", 7, now), true);
+  assert.equal(isReportingDateInRange("2026-08-13", 7, now), true);
+  assert.equal(isReportingDateInRange("2026-08-06", 7, now), false);
+  assert.equal(isReportingDateInRange("", 7, now), false);
+});
+
+test("unsupported reporting ranges fall back to 30 days", () => {
+  assert.deepEqual(reportingDateRange(365, new Date("2026-08-13T12:00:00.000Z")), {
+    from: "2026-07-15",
+    to: "2026-08-13",
+  });
 });

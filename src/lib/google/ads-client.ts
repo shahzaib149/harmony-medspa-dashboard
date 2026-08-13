@@ -197,7 +197,6 @@ export async function fetchGoogleAdsWorkspace(
           ad_group_ad.ad.responsive_search_ad.path2,
           ad_group_ad.ad_strength
         FROM ad_group_ad
-        WHERE ad_group_ad.status != 'REMOVED'
         ORDER BY campaign.name, ad_group.name
       `),
     adsQuery(`
@@ -206,7 +205,6 @@ export async function fetchGoogleAdsWorkspace(
           metrics.cost_per_conversion, metrics.conversions_value
         FROM ad_group_ad
         WHERE segments.date BETWEEN '${from}' AND '${to}'
-          AND ad_group_ad.status != 'REMOVED'
       `),
     adsQuery(`
         SELECT campaign.id, campaign.resource_name, campaign.name,

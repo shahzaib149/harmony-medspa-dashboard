@@ -131,6 +131,17 @@ export async function GET(request: Request) {
       "OAuth credentials and customer ID configured",
       "/api/auth/google"
     )),
+    Promise.resolve(baseStatus(
+      "google-analytics",
+      "Google Analytics 4",
+      [
+        "GA4_PROPERTY_ID",
+        "GA4_SERVICE_ACCOUNT_EMAIL",
+        "GA4_SERVICE_ACCOUNT_PRIVATE_KEY",
+      ],
+      "GA4 property and read-only reporting credentials configured",
+      "/website-analytics"
+    )),
     Promise.resolve(googleBusinessStatus()),
     Promise.resolve(baseStatus(
       "anthropic",

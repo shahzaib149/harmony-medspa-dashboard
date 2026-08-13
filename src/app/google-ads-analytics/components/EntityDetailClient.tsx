@@ -170,18 +170,49 @@ function Missing({ text, inline = false }: { text: string; inline?: boolean }) {
 
 function DetailSkeleton() {
   return (
-    <div className="animate-pulse space-y-5" aria-label="Loading entity details">
-      <div className="rounded-2xl border p-5" style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }}>
-        <div className="h-4 w-40 rounded" style={{ background: "var(--surface-2)" }} />
-        <div className="mt-4 h-9 max-w-xl rounded-lg" style={{ background: "var(--surface-2)" }} />
-        <div className="mt-3 h-4 max-w-md rounded" style={{ background: "var(--surface-2)" }} />
+    <div
+      className="animate-pulse space-y-5"
+      aria-label="Loading entity details"
+    >
+      <div
+        className="rounded-2xl border p-5"
+        style={{
+          background: "var(--surface-1)",
+          borderColor: "var(--border-subtle)",
+        }}
+      >
+        <div
+          className="h-4 w-40 rounded"
+          style={{ background: "var(--surface-2)" }}
+        />
+        <div
+          className="mt-4 h-9 max-w-xl rounded-lg"
+          style={{ background: "var(--surface-2)" }}
+        />
+        <div
+          className="mt-3 h-4 max-w-md rounded"
+          style={{ background: "var(--surface-2)" }}
+        />
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {Array.from({ length: 8 }, (_, item) => (
-          <div key={item} className="h-24 rounded-2xl border" style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }} />
+          <div
+            key={item}
+            className="h-24 rounded-2xl border"
+            style={{
+              background: "var(--surface-1)",
+              borderColor: "var(--border-subtle)",
+            }}
+          />
         ))}
       </div>
-      <div className="h-72 rounded-2xl border" style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }} />
+      <div
+        className="h-72 rounded-2xl border"
+        style={{
+          background: "var(--surface-1)",
+          borderColor: "var(--border-subtle)",
+        }}
+      />
     </div>
   );
 }
@@ -516,7 +547,12 @@ function PerformanceChart({ history }: { history: HistoryPoint[] }) {
         </p>
       </div>
       <div className="mt-4 h-72">
-        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          minWidth={0}
+          minHeight={0}
+        >
           <LineChart data={history} margin={{ left: -15, right: 10, top: 8 }}>
             <CartesianGrid vertical={false} strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 10 }} />
@@ -582,8 +618,6 @@ function IdentityGrid({ selected }: { selected: SelectedEntity }) {
       rows.push(["Campaign type", labelize(selected.value.channelType)]);
     if (selected.value.budget != null)
       rows.push(["Daily budget", money(selected.value.budget)]);
-    if (selected.value.biddingStrategy)
-      rows.push(["Bidding strategy", labelize(selected.value.biddingStrategy)]);
     if (selected.value.startDate || selected.value.endDate)
       rows.push([
         "Start / end",
@@ -741,6 +775,9 @@ function CreativeView({ ad }: { ad: Creative }) {
   const descriptions = ad.descriptionAssets?.length
     ? ad.descriptionAssets
     : splitAssets(ad.descriptions).map((text) => ({ text }));
+  const hasSynchronizedPreview =
+    headlines.length > 0 &&
+    Boolean(descriptions.length || ad.displayUrl || ad.finalUrl);
   return (
     <div className="space-y-4">
       <section
@@ -790,37 +827,64 @@ function CreativeView({ ad }: { ad: Creative }) {
             </button>
           </div>
         </div>
-        <div
-          className={`mt-5 rounded-2xl border p-5 ${mode === "mobile" ? "mx-auto max-w-sm" : ""}`}
-          style={{
-            borderColor: "var(--border-subtle)",
-            background: "var(--surface-2)",
-          }}
-        >
-          {(ad.displayUrl || ad.finalUrl) && (
-            <p className="text-xs" style={{ color: "var(--success-text)" }}>
-              Sponsored · {ad.displayUrl || ad.finalUrl}/
-              {[ad.path1, ad.path2].filter(Boolean).join("/")}
-            </p>
-          )}
-          <p
-            className="mt-1 text-lg leading-6"
-            style={{ color: "var(--info-text)" }}
+        {hasSynchronizedPreview ? (
+          <div
+            className={`mt-5 rounded-xl border p-4 ${
+              mode === "mobile" ? "mx-auto max-w-sm" : "max-w-3xl"
+            }`}
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--surface-2)",
+            }}
           >
-            {headlines
-              .slice(0, 3)
-              .map((item) => item.text)
-              .join(" | ") || ad.adName}
-          </p>
-          {descriptions[0]?.text && (
+            {(ad.displayUrl || ad.finalUrl) && (
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                Sponsored · {ad.displayUrl || ad.finalUrl}
+                {[ad.path1, ad.path2].filter(Boolean).length
+                  ? `/${[ad.path1, ad.path2].filter(Boolean).join("/")}`
+                  : ""}
+              </p>
+            )}
             <p
-              className="mt-1 text-sm leading-6"
-              style={{ color: "var(--text-secondary)" }}
+              className="mt-1 text-lg leading-6"
+              style={{ color: "var(--info-text)" }}
             >
-              {descriptions[0].text}
+              {headlines
+                .slice(0, 3)
+                .map((item) => item.text)
+                .join(" | ")}
             </p>
-          )}
-        </div>
+            {descriptions[0]?.text && (
+              <p
+                className="mt-1 text-sm leading-6"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                {descriptions[0].text}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div
+            className="mt-5 flex items-start gap-3 rounded-xl border p-4"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--surface-2)",
+            }}
+          >
+            <FileSearch className="mt-0.5 shrink-0" size={18} />
+            <div>
+              <p className="text-sm font-bold">Ad preview unavailable</p>
+              <p
+                className="mt-1 text-xs leading-5"
+                style={{ color: "var(--text-muted)" }}
+              >
+                This synchronized record does not contain enough RSA copy to
+                render an accurate preview. Headlines plus a description or
+                final URL are required.
+              </p>
+            </div>
+          </div>
+        )}{" "}
       </section>
       <section className="grid gap-4 lg:grid-cols-2">
         <AssetList title="Headlines" items={headlines} />
@@ -1035,6 +1099,57 @@ function KeywordOpportunity({
   );
 }
 
+function AdsHistoryList({ ads }: { ads: Creative[] }) {
+  const [showRemoved, setShowRemoved] = useState(false);
+  const enabledAds = ads.filter(
+    (item) => item.status?.toUpperCase() === "ENABLED",
+  );
+  const removedAds = ads.filter(
+    (item) => item.status?.toUpperCase() === "REMOVED",
+  );
+  const visibleAds = showRemoved ? removedAds : enabledAds;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          {showRemoved
+            ? "Historical ads removed from Google Ads"
+            : "Enabled ads in this relationship"}
+        </p>
+        {removedAds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowRemoved((value) => !value)}
+            className="min-h-10 rounded-xl border px-4 text-sm font-bold"
+            style={{
+              borderColor: "var(--border-subtle)",
+              background: "var(--surface-1)",
+            }}
+          >
+            {showRemoved
+              ? `Back to enabled ads (${enabledAds.length})`
+              : `Removed history (${removedAds.length})`}
+          </button>
+        )}
+      </div>
+      {visibleAds.length > 0 ? (
+        <InventoryList
+          title={showRemoved ? "Removed ad history" : "Related ads"}
+          items={visibleAds.map((value) => ({ kind: "ad", value }))}
+        />
+      ) : (
+        <Missing
+          text={
+            showRemoved
+              ? "No removed ads are available for this relationship."
+              : "No enabled ads are available for this relationship."
+          }
+        />
+      )}
+    </div>
+  );
+}
 function TabContent({
   selected,
   snapshot,
@@ -1071,11 +1186,22 @@ function TabContent({
     );
   if (active === "performance") {
     const cost = history.reduce((sum, item) => sum + item.cost, 0);
-    const impressions = history.reduce((sum, item) => sum + item.impressions, 0);
+    const impressions = history.reduce(
+      (sum, item) => sum + item.impressions,
+      0,
+    );
     const clicks = history.reduce((sum, item) => sum + item.clicks, 0);
-    const conversions = history.reduce((sum, item) => sum + item.conversions, 0);
-    const conversionValue = history.reduce((sum, item) => sum + item.conversionValue, 0);
-    const conversionValueAvailable = history.some((item) => item.conversionValueAvailable);
+    const conversions = history.reduce(
+      (sum, item) => sum + item.conversions,
+      0,
+    );
+    const conversionValue = history.reduce(
+      (sum, item) => sum + item.conversionValue,
+      0,
+    );
+    const conversionValueAvailable = history.some(
+      (item) => item.conversionValueAvailable,
+    );
 
     const aggregatedValue = {
       ...selected.value,
@@ -1105,16 +1231,7 @@ function TabContent({
       />
     );
   if (active === "ads" || active === "related-ads")
-    return (
-      <InventoryList
-        title={
-          selected.kind === "keyword"
-            ? "Ads in the same ad group"
-            : "Related ads"
-        }
-        items={ads.map((value) => ({ kind: "ad", value }))}
-      />
-    );
+    return <AdsHistoryList ads={ads} />;
   if (active === "keywords")
     return (
       <InventoryList

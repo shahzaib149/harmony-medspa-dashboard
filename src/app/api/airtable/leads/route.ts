@@ -24,6 +24,7 @@ export interface Lead {
   utmSource: string;
   utmCampaign: string;
   utmMedium: string;
+  utmAdGroup: string;
   pageUrl: string;
   createdAt: string;
   emailSentStatus: string;
@@ -79,6 +80,7 @@ function mapLead(r: AirtableRecord): Lead {
     utmSource: str(r.fields, "UTM Source"),
     utmCampaign: str(r.fields, "UTM Campaign"),
     utmMedium: str(r.fields, "UTM Medium"),
+    utmAdGroup: str(r.fields, "UTM Ad Group", "utm_ad_group", "utm_adgroup"),
     pageUrl: str(r.fields, "Page URL"),
     createdAt: str(r.fields, "Lead Created At") || r.createdTime,
     emailSentStatus: str(r.fields, "Email Sent Status"),

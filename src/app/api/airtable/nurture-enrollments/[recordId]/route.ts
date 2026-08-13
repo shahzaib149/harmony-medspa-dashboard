@@ -261,14 +261,6 @@ export async function DELETE(
   const existing = await getEnrollment(recordId);
   if (!existing.record) return existing.response;
   const record = existing.record;
-  const connection = await connectionState(record);
-  if (connection.error) return connection.error;
-  if (!connection.disconnected) {
-    return Response.json(
-      { error: "Connected enrollments cannot be removed by this workflow." },
-      { status: 409 },
-    );
-  }
 
   const response = await airtableFetch(`${ENROLLMENTS_TABLE}/${recordId}`, {
     method: "DELETE",
@@ -279,10 +271,10 @@ export async function DELETE(
       action: "action_failed",
       category: "campaigns",
       resource: { type: "nurture_enrollment", id: recordId },
-      summary: "Disconnected enrollment could not be removed",
+      summary: "Campaign enrollment could not be removed",
       before: enrollmentAuditData(record),
       metadata: {
-        operation: "orphan_enrollment_deleted",
+        operation: "campaign_enrollment_removed",
         campaign: "14-day-nurture",
       },
       result: "failed",
@@ -297,10 +289,10 @@ export async function DELETE(
   invalidateLeadsBaseCache();
   await logAuditEvent({
     actor,
-    action: "orphan_enrollment_deleted",
+    action: "campaign_enrollment_removed",
     category: "campaigns",
     resource: { type: "nurture_enrollment", id: recordId },
-    summary: "Removed a disconnected nurture enrollment",
+    summary: "Removed a lead from 14-Day Nurture",
     before: enrollmentAuditData(record),
     after: { deleted: true },
     metadata: { campaign: "14-day-nurture" },

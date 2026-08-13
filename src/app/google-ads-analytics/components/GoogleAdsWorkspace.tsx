@@ -381,6 +381,7 @@ function FilterBar({
         <option value="">All statuses</option>
         <option value="ENABLED">Enabled</option>
         <option value="PAUSED">Paused</option>
+        <option value="REMOVED">Removed</option>
         <option value="APPROVED">Approved</option>
         <option value="PAUSED APPROVED">Approved paused</option>
         <option value="DISAPPROVED">Disapproved</option>
@@ -462,15 +463,18 @@ function RelationalRail({
         (group) => !topCampaign || group.campaignId === topCampaign.campaignId,
       )
       .sort((a, b) => b.cost - a.cost)[0] ?? snapshot.adGroups[0];
+  const enabledAds = snapshot.ads.filter(
+    (ad) => ad.status?.toUpperCase() === "ENABLED",
+  );
   const topAd =
-    snapshot.ads
+    enabledAds
       .filter(
         (ad) =>
           !topGroup ||
           ad.adGroupId === topGroup.adGroupId ||
           ad.adGroupName === topGroup.adGroupName,
       )
-      .sort((a, b) => b.clicks - a.clicks)[0] ?? snapshot.ads[0];
+      .sort((a, b) => b.clicks - a.clicks)[0] ?? enabledAds[0];
   const entities: Array<{
     label: string;
     value?: string;
@@ -494,7 +498,7 @@ function RelationalRail({
     {
       label: "Live ad",
       value: topAd?.adName,
-      count: snapshot.ads.length,
+      count: enabledAds.length,
       entity: topAd ? { kind: "ad", value: topAd } : undefined,
     },
     {
@@ -621,7 +625,8 @@ function Overview({
   const topGroups = [...snapshot.adGroups]
     .sort((a, b) => b.cost - a.cost)
     .slice(0, 5);
-  const topAds = [...snapshot.ads]
+  const topAds = snapshot.ads
+    .filter((ad) => ad.status?.toUpperCase() === "ENABLED")
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, 5);
   return (
@@ -768,7 +773,12 @@ function Overview({
           </div>
           {chartData.length ? (
             <div className="mt-4 h-72">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={0}
+                minHeight={0}
+              >
                 <BarChart
                   data={chartData}
                   margin={{ left: -18, right: 8, top: 6, bottom: 30 }}
@@ -1284,8 +1294,13 @@ function MobileEntityCard({
         className="mt-4 flex min-h-11 items-center justify-between gap-3 border-t pt-3 text-xs"
         style={{ borderColor: "var(--border-subtle)" }}
       >
-        <span className="min-w-0 break-words" style={{ color: "var(--text-muted)" }}>
-          {synchronized ? `Synced ${synchronized}` : "Synchronization time unavailable"}
+        <span
+          className="min-w-0 break-words"
+          style={{ color: "var(--text-muted)" }}
+        >
+          {synchronized
+            ? `Synced ${synchronized}`
+            : "Synchronization time unavailable"}
         </span>
         <span
           className="flex shrink-0 items-center gap-1 font-bold"
@@ -1344,7 +1359,7 @@ function CampaignsTable({
     <EntitySection
       eyebrow="Account structure"
       title="Campaigns"
-      description="Budget, bidding, delivery and child inventory stay joined to the canonical Google campaign resource."
+      description="Budget, delivery and child inventory stay joined to the canonical Google campaign resource."
     >
       <FilterBar
         {...filters}
@@ -1409,7 +1424,6 @@ function CampaignsTable({
           "Delivery",
           "Type",
           "Daily budget",
-          "Bidding",
           "Spend",
           "Impressions",
           "Clicks",
@@ -1450,11 +1464,6 @@ function CampaignsTable({
               <MetricCell
                 value={item.budget == null ? "—" : money(item.budget)}
                 note={item.budget == null ? undefined : "Per day"}
-              />
-              <MetricCell
-                value={
-                  item.biddingStrategy ? labelize(item.biddingStrategy) : "—"
-                }
               />
               <MetricCell value={money(item.cost)} />
               <MetricCell value={number(item.impressions)} />
@@ -1537,12 +1546,7 @@ function AdGroupsTable({
   keywords: Keyword[];
   onOpen: (entity: SelectedEntity) => void;
 }) {
-  const filters = useEntityFilters(
-    "ad-groups",
-    rows,
-    groupSearch,
-    groupStatus,
-  );
+  const filters = useEntityFilters("ad-groups", rows, groupSearch, groupStatus);
   const table = usePagedEntities(filters.filtered, (item) => item.adGroupName);
   const campaignNames = [
     ...new Set(campaigns.map((item) => item.campaignName)),
@@ -1841,7 +1845,8 @@ function useServerAds({
         }
       })
       .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
         loadedKey.current = "";
       })
       .finally(() => {
@@ -1850,7 +1855,10 @@ function useServerAds({
     return () => controller.abort();
   }, [campaign, days, debouncedSearch, enabled, page, pageSize, sort, status]);
 
-  useEffect(() => setPage(0), [campaign, debouncedSearch, pageSize, sort, status]);
+  useEffect(
+    () => setPage(0),
+    [campaign, debouncedSearch, pageSize, sort, status],
+  );
   useEffect(() => setStatus(initialStatus || ""), [initialStatus]);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   return {
@@ -1901,19 +1909,23 @@ function AdsTable({
   pagination?: WorkspaceSnapshot["pagination"];
 }) {
   const serverEnabled = source === "live" && pagination?.entity === "ads";
+  const defaultStatus = initialStatus || "ENABLED";
   const localFilters = useEntityFilters(
     serverEnabled ? "ads-local-fallback" : "ads",
     rows,
     adSearch,
     adStatus,
-    initialStatus,
+    defaultStatus,
   );
-  const localTable = usePagedEntities(localFilters.filtered, (item) => item.adName);
+  const localTable = usePagedEntities(
+    localFilters.filtered,
+    (item) => item.adName,
+  );
   const server = useServerAds({
     enabled: serverEnabled,
     initialRows: rows,
     initialPagination: pagination,
-    initialStatus,
+    initialStatus: defaultStatus,
     days,
   });
   const filters = serverEnabled ? server.filters : localFilters;
@@ -1930,7 +1942,31 @@ function AdsTable({
       <FilterBar
         {...filters}
         campaigns={campaignNames}
-        extra={<SortSelect value={table.sort} onChange={table.setSort} />}
+        clearFilters={() => {
+          filters.clearFilters();
+          filters.setStatus("ENABLED");
+        }}
+        extra={
+          <>
+            <SortSelect value={table.sort} onChange={table.setSort} />
+            <button
+              type="button"
+              aria-pressed={filters.status === "REMOVED"}
+              onClick={() =>
+                filters.setStatus(
+                  filters.status === "REMOVED" ? "ENABLED" : "REMOVED",
+                )
+              }
+              className="flex h-11 items-center justify-center rounded-xl border px-3 text-sm font-bold"
+              style={{
+                borderColor: "var(--border-subtle)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              Show removed
+            </button>
+          </>
+        }
         onExport={() =>
           exportRows(
             "google-ads-creatives.csv",
@@ -1981,10 +2017,7 @@ function AdsTable({
               },
               {
                 label: "ROAS",
-                value: roas(
-                  item.roas,
-                  item.conversionValueAvailable !== false,
-                ),
+                value: roas(item.roas, item.conversionValueAvailable !== false),
               },
             ]}
             synchronized={
@@ -2222,7 +2255,9 @@ function KeywordsTable({
             key={item.id}
             href={detailHref("keywords", item.criterionId || item.id)}
             title={item.keywordText}
-            eyebrow={item.negative ? "Negative keyword" : labelize(item.matchType)}
+            eyebrow={
+              item.negative ? "Negative keyword" : labelize(item.matchType)
+            }
             status={item.status}
             relationship={[item.campaignName, item.adGroupName]
               .filter(Boolean)
@@ -2518,16 +2553,23 @@ type ResponsiveColumn = {
 
 function columnMetadata(label: string): ResponsiveColumn {
   const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const numericColumn = /spend|budget|impressions|clicks|ctr|cpc|conversion|cpa|roas|quality|inventory|search is/i.test(
+  const numericColumn =
+    /spend|budget|impressions|clicks|ctr|cpc|conversion|cpa|roas|quality|inventory|search is/i.test(
+      label,
+    );
+  const primary = /^(campaign|ad group|ad|keyword)$/i.test(label);
+  const relationship = /parent|campaign \/ ad group|final url|bidding/i.test(
     label,
   );
-  const primary = /^(campaign|ad group|ad|keyword)$/i.test(label);
-  const relationship = /parent|campaign \/ ad group|final url|bidding/i.test(label);
   return {
     key,
     label,
     minWidth: primary ? 240 : relationship ? 190 : numericColumn ? 112 : 132,
-    align: numericColumn ? "right" : /status|delivery|approval|review|strength|type/i.test(label) ? "center" : "left",
+    align: numericColumn
+      ? "right"
+      : /status|delivery|approval|review|strength|type/i.test(label)
+        ? "center"
+        : "left",
     priority: primary
       ? "primary"
       : numericColumn || /status|delivery|parent/i.test(label)
@@ -2651,7 +2693,11 @@ export default function GoogleAdsWorkspace({
   useEffect(() => {
     const node = tabScroller.current;
     const active = node?.querySelector<HTMLElement>("[aria-current='page']");
-    active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    active?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
     const frame = window.requestAnimationFrame(updateTabOverflow);
     window.addEventListener("resize", updateTabOverflow);
     return () => {
@@ -2733,7 +2779,8 @@ export default function GoogleAdsWorkspace({
           className="pointer-events-none absolute inset-y-0 left-0 w-8 transition-opacity"
           style={{
             opacity: tabOverflow.left ? 1 : 0,
-            background: "linear-gradient(to right, var(--background), transparent)",
+            background:
+              "linear-gradient(to right, var(--background), transparent)",
           }}
         />
         <span
@@ -2741,7 +2788,8 @@ export default function GoogleAdsWorkspace({
           className="pointer-events-none absolute inset-y-0 right-0 w-8 transition-opacity"
           style={{
             opacity: tabOverflow.right ? 1 : 0,
-            background: "linear-gradient(to left, var(--background), transparent)",
+            background:
+              "linear-gradient(to left, var(--background), transparent)",
           }}
         />
       </div>

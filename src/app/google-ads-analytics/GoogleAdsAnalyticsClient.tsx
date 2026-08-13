@@ -142,6 +142,55 @@ function normalizeCampaign(row: Campaign): Campaign {
     pulledAt: row.pulledAt || new Date().toISOString(),
   };
 }
+function mergeCampaignInventory(
+  performanceRows: Campaign[],
+  inventoryRows: Campaign[],
+) {
+  const performance = performanceRows
+    .map(normalizeCampaign)
+    .filter((row) => Boolean(row.campaignId && row.campaignName));
+  const inventory = inventoryRows
+    .map(normalizeCampaign)
+    .filter(
+      (row) =>
+        Boolean(row.campaignId && row.campaignName) &&
+        row.campaignStatus.toUpperCase() !== "REMOVED",
+    );
+  if (!inventory.length) return performance;
+
+  const performanceById = new Map(
+    performance.map((row) => [row.campaignId, row]),
+  );
+  const merged = inventory.map((identity) => {
+    const period = performanceById.get(identity.campaignId);
+    return normalizeCampaign({
+      ...period,
+      ...identity,
+      accountName: period?.accountName || identity.accountName,
+      pulledAt: period?.pulledAt || identity.pulledAt,
+      cost: period?.cost ?? 0,
+      clicks: period?.clicks ?? 0,
+      impressions: period?.impressions ?? 0,
+      ctrPct: period?.ctrPct ?? 0,
+      avgCpc: period?.avgCpc,
+      conversions: period?.conversions ?? 0,
+      cpa: period?.cpa,
+      conversionValue: period?.conversionValue ?? 0,
+      conversionValueAvailable: period?.conversionValueAvailable ?? false,
+      roas: period?.roas ?? 0,
+      optimizationScore: period?.optimizationScore ?? 0,
+      impressionShare: period?.impressionShare ?? 0,
+      impressionShareLostBudget: period?.impressionShareLostBudget ?? 0,
+      impressionShareLostRank: period?.impressionShareLostRank ?? 0,
+    });
+  });
+  const inventoryIds = new Set(inventory.map((row) => row.campaignId));
+  return [
+    ...merged,
+    ...performance.filter((row) => !inventoryIds.has(row.campaignId)),
+  ];
+}
+
 
 function normalizeAdGroup(row: AdGroup): AdGroup {
   return {
@@ -389,7 +438,7 @@ async function loadWorkspaceSnapshot(
       syncError: null,
     };
   } catch (liveError) {
-    const [campaigns, adGroups, ads, keywords, previews] = await Promise.all([
+    const [campaigns, adGroups, ads, keywords, previews, campaignInventory] = await Promise.all([
       getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
         `/api/airtable?table=campaigns&days=${days}`,
       ),
@@ -405,12 +454,12 @@ async function loadWorkspaceSnapshot(
       getJson<{ data?: AdPreviewRecord[] }>(
         `/api/airtable?table=ad-preview&days=${days}`,
       ),
+      airtableCampaignsPromise,
     ]);
-    const campaignRows = (
-      campaigns.campaigns ||
-      campaigns.data ||
-      []
-    ).map(normalizeCampaign);
+    const campaignRows = mergeCampaignInventory(
+      campaigns.campaigns || campaigns.data || [],
+      campaignInventory?.campaigns || campaignInventory?.data || [],
+    );
     const adGroupRows = (
       adGroups.adGroups ||
       adGroups.data ||

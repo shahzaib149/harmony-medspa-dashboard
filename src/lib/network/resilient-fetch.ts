@@ -56,8 +56,13 @@ async function fetchWithResolvedHttps(request: Request) {
           if (Array.isArray(value)) value.forEach((item) => responseHeaders.append(name, item));
           else if (value !== undefined) responseHeaders.append(name, value);
         }
-        resolve(new Response(Buffer.concat(chunks), {
-          status: incoming.statusCode ?? 502,
+        const status = incoming.statusCode ?? 502;
+        const responseBody =
+          request.method === "HEAD" || status === 204 || status === 205 || status === 304
+            ? null
+            : Buffer.concat(chunks);
+        resolve(new Response(responseBody, {
+          status,
           statusText: incoming.statusMessage,
           headers: responseHeaders,
         }));
@@ -82,13 +87,13 @@ async function fetchWithResolvedHttps(request: Request) {
 export async function resilientFetch(input: RequestInfo | URL, init?: RequestInit) {
   const request = new Request(input, init);
   try {
-    return await fetchWithResolvedHttps(request.clone());
-  } catch (fallbackError) {
+    return await nativeFetch(request.clone());
+  } catch (nativeError) {
     try {
-      return await nativeFetch(request);
-    } catch (nativeError) {
+      return await fetchWithResolvedHttps(request);
+    } catch (fallbackError) {
       throw new TypeError("External HTTPS request failed with system and fallback DNS.", {
-        cause: nativeError ?? fallbackError,
+        cause: fallbackError ?? nativeError,
       });
     }
   }

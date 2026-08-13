@@ -12,6 +12,24 @@ export type SnapshotMetric = {
   [key: string]: unknown;
 };
 
+const DAY_MS = 86_400_000;
+
+export function reportingDateRange(days: number, now = new Date()) {
+  const safeDays = [7, 14, 30, 90].includes(days) ? days : 30;
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(now.getTime() - (safeDays - 1) * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+  return { from, to };
+}
+
+export function isReportingDateInRange(value: string, days: number, now = new Date()) {
+  if (!value) return false;
+  const date = value.slice(0, 10);
+  const { from, to } = reportingDateRange(days, now);
+  return date >= from && date <= to;
+}
+
 /** One result per canonical resource key; descriptive fields come from the newest snapshot. */
 export function aggregateEntitySnapshots<T extends SnapshotMetric>(
   items: T[],

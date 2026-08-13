@@ -1037,24 +1037,31 @@ function LeadDetailsModal({
               Attribution
             </p>
             <div className="flex flex-wrap gap-2">
-              {[lead.utmSource, lead.utmMedium, lead.utmCampaign, lead.pageUrl]
-                .filter(Boolean)
+              {([
+                ["Source", lead.utmSource],
+                ["Medium", lead.utmMedium],
+                ["Campaign", lead.utmCampaign],
+                ["Ad group", lead.utmAdGroup],
+                ["Page", lead.pageUrl],
+              ] as const)
+                .filter(([, value]) => Boolean(value))
                 .map((item) => (
                   <span
-                    key={item}
+                    key={`${item[0]}:${item[1]}`}
                     className="max-w-full truncate rounded-full px-3 py-1 text-xs"
                     style={{
                       color: MUTED,
                       backgroundColor: "rgba(255,255,255,0.04)",
                     }}
                   >
-                    {item}
+                    <strong>{item[0]}:</strong> {item[1]}
                   </span>
                 ))}
               {![
                 lead.utmSource,
                 lead.utmMedium,
                 lead.utmCampaign,
+                lead.utmAdGroup,
                 lead.pageUrl,
               ].some(Boolean) && (
                 <span className="text-xs" style={{ color: MUTED }}>
@@ -2590,7 +2597,17 @@ export default function LeadsClient() {
                           className="border-b px-4 py-3 text-xs font-semibold"
                           style={{ borderColor: BORDER_SOFT, color: TEXT }}
                         >
-                          {sourceLabel(lead.source)}
+                          <span className="block">{sourceLabel(lead.source)}</span>
+                          {lead.utmCampaign && (
+                            <small className="mt-0.5 block font-normal" style={{ color: MUTED }}>
+                              Campaign: {lead.utmCampaign}
+                            </small>
+                          )}
+                          {lead.utmAdGroup && (
+                            <small className="block font-normal" style={{ color: MUTED }}>
+                              Ad group: {lead.utmAdGroup}
+                            </small>
+                          )}
                         </td>
                         <td
                           className="border-b px-4 py-3"

@@ -36,9 +36,10 @@ async function fetchAirtablePage(url: string, cacheMode: AirtableCacheMode) {
 }
 
 const recordsCache = new Map<string, { expiresAt: number; records: RawRecord[] }>();
+const recordsRequests = new Map<string, Promise<RawRecord[]>>();
 const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes in-memory cache
 
-export async function fetchAllRecords(
+async function fetchAllRecordsRequest(
   tableName: string,
   query = new URLSearchParams(),
   options: { cache?: AirtableCacheMode; forceRefresh?: boolean } = {},
@@ -85,6 +86,26 @@ export async function fetchAllRecords(
   });
 
   return records;
+}
+
+export async function fetchAllRecords(
+  tableName: string,
+  query = new URLSearchParams(),
+  options: { cache?: AirtableCacheMode; forceRefresh?: boolean } = {},
+): Promise<RawRecord[]> {
+  const cacheKey = tableName + ":" + query.toString();
+  if (!options.forceRefresh) {
+    const activeRequest = recordsRequests.get(cacheKey);
+    if (activeRequest) return activeRequest;
+  }
+
+  const request = fetchAllRecordsRequest(tableName, query, options);
+  recordsRequests.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    if (recordsRequests.get(cacheKey) === request) recordsRequests.delete(cacheKey);
+  }
 }
 
 // Flexible field getter — tries multiple key variants in order
