@@ -7,7 +7,7 @@ import {
   Link2,
 } from "lucide-react";
 import { blogSiteUrl } from "@/lib/blogs/seo";
-import type { BlogContentBlock, BlogRecord, BlogTextBlock } from "@/lib/blogs/types";
+import { imageSourceForSite, type BlogContentBlock, type BlogRecord, type BlogTextBlock } from "@/lib/blogs/types";
 
 function textLines(value: string) {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -28,7 +28,7 @@ function PreviewBlock({ block }: { block: BlogContentBlock }) {
     return (
       <figure>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={block.url} alt={block.alt} />
+        <img src={imageSourceForSite(block.url)} alt={block.alt} />
         {block.caption && <figcaption>{block.caption}</figcaption>}
       </figure>
     );
@@ -120,7 +120,7 @@ export default function BlogPreview({
               {featuredImage && (
                 <figure>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={featuredImage.url} alt={featuredImage.alt} />
+                  <img src={imageSourceForSite(featuredImage.url)} alt={featuredImage.alt} />
                   {featuredImage.caption && <figcaption>{featuredImage.caption}</figcaption>}
                 </figure>
               )}

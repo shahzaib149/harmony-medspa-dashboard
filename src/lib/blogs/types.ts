@@ -102,3 +102,19 @@ export type BlogTechnicalSeo = {
     lastModified: string | null;
   };
 };
+
+export function imageSourceForSite(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (
+      parsed.hostname === "harmony-medspa.vercel.app" ||
+      parsed.hostname === "harmonymedspafl.com" ||
+      parsed.hostname === "www.harmonymedspafl.com"
+    ) {
+      return `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // Keep the original value when it is not an absolute URL.
+  }
+  return url;
+}

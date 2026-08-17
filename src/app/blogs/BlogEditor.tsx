@@ -37,12 +37,13 @@ import {
   prepareSeoSuggestions,
   validateBlog,
 } from "@/lib/blogs/seo";
-import type {
-  BlogBlockType,
-  BlogContentBlock,
-  BlogInput,
-  BlogRecord,
-  BlogStatus,
+import {
+  imageSourceForSite,
+  type BlogBlockType,
+  type BlogContentBlock,
+  type BlogInput,
+  type BlogRecord,
+  type BlogStatus,
 } from "@/lib/blogs/types";
 
 type Props = {
@@ -345,9 +346,9 @@ function ContentBlockEditor({
             </label>
           </div>
           <div className="blog-image-preview">
-            {/^https?:\/\//i.test(block.url) ? (
+            {Boolean(block.url) ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={block.url} alt={block.alt || "Article image preview"} />
+              <img src={imageSourceForSite(block.url)} alt={block.alt || "Article image preview"} />
             ) : (
               <span><ImagePlus size={22} /><small>Image preview</small></span>
             )}
