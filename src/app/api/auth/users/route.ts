@@ -2,6 +2,10 @@ import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { isRole, type Profile, type Role } from "@/lib/auth/permissions";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
+import { withCache, bustCache } from "@/lib/server-cache";
+
+const USERS_CACHE_KEY = "auth:users:all";
+const USERS_TTL = 30;
 
 type CreateUserBody = {
   email?: string;
@@ -21,14 +25,22 @@ type UpdateUserBody = {
 export async function GET(request: Request) {
   try {
     await requireRole(request, "admin");
-    const service = createServiceClient();
-    const { data, error } = await service
-      .from("profiles")
-      .select("id,email,full_name,role,is_active,last_sign_in_at,created_at,updated_at")
-      .order("created_at", { ascending: false });
+    const { searchParams } = new URL(request.url);
+    const forceRefresh = searchParams.get("refresh") === "1";
+    if (forceRefresh) bustCache(USERS_CACHE_KEY);
 
-    if (error) return Response.json({ error: error.message }, { status: 500 });
-    return Response.json({ users: data ?? [] });
+    const users = await withCache(USERS_CACHE_KEY, USERS_TTL, async () => {
+      const service = createServiceClient();
+      const { data, error } = await service
+        .from("profiles")
+        .select("id,email,full_name,role,is_active,last_sign_in_at,created_at,updated_at")
+        .order("created_at", { ascending: false });
+
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    });
+
+    return Response.json({ users });
   } catch (error) {
     return authErrorResponse(error);
   }
@@ -74,6 +86,7 @@ export async function POST(request: Request) {
 
     if (profileError) return Response.json({ error: profileError.message }, { status: 500 });
 
+    bustCache(USERS_CACHE_KEY);
     await logAuditEvent({ actor, action: "user_invited", category: "users", resource: { type: "user", id: created.user.id, label: fullName || email }, summary: `Invited ${fullName || "a staff member"} as ${role}`, after: { full_name: fullName, email, role, is_active: true }, request });
     return Response.json({ user: profile }, { status: 201 });
   } catch (error) {
@@ -117,6 +130,7 @@ export async function PATCH(request: Request) {
 
     if (updateError) return Response.json({ error: updateError.message }, { status: 500 });
 
+    bustCache(USERS_CACHE_KEY);
     const action = body.role !== undefined && body.role !== beforeProfile?.role
       ? "user_role_changed"
       : body.is_active !== undefined && body.is_active !== beforeProfile?.is_active
@@ -154,6 +168,7 @@ export async function DELETE(request: Request) {
       return Response.json({ error: deleteError.message }, { status: 500 });
     }
 
+    bustCache(USERS_CACHE_KEY);
     await logAuditEvent({ actor, action: "user_removed", category: "users", resource: { type: "user", id, label: profile?.full_name || profile?.email }, summary: `Removed ${profile?.full_name || "a staff member"}`, before: { email: profile?.email ?? null, role: profile?.role ?? null, is_active: true }, request });
 
     return Response.json({ deleted: true, id });

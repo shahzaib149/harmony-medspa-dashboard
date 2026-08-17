@@ -747,7 +747,6 @@ function attentionFor(
   const items: AttentionItem[] = [];
   // Failed SMS is an operational alert: driven by the unresolved count (unscoped
   // by the analytics range), not by the messages that fall inside this period.
-  const failedSms = unresolvedFailedSms;
   const failedEmail = messages.filter(
     (message) => message.channel === "Email" && message.status === "failed",
   ).length;
@@ -778,7 +777,7 @@ function attentionFor(
   ) => {
     if (count > 0) items.push({ id, count, severity, title, detail, actionLabel, href });
   };
-  add("failed-sms", failedSms, "critical", `${failedSms} SMS ${failedSms === 1 ? "message needs" : "messages need"} review`, "A delivery failure requires staff review. The campaign continues to its next scheduled step.", "Review failure", "/message-logs?channel=SMS&status=Failed");
+  add("failed-sms", unresolvedFailedSms, "critical", `${unresolvedFailedSms} SMS ${unresolvedFailedSms === 1 ? "message needs" : "messages need"} review`, "A delivery failure requires staff review. The campaign continues to its next scheduled step.", "Review failure", "/message-logs?channel=SMS&status=Failed");
   add("failed-email", failedEmail, "critical", `${failedEmail} email ${failedEmail === 1 ? "message" : "messages"} failed`, "Provider delivery status is marked failed.", "Review Message Log", "/message-logs?channel=Email&status=Failed");
   add("disconnected", disconnected, "critical", `${disconnected} ${disconnected === 1 ? "enrollment is" : "enrollments are"} disconnected`, "The enrollment no longer resolves to a lead.", "Review campaign", "/campaigns/14-day-nurture");
   add("overdue-enrollment", overdueEnrollments, "warning", `${overdueEnrollments} campaign ${overdueEnrollments === 1 ? "step is" : "steps are"} overdue`, "The scheduled send time has passed for an active enrollment.", "Review nurture", "/campaigns/14-day-nurture");

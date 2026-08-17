@@ -3,10 +3,12 @@ import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { getMessageLogReviewRecord, markMessageLogReviewed } from "@/lib/airtable/message-log-review";
 import type { DeliveryStatus, MessageChannel, MessageLog } from "@/types/message-log";
+import { withCache, bustCache } from "@/lib/server-cache";
 
 const MESSAGE_LOG_TABLE = "Message Log";
 const LEADS_TABLE = "Leads";
 const BASE_ID = AIRTABLE_LEADS_BASE_ID;
+const MESSAGE_LOGS_TTL = 45;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -188,44 +190,51 @@ export async function GET(request: Request) {
   const dateRange = searchParams.get("dateRange") ?? "all";
   const search = (searchParams.get("search") ?? "").trim().toLowerCase();
   const includeOrphaned = searchParams.get("includeOrphaned") === "true";
+  const forceRefresh = searchParams.get("refresh") === "1";
+  const cacheKey = "airtable:message-logs:base";
+  if (forceRefresh) bustCache(cacheKey);
 
   try {
-    const params = new URLSearchParams({
-      "sort[0][field]": "Sent At",
-      "sort[0][direction]": "desc",
+    const allMessageLogs = await withCache(cacheKey, MESSAGE_LOGS_TTL, async () => {
+      const params = new URLSearchParams({
+        "sort[0][field]": "Sent At",
+        "sort[0][direction]": "desc",
+      });
+      ["Mandrill Message ID", "Recipient Lead", "Message Body", "Channel", "Delivery Status", "Sent At", "Error Reason", "Sequence", "Sequence Step"]
+        .forEach((field) => params.append("fields[]", field));
+      const records = await fetchAirtableRecords(MESSAGE_LOG_TABLE, params);
+      const leadIds = records.map((record) => linkedLeadId(record.fields["Recipient Lead"])).filter((id): id is string => Boolean(id));
+      const leadMap = await fetchLeadSummaries(leadIds);
+
+      return records.map<MessageLog>((record) => {
+        const recipientLeadId = linkedLeadId(record.fields["Recipient Lead"]);
+        const lead = recipientLeadId ? leadMap.get(recipientLeadId) : null;
+        const isOrphaned = !recipientLeadId || !lead;
+        const rawDeliveryStatus = strAny(record.fields, "Delivery Status", "Status", "Mandrill Status");
+
+        return {
+          id: record.id,
+          recipientLeadId,
+          recipientLeadName: isOrphaned ? "Deleted lead" : lead?.name || "Unnamed lead",
+          recipientLeadEmail: isOrphaned ? null : lead?.email ?? null,
+          recipientLeadPhone: isOrphaned ? null : lead?.phone ?? null,
+          recipientLeadStatus: isOrphaned ? null : lead?.status ?? null,
+          isOrphaned,
+          channel: channel(strAny(record.fields, "Channel", "Message Channel", "Type")),
+          sequence: strAny(record.fields, "Sequence", "Sequence Name", "Nurture Sequence") || null,
+          sequenceStep: strAny(record.fields, "Sequence Step", "Step") || null,
+          messageBody: strAny(record.fields, "Message Body", "Body", "Message", "Content"),
+          deliveryStatus: deliveryStatus(rawDeliveryStatus),
+          rawDeliveryStatus: rawDeliveryStatus || null,
+          sentAt: isoTimestamp(strAny(record.fields, "Sent At", "Sent Date", "Created At"), record.createdTime),
+          mandrillMessageId: strAny(record.fields, "Mandrill Message ID", "Mandrill ID", "Message ID") || null,
+          errorReason: strAny(record.fields, "Error Reason", "Error", "Failure Reason") || null,
+          createdTime: isoTimestamp(record.createdTime, ""),
+        };
+      });
     });
-    ["Mandrill Message ID", "Recipient Lead", "Message Body", "Channel", "Delivery Status", "Sent At", "Error Reason", "Sequence", "Sequence Step"]
-      .forEach((field) => params.append("fields[]", field));
-    const records = await fetchAirtableRecords(MESSAGE_LOG_TABLE, params);
-    const leadIds = records.map((record) => linkedLeadId(record.fields["Recipient Lead"])).filter((id): id is string => Boolean(id));
-    const leadMap = await fetchLeadSummaries(leadIds);
 
-    const messageLogs = records.map<MessageLog>((record) => {
-      const recipientLeadId = linkedLeadId(record.fields["Recipient Lead"]);
-      const lead = recipientLeadId ? leadMap.get(recipientLeadId) : null;
-      const isOrphaned = !recipientLeadId || !lead;
-      const rawDeliveryStatus = strAny(record.fields, "Delivery Status", "Status", "Mandrill Status");
-
-      return {
-        id: record.id,
-        recipientLeadId,
-        recipientLeadName: isOrphaned ? "Deleted lead" : lead?.name || "Unnamed lead",
-        recipientLeadEmail: isOrphaned ? null : lead?.email ?? null,
-        recipientLeadPhone: isOrphaned ? null : lead?.phone ?? null,
-        recipientLeadStatus: isOrphaned ? null : lead?.status ?? null,
-        isOrphaned,
-        channel: channel(strAny(record.fields, "Channel", "Message Channel", "Type")),
-        sequence: strAny(record.fields, "Sequence", "Sequence Name", "Nurture Sequence") || null,
-        sequenceStep: strAny(record.fields, "Sequence Step", "Step") || null,
-        messageBody: strAny(record.fields, "Message Body", "Body", "Message", "Content"),
-        deliveryStatus: deliveryStatus(rawDeliveryStatus),
-        rawDeliveryStatus: rawDeliveryStatus || null,
-        sentAt: isoTimestamp(strAny(record.fields, "Sent At", "Sent Date", "Created At"), record.createdTime),
-        mandrillMessageId: strAny(record.fields, "Mandrill Message ID", "Mandrill ID", "Message ID") || null,
-        errorReason: strAny(record.fields, "Error Reason", "Error", "Failure Reason") || null,
-        createdTime: isoTimestamp(record.createdTime, ""),
-      };
-    }).filter((log) => {
+    const messageLogs = allMessageLogs.filter((log) => {
       if (!includeOrphaned && log.isOrphaned) return false;
       const channelMatches = channelFilter === "All" || log.channel === channelFilter;
       const statusMatches = statusFilter === "All" || log.deliveryStatus === statusFilter;

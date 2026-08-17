@@ -2,9 +2,14 @@ import { randomUUID } from "node:crypto";
 import { getOverviewData } from "@/lib/overview-data";
 import type { OverviewPeriodKey } from "@/lib/overview-types";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { withCache, bustCache } from "@/lib/server-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+// Cache overview data for 60 s per period key.
+// The manual Refresh button sends x-force-refresh: 1 to bypass.
+const OVERVIEW_TTL = 60;
 
 export async function GET(request: Request) {
   try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
@@ -16,8 +21,15 @@ export async function GET(request: Request) {
     ? (requestedPeriod as OverviewPeriodKey)
     : "30d";
 
+  // Allow the Refresh button to force a fresh fetch
+  const forceRefresh = request.headers.get("x-force-refresh") === "1";
+  const cacheKey = `overview:${period}`;
+  if (forceRefresh) bustCache(cacheKey);
+
   try {
-    const data = await getOverviewData(request, period);
+    const data = await withCache(cacheKey, OVERVIEW_TTL, () =>
+      getOverviewData(request, period),
+    );
     return Response.json(data, {
       headers: {
         "Cache-Control": "private, no-store, max-age=0",

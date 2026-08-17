@@ -5,12 +5,15 @@ import { normalizeUsPhone, invalidateLeadsBaseCache } from "@/lib/airtable/leads
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { normalizeLeadView } from "@/lib/leads/view";
 import { buildLeadFormula } from "@/lib/leads/query";
+import { withCache, bustCachePrefix } from "@/lib/server-cache";
 
 const TABLE_NAME = "Leads";
 const BASE_ID    = AIRTABLE_LEADS_BASE_ID;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const LEADS_TTL = 30; // 30s cache for fast page navigation
 
 export interface Lead {
   id: string;
@@ -126,22 +129,37 @@ export async function GET(request: Request) {
   const formula = buildLeadFormula(searchParams);
   if (formula) params.set("filterByFormula", formula);
 
-  let data: { records: AirtableRecord[]; offset?: string };
+  const cacheKey = `leads:${params.toString()}`;
   try {
-    const response = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}?${params}`, { headers: { Authorization: `Bearer ${getAirtableApiKey()}` }, cache: "no-store" });
-    if (!response.ok) throw new Error(`Airtable ${response.status}`);
-    data = await response.json() as { records: AirtableRecord[]; offset?: string };
+    const payload = await withCache(cacheKey, LEADS_TTL, async () => {
+      const response = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}?${params}`, {
+        headers: { Authorization: `Bearer ${getAirtableApiKey()}` },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`Airtable ${response.status}`);
+      const data = await response.json() as { records: AirtableRecord[]; offset?: string };
+      const leads = data.records.map(mapLead);
+      const visibleFrom = leads.length ? (page - 1) * pageSize + 1 : 0;
+      return {
+        items: leads,
+        leads,
+        view,
+        pageSize,
+        nextCursor: data.offset ?? null,
+        hasNextPage: Boolean(data.offset),
+        hasPreviousPage: page > 1,
+        visibleFrom,
+        visibleTo: visibleFrom ? visibleFrom + leads.length - 1 : 0,
+        total: null,
+      };
+    });
+
+    return Response.json(payload, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not load Airtable leads" }, { status: 500 });
   }
-
-  const leads = data.records.map(mapLead);
-  const visibleFrom = leads.length ? (page - 1) * pageSize + 1 : 0;
-
-  return Response.json(
-    { items: leads, leads, view, pageSize, nextCursor: data.offset ?? null, hasNextPage: Boolean(data.offset), hasPreviousPage: page > 1, visibleFrom, visibleTo: visibleFrom ? visibleFrom + leads.length - 1 : 0, total: null },
-    { headers: { "Cache-Control": "no-store, max-age=0" } }
-  );
 }
 
 type NewLeadInput = { name?: unknown; phone?: unknown; email?: unknown; message?: unknown };
@@ -209,6 +227,7 @@ export async function POST(request: Request) {
       created += data.records?.length ?? records.length;
     }
     invalidateLeadsBaseCache();
+    bustCachePrefix("leads:");
     await logAuditEvent({ actor, action: "leads_imported", category: "leads", resource: { type: "lead_import", label: "CSV import" }, summary: `Imported ${created} leads from CSV`, metadata: { total_rows: validated.length, imported_rows: created, skipped_duplicates: 0, failed_rows: validated.length - created }, request });
     return Response.json({ success: true, created }, { status: 201 });
   }
@@ -227,6 +246,7 @@ export async function POST(request: Request) {
     return Response.json({ error: data.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
   invalidateLeadsBaseCache();
+  bustCachePrefix("leads:");
   await logAuditEvent({ actor, action: "lead_created", category: "leads", resource: { type: "lead", id: data.id, label: validated.name }, summary: `Created lead ${validated.name}`, after: { name: validated.name, email: validated.email, phone: validated.phone, source: "Manual Entry", status: "New" }, request });
   return Response.json({ success: true, id: data.id }, { status: 201 });
 }
@@ -273,6 +293,7 @@ export async function PATCH(request: Request) {
     return Response.json({ error: err?.error?.message ?? `Airtable ${res.status}` }, { status: 500 });
   }
   invalidateLeadsBaseCache();
+  bustCachePrefix("leads:");
   const fieldNames: Record<string, string> = { Status: "status", Replied: "replied", Name: "name", Email: "email", Phone: "phone", Message: "message", Source: "source", Notes: "notes" };
   const before = Object.fromEntries(Object.keys(fields).map((field) => [fieldNames[field] || field, beforeFields[field] ?? null]));
   const after = Object.fromEntries(Object.entries(fields).map(([field, value]) => [fieldNames[field] || field, value]));
@@ -310,6 +331,7 @@ export async function DELETE(request: Request) {
   }
 
   invalidateLeadsBaseCache();
+  bustCachePrefix("leads:");
   await logAuditEvent({ actor, action: "lead_deleted", category: "leads", resource: { type: "lead", id, label: existing ? str(existing.fields, "Name") : null }, summary: `Deleted ${existing ? str(existing.fields, "Name") || "a lead" : "a lead"}`, before: existing ? { name: str(existing.fields, "Name"), email: str(existing.fields, "Email"), phone: str(existing.fields, "Phone"), status: str(existing.fields, "Status"), source: str(existing.fields, "Source") } : undefined, request });
   return Response.json({ success: true });
 }

@@ -2,8 +2,11 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { airtableFetch, listRecords, safeAirtableError, textField } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
+import { withCache, bustCache } from "@/lib/server-cache";
 
 const TABLE = process.env.AIRTABLE_CLINIC_METRICS_TABLE_ID?.trim() || "Clinic Metrics";
+const CLINIC_METRICS_TTL = 60;
+
 type Metric = { id: string; month: string; totalVisits: number; newPatients: number; updatedAt: string | null; updatedBy: string | null };
 function map(record: { id: string; createdTime: string; fields: Record<string, unknown> }): Metric { return { id: record.id, month: textField(record.fields, "Month"), totalVisits: Number(record.fields["Total Visits"]), newPatients: Number(record.fields["New Patients"]), updatedAt: textField(record.fields, "Updated At") || null, updatedBy: textField(record.fields, "Updated By") || null }; }
 function validMonth(value: string) { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
@@ -13,8 +16,11 @@ export async function GET(request: Request) {
   try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   if (!isAirtableConfigured()) return Response.json({ metrics: [], configured: false, error: "Airtable is not configured" }, { status: 503 });
   try {
-    const metrics = (await listRecords(TABLE)).map(map).filter((item) => validMonth(item.month)).sort((a, b) => a.month.localeCompare(b.month));
-    return Response.json({ metrics, latest: metrics.at(-1) ?? null });
+    const payload = await withCache("airtable:clinic-metrics", CLINIC_METRICS_TTL, async () => {
+      const metrics = (await listRecords(TABLE)).map(map).filter((item) => validMonth(item.month)).sort((a, b) => a.month.localeCompare(b.month));
+      return { metrics, latest: metrics.at(-1) ?? null };
+    });
+    return Response.json(payload);
   } catch (error) {
     return Response.json({ error: `Clinic Metrics could not be loaded. Confirm the table and fields exist. ${error instanceof Error ? error.message : ""}`.trim() }, { status: 500 });
   }
@@ -36,6 +42,7 @@ export async function POST(request: Request) {
       await logAuditEvent({ actor, action: "action_failed", category: "clinic_metrics", resource: { type: "clinic_month", id: body.month, label: body.month }, summary: "Clinic metrics update could not be completed", metadata: { operation: "clinic_metrics_updated" }, result: "failed", request });
       return Response.json({ error: `Clinic Metrics could not be saved. ${safeAirtableError(response.status)}` }, { status: 502 });
     }
+    bustCache("airtable:clinic-metrics");
     const metric = map(await response.json());
     await logAuditEvent({ actor, action: "clinic_metrics_updated", category: "clinic_metrics", resource: { type: "clinic_month", id: body.month, label: body.month }, summary: `Updated clinic metrics for ${body.month}`, before, after: { month: body.month, total_visits: totalVisits, new_patients: newPatients }, request });
     return Response.json({ metric }, { status: existing ? 200 : 201 });

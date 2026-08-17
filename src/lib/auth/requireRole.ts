@@ -83,6 +83,16 @@ export function authErrorResponse(error: unknown) {
   return Response.json({ error: "Unauthorized" }, { status: 401 });
 }
 
+const authSessionCache = new Map<
+  string,
+  { expiresAt: number; result: { user: User; profile: Profile } }
+>();
+const AUTH_CACHE_TTL_MS = 20_000; // 20 seconds session cache
+
+export function invalidateAuthSessionCache() {
+  authSessionCache.clear();
+}
+
 export async function requireRole(
   request: Request,
   minimumRole: Role
@@ -91,9 +101,30 @@ export async function requireRole(
     throw new AuthError(401, "Authentication required");
   }
 
+  const cookieHeader = request.headers.get("cookie") || "";
+  const authHeader = request.headers.get("authorization") || "";
+  const cacheKey = `${authHeader}:${cookieHeader}`;
+
+  if (cacheKey.length > 1) {
+    const cached = authSessionCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      if (!hasMinimumRole(cached.result.profile.role, minimumRole)) {
+        throw new AuthError(403, "Access denied");
+      }
+      return cached.result;
+    }
+  }
+
   const bearerUser = await getUserFromBearerToken(request);
   if (bearerUser) {
-    return requireProfileForUser(bearerUser, minimumRole);
+    const result = await requireProfileForUser(bearerUser, minimumRole);
+    if (cacheKey.length > 1) {
+      authSessionCache.set(cacheKey, {
+        expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+        result,
+      });
+    }
+    return result;
   }
 
   const { url, anonKey } = getSupabasePublicConfig();
@@ -116,7 +147,14 @@ export async function requireRole(
   const user = await getVerifiedUser(() => supabase.auth.getUser());
   if (!user) throw new AuthError(401, "Authentication required");
 
-  return requireProfileForUser(user, minimumRole);
+  const result = await requireProfileForUser(user, minimumRole);
+  if (cacheKey.length > 1) {
+    authSessionCache.set(cacheKey, {
+      expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+      result,
+    });
+  }
+  return result;
 }
 
 async function requireProfileForUser(user: User, minimumRole: Role): Promise<{ user: User; profile: Profile }> {

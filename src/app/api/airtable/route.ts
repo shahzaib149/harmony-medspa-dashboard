@@ -1,5 +1,6 @@
 import { fetchAllRecords, num, str } from "@/lib/airtable/client";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { withCache, bustCache } from "@/lib/server-cache";
 import {
   canonicalAdKey,
   canonicalKeywordKey,
@@ -96,6 +97,8 @@ function googleResource(accountId: string, collection: string, id: string) {
     : "";
 }
 
+const AIRTABLE_ROUTE_TTL = 60; // 60s cache
+
 export async function GET(request: Request) {
   try {
     await requireRole(request, "viewer");
@@ -105,6 +108,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const table = searchParams.get("table") as keyof typeof TABLE_NAMES | null;
   const days = Number(searchParams.get("days") ?? 30);
+  const forceRefresh =
+    searchParams.get("refresh") === "1" ||
+    request.headers.get("x-force-refresh") === "1";
 
   if (!table || !TABLE_NAMES[table]) {
     return Response.json(
@@ -115,12 +121,16 @@ export async function GET(request: Request) {
     );
   }
 
+  const cacheKey = `airtable_api:${table}:${days}`;
+  if (forceRefresh) {
+    bustCache(cacheKey);
+  }
+
   try {
-    // Analytics refreshes should reflect a just-completed Make run immediately.
     const raw = await fetchAllRecords(
       TABLE_NAMES[table],
       new URLSearchParams(),
-      { cache: "no-store" },
+      { cache: forceRefresh ? "no-store" : "cached", forceRefresh },
     );
 
     if (table === "campaigns") {

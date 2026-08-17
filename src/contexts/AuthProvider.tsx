@@ -19,13 +19,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadProfile = useCallback(async (nextUser: User | null) => {
-    setUser(nextUser);
+  const loadProfile = useCallback(async (nextUser: User | null, force = false) => {
     if (!nextUser) {
+      setUser(null);
       setProfile(null);
       setIsLoading(false);
       return;
     }
+
+    // Skip redundant network fetch if user is already loaded and active
+    if (!force && user?.id === nextUser.id && profile?.is_active) {
+      setIsLoading(false);
+      return;
+    }
+
+    setUser(nextUser);
 
     const response = await fetch("/api/auth/session", {
       credentials: "same-origin",
@@ -47,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user ?? nextUser);
     setProfile(data.profile);
     setIsLoading(false);
-  }, [router]);
+  }, [profile?.is_active, router, user?.id]);
 
   useEffect(() => {
     if (!authConfigured) {
@@ -68,9 +76,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Fast path: getSession() reads the local cookie without a network round
     // trip, so the UI (sidebar identity, role-gated nav) paints immediately.
-    // Real authorization is enforced server-side on every protected page by
-    // requirePageAuth() (getUser + profile + is_active) and by each API route,
-    // so the client copy is for presentation only and can stay optimistic.
     supabase.auth.getSession().then(({ data }) => {
       if (!cancelled) void loadProfile(data.session?.user ?? null);
     });

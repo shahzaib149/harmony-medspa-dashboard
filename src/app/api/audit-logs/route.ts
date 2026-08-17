@@ -2,6 +2,7 @@ import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { sanitizeAuditData } from "@/lib/audit/sanitize";
 import { AUDIT_CATEGORIES, AUDIT_RESULTS, type AuditCategory, type AuditLogRecord } from "@/lib/audit/types";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
+import { withCache, bustCache } from "@/lib/server-cache";
 import {
   clinicDateToUtcRange,
   clinicDateValue,
@@ -11,6 +12,8 @@ import {
 import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+const AUDIT_LOGS_TTL = 20;
 
 const PAGE_SIZES = new Set([25, 50, 100]);
 
@@ -137,38 +140,47 @@ export async function GET(request: Request) {
     return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="harmony-audit-log-${clinicDateValue()}.csv"`, "Cache-Control": "no-store" } });
   }
 
-  const startOfToday = clinicDateToUtcRange(clinicDateValue())!.start;
-  const [listResult, today, access, leadChanges, failed, profilesResult] = await Promise.all([
-    query,
-    safeExactCount(undefined, undefined, startOfToday.toISOString()),
-    safeExactCount("category", "authentication"),
-    safeExactCount("category", "leads"),
-    safeExactCount("result", "failed"),
-    service.from("profiles").select("id,full_name,email,role").eq("is_active", true).order("full_name"),
-  ]);
-  const { data, count, error } = listResult;
-  if (error) return Response.json({ error: "Audit activity could not be loaded" }, { status: 500 });
-  const rows = (data ?? []) as unknown as AuditLogRecord[];
-  const items = rows.map((item) => ({
-    ...item,
-    before_data: null,
-    after_data: null,
-    metadata: null,
-    user_agent: null,
-    ip_hash: null,
-  })) as AuditLogRecord[];
-  const profiles = profilesResult.data;
+  const cacheKey = `audit_logs:${url.searchParams.toString()}`;
+  try {
+    const payload = await withCache(cacheKey, AUDIT_LOGS_TTL, async () => {
+      const startOfToday = clinicDateToUtcRange(clinicDateValue())!.start;
+      const [listResult, today, access, leadChanges, failed, profilesResult] = await Promise.all([
+        query,
+        safeExactCount(undefined, undefined, startOfToday.toISOString()),
+        safeExactCount("category", "authentication"),
+        safeExactCount("category", "leads"),
+        safeExactCount("result", "failed"),
+        service.from("profiles").select("id,full_name,email,role").eq("is_active", true).order("full_name"),
+      ]);
+      const { data, count, error } = listResult;
+      if (error) throw new Error("Audit activity could not be loaded");
+      const rows = (data ?? []) as unknown as AuditLogRecord[];
+      const items = rows.map((item) => ({
+        ...item,
+        before_data: null,
+        after_data: null,
+        metadata: null,
+        user_agent: null,
+        ip_hash: null,
+      })) as AuditLogRecord[];
+      const profiles = profilesResult.data;
 
-  return Response.json({
-    items,
-    page,
-    pageSize,
-    total: count ?? 0,
-    visibleFrom: items.length ? from + 1 : 0,
-    visibleTo: from + items.length,
-    hasPreviousPage: page > 1,
-    hasNextPage: from + items.length < (count ?? 0),
-    summary: { today, access, leadChanges, failed },
-    users: (profiles ?? []).map((profile) => ({ id: profile.id, name: profile.full_name || profile.email || "Staff member", role: profile.role })),
-  }, { headers: { "Cache-Control": "no-store" } });
+      return {
+        items,
+        page,
+        pageSize,
+        total: count ?? 0,
+        visibleFrom: items.length ? from + 1 : 0,
+        visibleTo: from + items.length,
+        hasPreviousPage: page > 1,
+        hasNextPage: from + items.length < (count ?? 0),
+        summary: { today, access, leadChanges, failed },
+        users: (profiles ?? []).map((profile) => ({ id: profile.id, name: profile.full_name || profile.email || "Staff member", role: profile.role })),
+      };
+    });
+
+    return Response.json(payload, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Audit activity could not be loaded" }, { status: 500 });
+  }
 }

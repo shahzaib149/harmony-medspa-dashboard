@@ -10,6 +10,9 @@ const workspaceCache = new Map<
 >();
 const workspaceRequests = new Map<string, Promise<WorkspacePayload>>();
 
+const ERROR_TTL_MS = 60 * 1000;
+const workspaceErrorCache = new Map<string, { expiresAt: number; error: string }>();
+
 async function cachedWorkspace(
   from: string,
   to: string,
@@ -26,7 +29,16 @@ async function cachedWorkspace(
       ? "assets"
       : "core";
   const key = `${from}:${to}:${scope}`;
-  if (refresh) workspaceCache.delete(key);
+  if (refresh) {
+    workspaceCache.delete(key);
+    workspaceErrorCache.delete(key);
+  }
+
+  const cachedError = workspaceErrorCache.get(key);
+  if (cachedError && cachedError.expiresAt > Date.now()) {
+    throw new Error(cachedError.error);
+  }
+
   const cached = workspaceCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
   const active = workspaceRequests.get(key);
@@ -35,13 +47,23 @@ async function cachedWorkspace(
   const request = fetchGoogleAdsWorkspace(from, to, {
     includeSearchTerms,
     includeAssets,
-  }).then((data) => {
-    workspaceCache.set(key, {
-      data,
-      expiresAt: Date.now() + WORKSPACE_TTL_MS,
+  })
+    .then((data) => {
+      workspaceCache.set(key, {
+        data,
+        expiresAt: Date.now() + WORKSPACE_TTL_MS,
+      });
+      return data;
+    })
+    .catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      workspaceErrorCache.set(key, {
+        error: msg,
+        expiresAt: Date.now() + ERROR_TTL_MS,
+      });
+      throw err;
     });
-    return data;
-  });
+
   workspaceRequests.set(key, request);
   try {
     return await request;

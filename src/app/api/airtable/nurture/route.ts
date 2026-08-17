@@ -1,10 +1,12 @@
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import type { NurtureEnrollment, NurtureStatus } from "@/lib/types/nurture";
+import { withCache, bustCache } from "@/lib/server-cache";
 
 const BASE_ID = AIRTABLE_LEADS_BASE_ID;
 const ENROLLMENTS_TABLE = "Nurture Enrollments";
 const LEADS_TABLE = "Leads";
+const NURTURE_TTL = 45;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -62,47 +64,54 @@ export async function GET(request: Request) {
       { headers: { "Cache-Control": "no-store" } }
     );
   }
-  try {
-    const records = await fetchRecords(ENROLLMENTS_TABLE, new URLSearchParams({
-      "sort[0][field]": "Next Send At",
-      "sort[0][direction]": "asc",
-    }));
-    const leadIds = Array.from(new Set(records.map((record) => linkedId(record.fields.Lead)).filter(Boolean)));
-    const leadMap = new Map<string, AirtableRecord>();
-    for (let index = 0; index < leadIds.length; index += 20) {
-      const batch = leadIds.slice(index, index + 20);
-      const formula = `OR(${batch.map((id) => `RECORD_ID()='${escapeFormula(id)}'`).join(",")})`;
-      const leads = await fetchRecords(LEADS_TABLE, new URLSearchParams({ filterByFormula: formula }));
-      leads.forEach((lead) => leadMap.set(lead.id, lead));
-    }
 
-    const enrollments = records.map<NurtureEnrollment>((record) => {
-      const leadId = linkedId(record.fields.Lead);
-      const lead = leadMap.get(leadId);
-      const fields = lead?.fields ?? {};
-      const rawStatus = str(record.fields, "Status");
-      const status: NurtureStatus = rawStatus === "Stopped" || rawStatus === "Completed" ? rawStatus : "Active";
-      return {
-        id: record.id,
-        leadId,
-        leadName: str(fields, "Name", "Full Name", "Lead Name") || "Unnamed lead",
-        leadPhone: str(fields, "Phone", "Phone Number", "Mobile"),
-        leadEmail: str(fields, "Email", "Email Address"),
-        leadStatus: str(fields, "Status", "Lead Status") || "Unknown",
-        leadTreatmentInterest: str(fields, "Treatment Interested In", "Treatment Interest", "Treatment"),
-        leadSource: str(fields, "Source", "Lead Source"),
-        leadReplied: checked(fields.Replied),
-        status,
-        currentStep: str(record.fields, "Current Step"),
-        nextSendAt: str(record.fields, "Next Send At") || null,
-        lastSentAt: str(record.fields, "Last Sent At") || null,
-        stopReason: str(record.fields, "Stop Reason") || null,
-        enrolledAt: record.createdTime,
-        bookedAt: str(fields, "Booked At", "Booking Date", "Booked Date") || null,
-      };
+  const { searchParams } = new URL(request.url);
+  const forceRefresh = searchParams.get("refresh") === "1";
+  const cacheKey = "airtable:nurture:all";
+  if (forceRefresh) bustCache(cacheKey);
+
+  try {
+    const enrollments = await withCache(cacheKey, NURTURE_TTL, async () => {
+      const records = await fetchRecords(ENROLLMENTS_TABLE, new URLSearchParams({
+        "sort[0][field]": "Next Send At",
+        "sort[0][direction]": "asc",
+      }));
+      const leadIds = Array.from(new Set(records.map((record) => linkedId(record.fields.Lead)).filter(Boolean)));
+      const leadMap = new Map<string, AirtableRecord>();
+      for (let index = 0; index < leadIds.length; index += 20) {
+        const batch = leadIds.slice(index, index + 20);
+        const formula = `OR(${batch.map((id) => `RECORD_ID()='${escapeFormula(id)}'`).join(",")})`;
+        const leads = await fetchRecords(LEADS_TABLE, new URLSearchParams({ filterByFormula: formula }));
+        leads.forEach((lead) => leadMap.set(lead.id, lead));
+      }
+
+      return records.map<NurtureEnrollment>((record) => {
+        const leadId = linkedId(record.fields.Lead);
+        const lead = leadMap.get(leadId);
+        const fields = lead?.fields ?? {};
+        const rawStatus = str(record.fields, "Status");
+        const status: NurtureStatus = rawStatus === "Stopped" || rawStatus === "Completed" ? rawStatus : "Active";
+        return {
+          id: record.id,
+          leadId,
+          leadName: str(fields, "Name", "Full Name", "Lead Name") || "Unnamed lead",
+          leadPhone: str(fields, "Phone", "Phone Number", "Mobile"),
+          leadEmail: str(fields, "Email", "Email Address"),
+          leadStatus: str(fields, "Status", "Lead Status") || "Unknown",
+          leadTreatmentInterest: str(fields, "Treatment Interested In", "Treatment Interest", "Treatment"),
+          leadSource: str(fields, "Source", "Lead Source"),
+          leadReplied: checked(fields.Replied),
+          status,
+          currentStep: str(record.fields, "Current Step"),
+          nextSendAt: str(record.fields, "Next Send At") || null,
+          lastSentAt: str(record.fields, "Last Sent At") || null,
+          stopReason: str(record.fields, "Stop Reason") || null,
+          enrolledAt: record.createdTime,
+          bookedAt: str(fields, "Booked At", "Booking Date", "Booked Date") || null,
+        };
+      });
     });
 
-    const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const step = searchParams.get("step");
     const search = (searchParams.get("search") ?? "").trim().toLowerCase();

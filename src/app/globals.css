@@ -671,7 +671,6 @@ select:disabled {
   padding: 0.8rem 0.9rem;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border-subtle);
-  border-color: var(--border-subtle);
   vertical-align: middle;
   overflow-wrap: anywhere;
 }

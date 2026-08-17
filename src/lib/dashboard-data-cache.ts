@@ -84,11 +84,13 @@ export function preloadDashboardData(key: string, url: string) {
 }
 
 export const DATA_CACHE_KEYS = {
+  overview: "overview:30d",
   leads: "leads:all",
   messageLogs: "message-logs:default",
   nurture: "nurture:all",
   staff: "staff:all",
   campaigns: "ads:campaigns:30",
+  campaignsSummary: "campaigns:summary",
   adGroups: "ads:ad-groups:30",
   creatives: "ads:creatives:30",
   keywords: "ads:keywords:30",

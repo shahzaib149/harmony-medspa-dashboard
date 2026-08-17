@@ -51,6 +51,7 @@ export default function DashboardLayout({
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div
+          aria-hidden="true"
           className="fixed inset-0 z-40 bg-black/70 backdrop-blur-[2px] md:hidden"
           onClick={() => setMobileOpen(false)}
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -51,6 +52,11 @@ export default function Sidebar({
   // profile loads we show a neutral loading label — never "Signed in".
   const displayName = profile?.full_name || profile?.email || (isLoading ? "Loading account…" : "Not signed in");
 
+  const filteredNavItems = useMemo(
+    () => navItems.filter((item) => !item.adminOnly || role === "admin"),
+    [role],
+  );
+
   function handleNavigation(href: string) {
     onClose();
     const isCurrentPage = pathname === href || pathname.startsWith(href + "/");
@@ -61,6 +67,16 @@ export default function Sidebar({
   }
 
   function warmPage(href: string) {
+    if (href === "/dashboard")
+      void preloadDashboardData(
+        DATA_CACHE_KEYS.overview,
+        "/api/overview?range=30d",
+      );
+    if (href === "/campaigns")
+      void preloadDashboardData(
+        DATA_CACHE_KEYS.campaignsSummary,
+        "/api/airtable/campaigns",
+      );
     if (href === "/leads")
       void preloadDashboardData(
         DATA_CACHE_KEYS.leads,
@@ -159,7 +175,7 @@ export default function Sidebar({
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
-        {navItems.filter((item) => !item.adminOnly || role === "admin").map(({ href, label, icon: Icon }) => {
+        {filteredNavItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
