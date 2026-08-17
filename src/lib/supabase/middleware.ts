@@ -5,7 +5,7 @@ const protectedRoutePattern = /^\/(dashboard|leads|campaigns|nurture|message-log
 
 function hasSupabaseAuthCookie(request: NextRequest) {
   return request.cookies.getAll().some((cookie) => (
-    cookie.name.startsWith("sb-") && cookie.name.includes("auth-token")
+    cookie.name.startsWith("sb-") && cookie.name.includes("auth-token") && cookie.value.length > 10
   ));
 }
 
@@ -16,26 +16,11 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const pathnameForConfigCheck = request.nextUrl.pathname;
-
-  if (!isSupabaseConfigured()) {
-    // No Supabase credentials configured — fail closed on protected routes
-    // instead of rendering the dashboard open to anyone.
-    if (protectedRoutePattern.test(pathnameForConfigCheck)) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/login";
-      redirectUrl.searchParams.set("next", pathnameForConfigCheck);
-      return NextResponse.redirect(redirectUrl);
-    }
-    return response;
-  }
-
   const pathname = request.nextUrl.pathname;
   const isProtected = protectedRoutePattern.test(pathname);
-  const isLogin = pathname === "/login";
-  const hasAuthCookie = hasSupabaseAuthCookie(request);
 
-  if (!hasAuthCookie) {
+  // If Supabase is not configured, redirect protected routes to login
+  if (!isSupabaseConfigured()) {
     if (isProtected) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
@@ -45,9 +30,15 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
-  if (isLogin) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  // If visiting a protected route without any auth cookies, redirect to login
+  if (isProtected && !hasSupabaseAuthCookie(request)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(redirectUrl);
   }
 
+  // Never redirect from /login in middleware to avoid infinite redirect loops
+  // if a stale or invalid cookie is present in the user's browser.
   return response;
 }
