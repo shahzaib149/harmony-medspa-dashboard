@@ -1,0 +1,30 @@
+.card { width: 100%; padding: clamp(1.5rem, 3vw, 2.35rem); color: #161714; background: #fff; border: 1px solid rgba(18, 19, 16, .12); box-shadow: 0 28px 80px rgba(0, 0, 0, .2); }
+.kicker { margin: 0 0 .7rem; color: #8b6810; font-size: .68rem; font-weight: 700; letter-spacing: .16em; line-height: 1.2; text-transform: uppercase; }
+.heading, .successHeading { max-width: 12ch; margin: 0; font-family: "Bodoni 72", "Bodoni MT", Didot, Georgia, serif; font-size: clamp(2rem, 3.2vw, 2.85rem); font-weight: 500; letter-spacing: -.045em; line-height: .98; }
+.subheading, .successBody { margin: 1rem 0 1.4rem; color: #5d615a; font-size: .93rem; line-height: 1.6; }
+.form { display: grid; gap: .9rem; }
+.field { display: grid; gap: .4rem; }
+.label { color: #2c2e29; font-size: .74rem; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+.label > span:not(.optional) { color: #a71f1f; }
+.optional { margin-left: .3rem; color: #8b8f87; font-size: .64rem; font-weight: 500; letter-spacing: .025em; text-transform: none; }
+.input, .select { width: 100%; min-height: 3.25rem; padding: 0 .95rem; color: #161714; background: #f5f6f2; border: 1px solid #d8dbd4; border-radius: 0; outline: none; font: inherit; font-size: .95rem; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+.select { cursor: pointer; }
+.input::placeholder { color: #8a8e86; }
+.input:hover, .select:hover { border-color: #aeb3a9; }
+.input:focus-visible, .select:focus-visible { background: #fff; border-color: #a97b08; box-shadow: 0 0 0 3px rgba(201, 155, 19, .17); }
+.inputError { border-color: #b3261e; }
+.fieldError { margin: 0; color: #9b1c1c; font-size: .76rem; line-height: 1.35; }
+.submitButton { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; width: 100%; min-height: 3.55rem; margin-top: .25rem; padding: .85rem 1.1rem; color: #11120f; background: #d4aa32; border: 1px solid #d4aa32; border-radius: 0; font: inherit; font-size: .77rem; font-weight: 800; letter-spacing: .095em; text-decoration: none; text-transform: uppercase; cursor: pointer; transition: background 160ms ease, border-color 160ms ease, transform 160ms ease; }
+.submitButton:hover { background: #e1bb50; border-color: #e1bb50; transform: translateY(-1px); }
+.submitButton:focus-visible { outline: 3px solid #11120f; outline-offset: 3px; }
+.submitButton:disabled { color: #7a7c75; background: #e1e2de; border-color: #e1e2de; cursor: wait; transform: none; }
+.privacy { display: flex; align-items: center; justify-content: center; gap: .35rem; margin: .1rem 0 0; color: #686c65; font-size: .72rem; line-height: 1.45; text-align: center; }
+.consent { margin: 0; color: #858981; font-size: .65rem; line-height: 1.45; text-align: center; }
+.formError { margin: .2rem 0 0; padding: .8rem; color: #8f1e19; background: #fff2f1; border-left: 3px solid #b3261e; font-size: .78rem; line-height: 1.45; }
+.formError a { color: inherit; font-weight: 800; }
+.honeypot { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.successIcon { display: grid; width: 3rem; height: 3rem; margin-bottom: 1.4rem; color: #171814; background: #d4aa32; place-items: center; }
+.successHeading { max-width: 11ch; }
+.successBody { margin-bottom: 1.5rem; }
+@media (max-width: 480px) { .card { padding: 1.35rem; } .heading, .successHeading { font-size: 2rem; } }
+@media (prefers-reduced-motion: reduce) { .input, .select, .submitButton { scroll-behavior: auto; transition: none; } }

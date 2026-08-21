@@ -1,0 +1,103 @@
+{
+  "page": "IV Therapy",
+  "source_url": "https://www.harmonymedspafl.com/services/iv-therapy.html",
+  "faq_categories": [
+    {
+      "category": "General IV Therapy FAQs",
+      "faqs": [
+        {
+          "question": "How long does an IV therapy session take?",
+          "answer": "Most IV therapy sessions take about 30–60 minutes once the drip is started, plus a few extra minutes for check-in and set-up."
+        },
+        {
+          "question": "How soon will I feel the effects?",
+          "answer": "Many patients feel more hydrated, clear-headed, or energized within a few hours, while other benefits (like immune support or skin glow) can develop over the next day or so."
+        },
+        {
+          "question": "How long do the benefits last?",
+          "answer": "Effects commonly last from several days up to about a week, depending on your hydration status, lifestyle, and which IV you receive."
+        },
+        {
+          "question": "Is IV therapy safe?",
+          "answer": "IV therapy is generally safe when performed by licensed medical professionals using proper screening, sterile technique, and medical-grade ingredients, though all medical treatments carry some risk."
+        },
+        {
+          "question": "Who should avoid IV therapy?",
+          "answer": "People who are pregnant, breastfeeding, have serious heart, kidney, or liver disease, certain blood clotting or electrolyte disorders, or known allergies to ingredients should only receive IV therapy if cleared by their medical provider."
+        },
+        {
+          "question": "How often can I get IV therapy?",
+          "answer": "Frequency depends on your goals and overall health; some patients come in monthly, others around big events (travel, races, busy seasons). Your provider will recommend a schedule that is safe and appropriate for you."
+        }
+      ]
+    },
+    {
+      "category": "Immunity IV FAQs",
+      "faqs": [
+        {
+          "question": "What is in the Immunity IV?",
+          "answer": "Immunity IV typically includes vitamin C, B-complex vitamins, and zinc to support immune function and antioxidant protection."
+        },
+        {
+          "question": "Who can benefit most from the Immunity IV?",
+          "answer": "It is often chosen by people who feel run down, are recovering from illness, travel frequently, work in high-exposure environments, or want extra support during cold and flu season."
+        },
+        {
+          "question": "When is the best time to schedule an Immunity IV?",
+          "answer": "Many patients schedule it at the first sign of feeling under the weather, before or after travel, or during peak illness seasons for extra support."
+        }
+      ]
+    },
+    {
+      "category": "Athlete IV FAQs",
+      "faqs": [
+        {
+          "question": "What is in the Athlete IV?",
+          "answer": "Athlete IV blends B-vitamins, B12, amino acids, and electrolytes to support hydration, energy production, and muscle recovery."
+        },
+        {
+          "question": "Who is the Athlete IV best for?",
+          "answer": "It is popular with runners, gym-goers, weekend warriors, and active individuals who want help with performance, endurance, or recovery after intense workouts or events."
+        },
+        {
+          "question": "Is the Athlete IV only for competitive athletes?",
+          "answer": "No. Anyone with an active lifestyle, demanding workdays, or frequent fatigue can benefit, as long as they are medically appropriate candidates."
+        }
+      ]
+    },
+    {
+      "category": "Radiance IV FAQs",
+      "faqs": [
+        {
+          "question": "What is in the Radiance IV?",
+          "answer": "Radiance IV combines antioxidants (such as NAC), B-vitamins, magnesium, and supportive nutrients that help protect against oxidative stress and support collagen and skin health."
+        },
+        {
+          "question": "Who is a good candidate for the Radiance IV?",
+          "answer": "It is often chosen by patients concerned with dull skin, visible signs of aging, high stress, or environmental exposure who want to support skin health and overall wellness from the inside out."
+        },
+        {
+          "question": "Will one Radiance IV treatment change my skin?",
+          "answer": "Some people notice improved glow or hydration quickly, but the best cosmetic and wellness results usually come from pairing IV therapy with good skincare, nutrition, sleep, and sun protection."
+        }
+      ]
+    },
+    {
+      "category": "Glutathione Push Add-On FAQs",
+      "faqs": [
+        {
+          "question": "What is a glutathione push?",
+          "answer": "A glutathione push is a quick IV injection of glutathione, a powerful antioxidant that supports detoxification, cellular protection, and skin brightening."
+        },
+        {
+          "question": "Who can benefit from a glutathione add-on?",
+          "answer": "It is commonly used by patients focused on skin radiance, anti-aging, detox support, or high oxidative stress from lifestyle, travel, or environmental exposure."
+        },
+        {
+          "question": "Can I add glutathione to any IV?",
+          "answer": "In many cases, yes, but your provider will review your health history, medications, and goals to make sure it is an appropriate and safe addition for you."
+        }
+      ]
+    }
+  ]
+}

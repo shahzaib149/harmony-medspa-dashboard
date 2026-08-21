@@ -8,7 +8,11 @@
   },
   "scripts": {
     "dev": "next dev",
+    "dev:dashboard": "next dev -p 3000",
+    "dev:website": "npm --prefix website run dev -- -p 3001",
     "build": "next build",
+    "build:all": "npm run build && npm --prefix website run build",
+    "install:all": "npm install && npm --prefix website install",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test tests/*.test.ts",
