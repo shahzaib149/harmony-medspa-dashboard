@@ -12,13 +12,16 @@ export async function GET(request: Request) {
     return Response.json({ error: "GOOGLE_ADS_CLIENT_ID not set" }, { status: 500 });
   }
 
+  const appOrigin = (process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin).replace(/\/$/, "");
+  const redirectUri = `${appOrigin}/api/google-business/auth/callback`;
+
   const scopes = [
     "https://www.googleapis.com/auth/business.manage",
   ].join(" ");
 
   const params = new URLSearchParams({
     client_id:     clientId,
-    redirect_uri:  "http://localhost:3000/api/google-business/auth/callback",
+    redirect_uri:  redirectUri,
     response_type: "code",
     scope:         scopes,
     access_type:   "offline",

@@ -19,8 +19,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Unique assets prevent collisions with the public website's Next.js zone.
-  assetPrefix: "/dashboard-static",
   turbopack: { root: process.cwd() },
   compress: true,
   poweredByHeader: false,

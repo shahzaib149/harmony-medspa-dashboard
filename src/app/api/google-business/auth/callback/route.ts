@@ -7,7 +7,10 @@ export async function GET(request: Request) {
   } catch {
     return Response.redirect(new URL("/login?next=/api/google-business/auth/callback", request.url), 302);
   }
-  const { searchParams } = new URL(request.url);
+  const requestUrl = new URL(request.url);
+  const appOrigin = (process.env.NEXT_PUBLIC_APP_URL ?? requestUrl.origin).replace(/\/$/, "");
+  const redirectUri = `${appOrigin}/api/google-business/auth/callback`;
+  const { searchParams } = requestUrl;
   const code  = searchParams.get("code");
   const error = searchParams.get("error");
 
@@ -26,7 +29,7 @@ export async function GET(request: Request) {
       code,
       client_id:     process.env.GOOGLE_ADS_CLIENT_ID!,
       client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
-      redirect_uri:  "http://localhost:3000/api/google-business/auth/callback",
+      redirect_uri:  redirectUri,
       grant_type:    "authorization_code",
     }),
   });
