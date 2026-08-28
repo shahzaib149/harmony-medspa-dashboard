@@ -130,12 +130,12 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
   assert.match(page, /requirePageAuth\(\{ next: "\/website-analytics" \}\)/);
   assert.match(api, /requireRole\(request, "viewer"\)/);
   assert.match(client, /searchParams\.get\("days"\)/);
-  assert.match(client, /searchParams\.get\("hostname"\)/);
+  assert.match(client, /const HARMONY_HOSTNAME = "www\.harmonymedspafl\.com"/);
   assert.match(client, /md:hidden/);
   assert.match(client, /hidden overflow-x-auto md:block/);
-  assert.match(client, /harmony-medspa\.vercel\.app/);
+  assert.doesNotMatch(client, /harmony-medspa\.vercel\.app/);
   assert.match(client, /www\.harmonymedspafl\.com/);
-  assert.match(client, /role="listbox"/);
+  assert.match(client, /Harmony Med Spa FL/);
   assert.match(client, /Awaiting GA4 access/);
   assert.doesNotMatch(client, /<select/);
 });

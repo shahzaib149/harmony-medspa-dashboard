@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
   CalendarDays,
-  Check,
   ChevronDown,
   Clock3,
   Database,
@@ -229,140 +228,31 @@ function AnalyticsSkeleton() {
   );
 }
 
-function websiteName(value: string) {
-  if (value === "all") return "All websites";
-  if (value === "harmony-medspa.vercel.app") return "Vercel marketing site";
-  if (value === "www.harmonymedspafl.com") return "Main Harmony website";
-  return "Tracked website";
-}
+const HARMONY_HOSTNAME = "www.harmonymedspafl.com";
 
-function WebsitePicker({
-  hostname,
-  options,
-  onChange,
-}: {
-  hostname: string | null;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const selected = hostname ?? "all";
-
-  useEffect(() => {
-    if (!open) return;
-
-    const closeOutside = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("pointerdown", closeOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  const values = ["all", ...options];
-
+function WebsiteIdentity() {
   return (
-    <div ref={pickerRef} className="relative min-w-0 flex-1 sm:min-w-[260px] xl:flex-none">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Website hostname"
-        className="flex min-h-14 w-full items-center gap-3 rounded-2xl border px-3.5 text-left transition-colors"
-        style={{
-          borderColor: open ? "var(--brand-primary)" : "var(--border-subtle)",
-          background: "var(--surface-1)",
-          boxShadow: open ? "0 0 0 3px var(--brand-primary-soft)" : "none",
-        }}
+    <div
+      className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl border px-3.5 sm:min-w-[260px] xl:flex-none"
+      style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
+    >
+      <span
+        className="grid size-9 shrink-0 place-items-center rounded-xl"
+        style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}
       >
-        <span
-          className="grid size-9 shrink-0 place-items-center rounded-xl"
-          style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}
-        >
-          <Globe2 size={16} />
+        <Globe2 size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--text-muted)" }}>
+          Website
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--text-muted)" }}>
-            Website
-          </span>
-          <span className="mt-0.5 block truncate text-xs font-bold" style={{ color: "var(--text-primary)" }}>
-            {websiteName(selected)}
-          </span>
+        <span className="mt-0.5 block truncate text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+          Harmony Med Spa FL
         </span>
-        <ChevronDown
-          size={15}
-          className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          style={{ color: "var(--text-muted)" }}
-        />
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-label="Choose a website"
-          className="absolute right-0 top-[calc(100%+.5rem)] z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border p-2"
-          style={{
-            borderColor: "var(--border-subtle)",
-            background: "var(--surface-1)",
-            boxShadow: "0 24px 70px rgba(35, 27, 24, .18)",
-          }}
-        >
-          <div className="px-3 pb-2 pt-1">
-            <p className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--text-muted)" }}>
-              Reporting view
-            </p>
-          </div>
-          {values.map((value) => {
-            const active = selected === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  onChange(value);
-                  setOpen(false);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors"
-                style={{ background: active ? "var(--brand-primary-soft)" : "transparent" }}
-              >
-                <span
-                  className="grid size-8 shrink-0 place-items-center rounded-lg border"
-                  style={{
-                    color: active ? "var(--brand-primary-strong)" : "var(--text-muted)",
-                    borderColor: active ? "transparent" : "var(--border-subtle)",
-                    background: active ? "var(--surface-1)" : "var(--surface-2)",
-                  }}
-                >
-                  {active ? <Check size={14} /> : <Globe2 size={14} />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-bold" style={{ color: "var(--text-primary)" }}>
-                    {websiteName(value)}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    {value === "all" ? "Combined GA4 property view" : value}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      </span>
     </div>
   );
 }
-
 function SetupState({ error }: { error: AnalyticsError }) {
   const missing = error.missing?.length
     ? error.missing
@@ -402,7 +292,7 @@ function SetupState({ error }: { error: AnalyticsError }) {
             Your website performance, in one focused view.
           </h2>
           <p className="mt-4 max-w-2xl text-sm leading-7 sm:text-[15px]" style={{ color: "var(--text-muted)" }}>
-            Connect Harmony&apos;s Google Analytics property once to turn this workspace into a live view of both the main website and the Vercel marketing site.
+            Connect Harmony&apos;s Google Analytics property once to turn this workspace into a live view of Harmony Med Spa FL.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
             {benefits.map(({ icon: Icon, title, detail }) => (
@@ -484,7 +374,7 @@ function EmptyState({ hostname }: { hostname: string | null }) {
       </h3>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
         {hostname
-          ? `GA4 returned no sessions for ${hostname}. Confirm that hostname is receiving the measurement tag or switch to All websites.`
+          ? `GA4 returned no sessions for ${hostname}. Confirm that Harmony Med Spa FL is receiving the GA4 measurement tag.`
           : "The property returned no sessions. Verify the measurement tag in GA4 Realtime and try a wider date range."}
       </p>
     </div>
@@ -597,9 +487,7 @@ export default function WebsiteAnalyticsClient() {
   const router = useRouter();
   const requestedDays = Number(searchParams.get("days") ?? 30);
   const days = [7, 14, 30, 90].includes(requestedDays) ? requestedDays : 30;
-  const requestedHostname = searchParams.get("hostname")?.trim().toLowerCase();
-  const hostname =
-    !requestedHostname || requestedHostname === "all" ? null : requestedHostname;
+  const hostname = HARMONY_HOSTNAME;
   const [snapshot, setSnapshot] = useState<WebsiteAnalyticsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -642,22 +530,13 @@ export default function WebsiteAnalyticsClient() {
     return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
   }, [load]);
 
-  function setFilter(name: "days" | "hostname", value: string) {
+  function setFilter(name: "days", value: string) {
     const params = new URLSearchParams(searchParams.toString());
-    if (name === "hostname" && value === "all") params.delete(name);
-    else params.set(name, value);
+    params.delete("hostname");
+    params.set(name, value);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
-  const knownHostnames = useMemo(() => {
-    const values = new Set([
-      "harmony-medspa.vercel.app",
-      "www.harmonymedspafl.com",
-      ...(snapshot?.sites.map((site) => site.hostName) ?? []),
-    ]);
-    if (hostname) values.add(hostname);
-    return [...values].sort();
-  }, [hostname, snapshot?.sites]);
 
   const metrics = snapshot
     ? summaryMetrics(snapshot.summary, snapshot.previousSummary)
@@ -725,11 +604,7 @@ export default function WebsiteAnalyticsClient() {
           </div>
         ) : (
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap xl:w-auto xl:justify-end">
-            <WebsitePicker
-              hostname={hostname}
-              options={knownHostnames}
-              onChange={(value) => setFilter("hostname", value)}
-            />
+            <WebsiteIdentity />
             <div
               className="flex min-h-14 flex-1 items-center rounded-2xl border p-1 sm:flex-none"
               style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
@@ -830,19 +705,18 @@ export default function WebsiteAnalyticsClient() {
                 </Panel>
 
                 <Panel
-                  eyebrow="Website split"
-                  title="Tracked hostnames"
-                  description="The same GA4 property can report the old site and Vercel site separately."
+                  eyebrow="Website"
+                  title="Harmony Med Spa FL"
+                  description="GA4 traffic recorded for www.harmonymedspafl.com."
                 >
                   <div className="space-y-3">
                     {snapshot.sites.length === 0 ? (
                       <p className="text-sm" style={{ color: "var(--text-muted)" }}>No hostnames reported in this range.</p>
                     ) : (
                       snapshot.sites.map((site) => (
-                        <button
+                        <article
                           key={`${site.hostName}:${site.streamId}`}
-                          onClick={() => setFilter("hostname", site.hostName)}
-                          className="w-full rounded-xl border p-3 text-left transition-colors"
+                          className="w-full rounded-xl border p-3 text-left"
                           style={{ borderColor: "var(--border-subtle)", background: "var(--surface-2)" }}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -860,7 +734,7 @@ export default function WebsiteAnalyticsClient() {
                             <span><b className="block text-xs tabular-nums" style={{ color: "var(--text-primary)" }}>{numberFormatter.format(site.sessions)}</b>Sessions</span>
                             <span><b className="block text-xs tabular-nums" style={{ color: "var(--text-primary)" }}>{numberFormatter.format(site.pageViews)}</b>Views</span>
                           </div>
-                        </button>
+                        </article>
                       ))
                     )}
                   </div>
