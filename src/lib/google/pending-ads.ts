@@ -402,7 +402,7 @@ export const WELLNESS_PENDING_AD: PendingAdPackage = {
   adGroupName: "Wellness - Vercel Landing",
   adGroupId: "198124172545",
   adType: "Responsive Search Ad",
-  finalUrl: "https://harmony-medspa.vercel.app/landing",
+  finalUrl: "https://www.harmonymedspafl.com/landing",
   path1: "Free-Consult",
   path2: "Book-Now",
   headlines: [
@@ -516,7 +516,7 @@ export const FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD: PendingAdPackage = {
   adGroupName: "Med Spa Sarasota",
   adGroupId: "200264220913",
   adType: "Responsive Search Ad",
-  finalUrl: "https://harmony-medspa.vercel.app/landing",
+  finalUrl: "https://www.harmonymedspafl.com/landing",
   path1: "Free-Consult",
   path2: "Sarasota",
   headlines: [
@@ -612,7 +612,7 @@ export const FINALLY_CARE_YOU_TRUST_PENDING_AD: PendingAdPackage = {
   adGroupName: "Med Spa Sarasota",
   adGroupId: "200264220913",
   adType: "Responsive Search Ad",
-  finalUrl: "https://harmony-medspa.vercel.app/landing",
+  finalUrl: "https://www.harmonymedspafl.com/landing",
   path1: "Med-Spa",
   path2: "Sarasota",
   headlines: [
@@ -698,4 +698,3 @@ export const FINALLY_CARE_YOU_TRUST_PENDING_AD: PendingAdPackage = {
     },
   ],
 };
-

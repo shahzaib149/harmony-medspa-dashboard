@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "siteUrl": "https://www.harmonymedspafl.com",
   "articles": [
     {
       "title": "What Happens at Your First Visit to Harmony Med Spa",
@@ -11,10 +12,10 @@
       "excerpt": "A walkthrough of your first appointment at Harmony Med Spa — what we ask, what we don't, how long it takes, and what happens if you decide not to book anything.",
       "seoTitle": "Your First Med Spa Visit in Sarasota | Harmony Med Spa",
       "metaDescription": "What actually happens at your first appointment at Harmony Med Spa in Sarasota — the conversation, the assessment, your options, and no pressure to book.",
-      "relatedServiceUrl": "https://harmony-medspa.vercel.app/services",
+      "relatedServiceUrl": "https://www.harmonymedspafl.com/services",
       "relatedArticleUrls": [
-        "https://harmony-medspa.vercel.app/patient-forms",
-        "https://harmony-medspa.vercel.app/our-team"
+        "https://www.harmonymedspafl.com/patient-forms",
+        "https://www.harmonymedspafl.com/our-team"
       ],
       "ctaLabel": "Book your consultation",
       "ctaUrl": "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
@@ -22,7 +23,7 @@
         {
           "id": "first-visit-hero",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/first-visit-med-spa-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/first-visit-med-spa-sarasota.png",
           "alt": "Welcoming med spa reception area with soft seating and natural daylight",
           "caption": "Our Gulf Gate reception area. Most first appointments start with a conversation, not a treatment."
         },
@@ -49,7 +50,7 @@
         {
           "id": "first-visit-conversation-image",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/med-spa-consultation-conversation-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/med-spa-consultation-conversation-sarasota.png",
           "alt": "Provider listening and taking notes while seated with a patient during a consultation",
           "caption": "Most of a first appointment is spent understanding what brought you in and what you've already tried."
         },
@@ -155,11 +156,11 @@
       "tags": ["Med Spa", "Sarasota", "Patient Guide", "Safety"],
       "excerpt": "Eight questions that reveal more about a med spa than any website will — covering credentials, safety, pricing transparency, and the answers that should make you walk away.",
       "seoTitle": "How to Choose a Med Spa in Sarasota: 8 Questions to Ask",
-      "metaDescription": "Eight questions that reveal what a med spa website won't — credentials, medical oversight, safety, pricing transparency, and the answers that should make you walk away.",
-      "relatedServiceUrl": "https://harmony-medspa.vercel.app/services",
+      "metaDescription": "Eight questions for choosing a Sarasota med spa, covering credentials, medical oversight, safety, pricing transparency, and warning signs.",
+      "relatedServiceUrl": "https://www.harmonymedspafl.com/services",
       "relatedArticleUrls": [
-        "https://harmony-medspa.vercel.app/our-team",
-        "https://harmony-medspa.vercel.app/testimonials"
+        "https://www.harmonymedspafl.com/our-team",
+        "https://www.harmonymedspafl.com/testimonials"
       ],
       "ctaLabel": "Ask us these questions",
       "ctaUrl": "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
@@ -167,7 +168,7 @@
         {
           "id": "choose-hero",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/how-to-choose-med-spa-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/how-to-choose-med-spa-sarasota.png",
           "alt": "Person on a phone call taking notes while researching clinic options at home",
           "caption": "Every question on this list can be asked over the phone before you book anything."
         },
@@ -219,7 +220,7 @@
         {
           "id": "choose-credentials-image",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/med-spa-credentials-questions-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/med-spa-credentials-questions-sarasota.png",
           "alt": "Provider credentials and certificates displayed on a clinic wall",
           "caption": "Asking who is treating you, and what they're qualified in, is a reasonable question at any clinic."
         },
@@ -331,10 +332,10 @@
       "excerpt": "The difference between a med spa, a day spa, and a dermatologist — who does what, who's qualified for which treatments, and how to work out which one your concern actually calls for.",
       "seoTitle": "Med Spa vs Day Spa vs Dermatologist: Which Do You Need?",
       "metaDescription": "Med spa, day spa, or dermatologist? Who does what, who's qualified for which treatments, and how to work out which one your concern actually calls for.",
-      "relatedServiceUrl": "https://harmony-medspa.vercel.app/services",
+      "relatedServiceUrl": "https://www.harmonymedspafl.com/services",
       "relatedArticleUrls": [
-        "https://harmony-medspa.vercel.app/blog/medical-facial-spectra-skin-analysis-sarasota",
-        "https://harmony-medspa.vercel.app/our-team"
+        "https://www.harmonymedspafl.com/blog/medical-facial-spectra-skin-analysis-sarasota",
+        "https://www.harmonymedspafl.com/our-team"
       ],
       "ctaLabel": "Talk to our medical team",
       "ctaUrl": "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
@@ -342,7 +343,7 @@
         {
           "id": "compare-hero",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/med-spa-vs-day-spa-vs-dermatologist.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/med-spa-vs-day-spa-vs-dermatologist.png",
           "alt": "Three distinct treatment room settings representing different types of skin and wellness care",
           "caption": "Three different settings, three different sets of qualifications, three different problems they solve."
         },
@@ -399,7 +400,7 @@
         {
           "id": "compare-choosing-image",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/choosing-skin-care-provider-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/choosing-skin-care-provider-sarasota.png",
           "alt": "Person considering options while looking out a bright window in a calm waiting area",
           "caption": "When a concern sits between categories, a consultation is usually the fastest way to find out where you belong."
         },
@@ -471,9 +472,9 @@
       "excerpt": "Not everyone wants or is a candidate for weight loss medication. Here's what medically supervised weight management looks like without it, and how to work out what fits your situation.",
       "seoTitle": "Weight Loss Without Medication in Sarasota | Harmony Med Spa",
       "metaDescription": "Medically supervised weight management without medication — what's involved, what it can realistically do, and how to work out whether it fits your situation.",
-      "relatedServiceUrl": "https://harmony-medspa.vercel.app/wellness",
+      "relatedServiceUrl": "https://www.harmonymedspafl.com/wellness",
       "relatedArticleUrls": [
-        "https://harmony-medspa.vercel.app/blog/alleviate-perimenopause-symptoms-with-bhrt"
+        "https://www.harmonymedspafl.com/blog/alleviate-perimenopause-symptoms-with-bhrt"
       ],
       "ctaLabel": "Book a weight loss consultation",
       "ctaUrl": "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
@@ -481,7 +482,7 @@
         {
           "id": "nomed-hero",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/weight-loss-without-medication-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/weight-loss-without-medication-sarasota.png",
           "alt": "Provider reviewing notes with a patient during a wellness consultation",
           "caption": "Medical weight management starts with an evaluation, not a program you sign up for."
         },
@@ -528,7 +529,7 @@
         {
           "id": "nomed-hormone-image",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/hormone-factors-weight-management-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/hormone-factors-weight-management-sarasota.png",
           "alt": "Laboratory results document on a clinic desk beside reading glasses and a pen",
           "caption": "Where symptoms suggest it, thyroid and hormone factors are worth evaluating rather than assuming."
         },
@@ -600,10 +601,10 @@
       "excerpt": "A straight answer on what medical weight loss costs in Sarasota, what's included in the price, what affects it, and how to compare programs without getting caught out by hidden fees.",
       "seoTitle": "Medical Weight Loss Cost in Sarasota | Harmony Med Spa",
       "metaDescription": "What medical weight loss actually costs in Sarasota, what's included, what affects the price, and the questions to ask any clinic before you commit.",
-      "relatedServiceUrl": "https://harmony-medspa.vercel.app/wellness",
+      "relatedServiceUrl": "https://www.harmonymedspafl.com/wellness",
       "relatedArticleUrls": [
-        "https://harmony-medspa.vercel.app/blog/how-glp-1-medications-support-medical-weight-loss",
-        "https://harmony-medspa.vercel.app/blog/summer-ready-glp-1-bhrt"
+        "https://www.harmonymedspafl.com/blog/how-glp-1-medications-support-medical-weight-loss",
+        "https://www.harmonymedspafl.com/blog/summer-ready-glp-1-bhrt"
       ],
       "ctaLabel": "Book a weight loss consultation",
       "ctaUrl": "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
@@ -611,7 +612,7 @@
         {
           "id": "cost-hero",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/medical-weight-loss-cost-sarasota.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/medical-weight-loss-cost-sarasota.png",
           "alt": "Provider and patient reviewing a printed treatment plan together across a consultation desk",
           "caption": "You should be able to work out whether a program is worth it before you book the consultation."
         },
@@ -663,7 +664,7 @@
         {
           "id": "cost-breakdown-image",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/weight-loss-program-costs-explained.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/weight-loss-program-costs-explained.png",
           "alt": "Clipboard with a simple printed cost breakdown resting on a clinic desk beside a pen",
           "caption": "Ask for the breakdown in writing. A clinic that can't produce one is telling you something."
         },
@@ -710,7 +711,7 @@
         {
           "id": "cost-room-image",
           "type": "image",
-          "url": "https://harmony-medspa.vercel.app/images/blogs/harmony-editorial/harmony-medspa-sarasota-consultation-room.png",
+          "url": "https://www.harmonymedspafl.com/images/blogs/harmony-editorial/harmony-medspa-sarasota-consultation-room.png",
           "alt": "Calm, well-lit consultation room at a Sarasota medical spa with comfortable seating",
           "caption": "Weight management at Harmony is in-person, at our Gulf Gate location, with ongoing follow-up."
         },
@@ -749,6 +750,111 @@
               "answer": "[CONFIRM cancellation and refund terms.] Ask about this before enrolling anywhere. A clinic that won't give you a clear answer on cancellation terms is telling you something."
             }
           ]
+        }
+      ]
+    },
+    {
+      "title": "DAXXIFY for the Upper Face: Treating Forehead Lines, Frown Lines, and Crow's Feet",
+      "slug": "daxxify-upper-face-sarasota",
+      "status": "Draft",
+      "category": "Injectables",
+      "primaryKeyword": "daxxify sarasota",
+      "tags": ["Injectables", "DAXXIFY", "Wrinkle Treatment", "Sarasota"],
+      "excerpt": "DAXXIFY is a peptide-formulated neuromodulator known for its extended duration on frown lines. Here's how it works across the upper face, what to expect from treatment, and how we decide whether it's the right option for you.",
+      "seoTitle": "DAXXIFY in Sarasota for Forehead and Frown Lines",
+      "metaDescription": "DAXXIFY at Harmony Med Spa in Sarasota, FL — a peptide-formulated neuromodulator for frown lines, forehead lines, and crow's feet. Learn what to expect.",
+      "relatedServiceUrl": "https://www.harmonymedspafl.com/injectables",
+      "relatedArticleUrls": [],
+      "ctaLabel": "Schedule a consultation",
+      "ctaUrl": "https://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx",
+      "content": [
+        {
+          "id": "daxxify-hero",
+          "type": "image",
+          "url": "https://fcpqllxxplkmrbxayeuo.supabase.co/storage/v1/object/public/blog-images/daxxify-upper-face-sarasota.png",
+          "alt": "Woman smiling at her reflection in a round mirror while gently touching her face",
+          "caption": "DAXXIFY temporarily reduces targeted muscle activity to soften dynamic lines across the upper face."
+        },
+        {
+          "id": "daxxify-intro",
+          "type": "paragraph",
+          "text": "Expression lines across the upper face often become more noticeable with repeated facial movement. Forehead lines can appear when raising the brows, frown lines form between the eyebrows, and crow's feet develop around the outer corners of the eyes.\n\nAt Harmony Med Spa in Sarasota, FL, we offer DAXXIFY for patients interested in a long-lasting neuromodulator option and natural-looking results. DAXXIFY temporarily reduces targeted muscle activity to soften dynamic lines and create a refreshed appearance."
+        },
+        {
+          "id": "daxxify-h2-different",
+          "type": "heading2",
+          "text": "What Makes DAXXIFY Different?"
+        },
+        {
+          "id": "daxxify-different",
+          "type": "paragraph",
+          "text": "DAXXIFY is a peptide-formulated botulinum toxin injectable. One of its most recognized features is its extended duration for frown lines. In clinical studies, more than half of patients had no or minor frown lines six months after treatment. For Sarasota patients who prefer longer-lasting results, DAXXIFY may be worth considering depending on individual goals and response."
+        },
+        {
+          "id": "daxxify-h2-frown",
+          "type": "heading2",
+          "text": "DAXXIFY for Frown Lines"
+        },
+        {
+          "id": "daxxify-frown",
+          "type": "paragraph",
+          "text": "Frown lines, also called glabellar lines or \"11 lines,\" develop from repeated movement between the eyebrows. This is DAXXIFY's FDA-approved cosmetic treatment area. By carefully targeting the muscles responsible for these lines, we can soften a tense or tired appearance while maintaining natural facial expression."
+        },
+        {
+          "id": "daxxify-h2-forehead",
+          "type": "heading2",
+          "text": "Forehead Lines and Crow's Feet"
+        },
+        {
+          "id": "daxxify-forehead",
+          "type": "paragraph",
+          "text": "Forehead lines form with repeated brow movement, while crow's feet develop around the outer corners of the eyes from smiling, squinting, and other facial expressions. Over time, these dynamic lines can become more noticeable even when the face is at rest.\n\nAt Harmony Med Spa, we evaluate facial anatomy, muscle strength, symmetry, and your aesthetic goals before recommending treatment. This allows us to create a personalized approach that softens visible lines while maintaining natural facial movement and a balanced, refreshed appearance."
+        },
+        {
+          "id": "daxxify-h2-expect",
+          "type": "heading2",
+          "text": "What to Expect from Treatment"
+        },
+        {
+          "id": "daxxify-expect",
+          "type": "paragraph",
+          "text": "A DAXXIFY appointment begins with a consultation to discuss the areas you want to address. Precise injections are then placed according to your personalized plan. Results are not immediate, but clinical trial participants reported measurable improvement in frown lines within two days. Individual timing and duration vary."
+        },
+        {
+          "id": "daxxify-faq",
+          "type": "faq",
+          "items": [
+            {
+              "id": "daxxify-faq-1",
+              "question": "How is DAXXIFY different from other neuromodulators?",
+              "answer": "DAXXIFY uses a peptide-based formulation and is known for longer-lasting results in frown line treatment. The right neuromodulator depends on your goals, facial anatomy, and treatment history."
+            },
+            {
+              "id": "daxxify-faq-2",
+              "question": "Can DAXXIFY treat the forehead, frown lines, and crow's feet?",
+              "answer": "We evaluate all three areas together and determine where DAXXIFY is appropriate. Forehead and crow's feet treatment with DAXXIFY is off-label, while moderate to severe frown lines are its FDA-approved cosmetic indication."
+            },
+            {
+              "id": "daxxify-faq-3",
+              "question": "Will DAXXIFY make my face look frozen?",
+              "answer": "Our goal is a smoother, refreshed look. Thoughtful placement and personalized dosing help maintain natural-looking movement."
+            },
+            {
+              "id": "daxxify-faq-4",
+              "question": "How long does DAXXIFY last?",
+              "answer": "For frown lines, clinical studies found that more than half of patients had no or minor lines at six months. Results vary from person to person."
+            }
+          ]
+        },
+        {
+          "id": "daxxify-h2-schedule",
+          "type": "heading2",
+          "text": "Schedule a DAXXIFY Consultation in Sarasota, FL"
+        },
+        {
+          "id": "daxxify-schedule",
+          "type": "paragraph",
+          "text": "Schedule a consultation with Harmony Med Spa to learn whether DAXXIFY is right for your aesthetic goals and create a personalized treatment plan for smoother, refreshed-looking skin. Contact our office in Sarasota, FL, by calling (941) 923-8990 today."
         }
       ]
     }

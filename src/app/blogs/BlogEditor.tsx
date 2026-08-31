@@ -38,13 +38,13 @@ import {
   validateBlog,
 } from "@/lib/blogs/seo";
 import {
-  imageSourceForSite,
   type BlogBlockType,
   type BlogContentBlock,
   type BlogInput,
   type BlogRecord,
   type BlogStatus,
 } from "@/lib/blogs/types";
+import BlogImage from "@/app/blogs/BlogImage";
 
 type Props = {
   mode: "new" | "edit";
@@ -347,14 +347,13 @@ function ContentBlockEditor({
           </div>
           <div className="blog-image-preview">
             {Boolean(block.url) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageSourceForSite(block.url)} alt={block.alt || "Article image preview"} />
+              <BlogImage url={block.url} alt={block.alt || "Article image preview"} />
             ) : (
               <span><ImagePlus size={22} /><small>Image preview</small></span>
             )}
           </div>
           <p className="blog-image-note">
-            No featured image is required. The first article image can support cards and social sharing later.
+            The first article image is required for publishing and must load successfully in this preview.
           </p>
         </div>
       ) : (

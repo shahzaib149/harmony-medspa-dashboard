@@ -31,7 +31,7 @@ function article(overrides: Partial<BlogInput> = {}): BlogInput {
 test("primary keyword prepares editable SEO suggestions", () => {
   assert.deepEqual(prepareSeoSuggestions("Botox aftercare"), {
     slug: "botox-aftercare",
-    seoTitle: "Botox Aftercare: What to Know | Harmony Med Spa",
+    seoTitle: "Botox Aftercare: What to Know",
     metaDescription: "Learn about Botox aftercare, what to expect, and helpful care guidance from Harmony Med Spa in Sarasota, Florida.",
   });
   assert.equal(slugifyBlogKeyword("RF Microneedling & Skin Care"), "rf-microneedling-and-skin-care");
@@ -40,11 +40,15 @@ test("primary keyword prepares editable SEO suggestions", () => {
 test("technical SEO package follows manual publication state", () => {
   const draft = article();
   const draftSeo = buildBlogTechnicalSeo({ ...draft, publishedAt: null, updatedAt: "2026-08-07T10:00:00.000Z" });
-  assert.equal(draftSeo.canonical, "https://harmony-medspa.vercel.app/blog/botox-aftercare");
+  assert.equal(draftSeo.canonical, "https://www.harmonymedspafl.com/blog/botox-aftercare");
   assert.equal(draftSeo.sitemap.included, false);
   assert.equal(draftSeo.openGraph.type, "article");
   assert.equal(draftSeo.articleSchema["@type"], "BlogPosting");
-  assert.equal("author" in draftSeo.articleSchema, false);
+  assert.deepEqual(draftSeo.articleSchema.author, {
+    "@type": "Organization",
+    name: "Harmony Med Spa Editorial Team",
+    url: "https://www.harmonymedspafl.com",
+  });
 
   const publishedSeo = buildBlogTechnicalSeo({ ...draft, status: "Published", publishedAt: "2026-08-07T09:00:00.000Z", updatedAt: "2026-08-07T10:00:00.000Z" });
   assert.equal(publishedSeo.sitemap.included, true);

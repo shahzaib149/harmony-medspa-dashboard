@@ -13,12 +13,15 @@ export const DEFAULT_BLOG_CATEGORIES = [
   "IV Therapy",
 ] as const;
 
-const DEFAULT_SITE_URL = "https://harmony-medspa.vercel.app";
+const DEFAULT_SITE_URL = "https://www.harmonymedspafl.com";
 
 export function blogSiteUrl(value?: string) {
   const candidate = value?.trim() || DEFAULT_SITE_URL;
   try {
     const url = new URL(candidate);
+    if (url.hostname === "harmony-medspa.vercel.app" || url.hostname === "harmonymedspafl.com") {
+      return DEFAULT_SITE_URL;
+    }
     return url.origin;
   } catch {
     return DEFAULT_SITE_URL;
@@ -56,10 +59,10 @@ function titleCase(value: string) {
 export function prepareSeoSuggestions(primaryKeyword: string) {
   const keyword = primaryKeyword.trim().replace(/\s+/g, " ");
   const displayKeyword = titleCase(keyword);
-  const longTitle = `${displayKeyword}: What to Know | Harmony Med Spa`;
+  const longTitle = `${displayKeyword}: What to Know`;
   const seoTitle = longTitle.length <= 60
     ? longTitle
-    : `${displayKeyword} | Harmony Med Spa`.slice(0, 60).trim();
+    : displayKeyword.slice(0, 60).trim();
   const metaDescription = keyword
     ? `Learn about ${keyword}, what to expect, and helpful care guidance from Harmony Med Spa in Sarasota, Florida.`.slice(0, 160)
     : "";
@@ -132,6 +135,11 @@ export function buildBlogTechnicalSeo(
       name: "Harmony Med Spa",
       url: siteUrl,
     },
+    author: {
+      "@type": "Organization",
+      name: "Harmony Med Spa Editorial Team",
+      url: siteUrl,
+    },
     dateModified: blog.updatedAt || undefined,
     datePublished: blog.publishedAt || undefined,
     image: image?.url || undefined,
@@ -169,6 +177,9 @@ export function validateBlog(input: BlogInput) {
       ? block.items.some((item) => item.question.trim() && item.answer.trim())
       : block.type !== "image" && block.text.trim(),
   );
+  const images = input.content.filter(
+    (block): block is Extract<BlogContentBlock, { type: "image" }> => block.type === "image",
+  );
 
   if (!input.primaryKeyword.trim()) errors.push("Add a primary keyword.");
   if (!input.title.trim()) errors.push("Add an article title.");
@@ -180,6 +191,8 @@ export function validateBlog(input: BlogInput) {
   if (!input.seoTitle.trim()) errors.push("Add an SEO title.");
   if (!input.metaDescription.trim()) errors.push("Add a meta description.");
   if (readableBlocks.length === 0) errors.push("Write the article before publishing.");
+  if (input.status === "Published" && images.length === 0) errors.push("Add an article image before publishing.");
+  if (input.status === "Draft" && images.length === 0) warnings.push("Add an article image before publishing.");
 
   if (input.seoTitle.length > 60) warnings.push("SEO title is longer than 60 characters.");
   if (input.seoTitle.length > 0 && input.seoTitle.length < 30) warnings.push("SEO title is shorter than 30 characters.");
@@ -189,11 +202,15 @@ export function validateBlog(input: BlogInput) {
   if (!input.relatedServiceUrl.trim()) warnings.push("No related service page is linked.");
   if (!input.ctaLabel.trim() || !input.ctaUrl.trim()) warnings.push("No complete call to action is set.");
   if (wordCount < 500) warnings.push(`Article currently has ${wordCount} words; consider expanding it.`);
-  for (const image of input.content.filter(
-    (block): block is Extract<BlogContentBlock, { type: "image" }> => block.type === "image",
-  )) {
-    if (!image.alt.trim()) warnings.push("An article image is missing alt text.");
+  for (const image of images) {
+    if (!image.alt.trim()) {
+      if (input.status === "Published") errors.push("Every article image needs alt text before publishing.");
+      else warnings.push("An article image is missing alt text.");
+    }
     if (image.url && !/^https?:\/\//i.test(image.url)) errors.push("Article image URLs must start with http:// or https://.");
+    if (/^https:\/\/harmony-medspa\.vercel\.app\//i.test(image.url)) {
+      errors.push("Replace the old Vercel image URL with https://www.harmonymedspafl.com before publishing.");
+    }
   }
   for (const faq of input.content.filter(
     (block): block is Extract<BlogContentBlock, { type: "faq" }> => block.type === "faq",

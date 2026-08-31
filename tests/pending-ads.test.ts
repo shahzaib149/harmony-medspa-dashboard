@@ -38,7 +38,7 @@ test("Wellness pending package contains the recovered compliant RSA copy", () =>
   assert.equal(WELLNESS_PENDING_AD.headlines.length, 15);
   assert.equal(WELLNESS_PENDING_AD.descriptions.length, 4);
   assert.equal(WELLNESS_PENDING_AD.adGroupName, "Wellness - Vercel Landing");
-  assert.equal(WELLNESS_PENDING_AD.finalUrl, "https://harmony-medspa.vercel.app/landing");
+  assert.equal(WELLNESS_PENDING_AD.finalUrl, "https://www.harmonymedspafl.com/landing");
   assert.equal(WELLNESS_PENDING_AD.path1, "Free-Consult");
   assert.equal(WELLNESS_PENDING_AD.path2, "Book-Now");
   assert.equal(WELLNESS_PENDING_AD.headlines[1].text, "Book Your Free Consult");
@@ -64,7 +64,7 @@ test("Feel Like Yourself Again RSA package is valid and unpinned", () => {
   assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.descriptions.length, 4);
   assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.adGroupName, "Med Spa Sarasota");
   assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.adGroupId, "200264220913");
-  assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.finalUrl, "https://harmony-medspa.vercel.app/landing");
+  assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.finalUrl, "https://www.harmonymedspafl.com/landing");
   assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.path1, "Free-Consult");
   assert.equal(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.path2, "Sarasota");
   assert.ok(FEEL_LIKE_YOURSELF_AGAIN_PENDING_AD.headlines.every((h) => h.pinnedField === null));
@@ -81,7 +81,7 @@ test("Finally Care You Trust RSA package is valid and unpinned", () => {
   assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.descriptions.length, 4);
   assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.adGroupName, "Med Spa Sarasota");
   assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.adGroupId, "200264220913");
-  assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.finalUrl, "https://harmony-medspa.vercel.app/landing");
+  assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.finalUrl, "https://www.harmonymedspafl.com/landing");
   assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.path1, "Med-Spa");
   assert.equal(FINALLY_CARE_YOU_TRUST_PENDING_AD.path2, "Sarasota");
   assert.ok(FINALLY_CARE_YOU_TRUST_PENDING_AD.headlines.every((h) => h.pinnedField === null));
