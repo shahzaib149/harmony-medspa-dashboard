@@ -710,7 +710,11 @@ export default function WebsiteAnalyticsClient() {
   useEffect(() => {
     const refresh = () => void load(true);
     window.addEventListener(DASHBOARD_REFRESH_EVENT, refresh);
-    return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
+      window.clearInterval(interval);
+    };
   }, [load]);
 
   function setFilter(name: "days", value: string) {
