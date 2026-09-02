@@ -16,6 +16,7 @@ import type { WebsiteAnalyticsSnapshot } from "@/lib/google/analytics-types";
 const ANALYTICS_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 const REPORT_TIME_ZONE = "America/New_York";
 const CACHE_TTL_MS = 2 * 60 * 1000;
+const HARMONY_GA4_PROPERTY_ID = "433407977";
 
 type ReportRequest = analyticsdata_v1beta.Schema$RunReportRequest;
 type FilterExpression = analyticsdata_v1beta.Schema$FilterExpression;
@@ -37,7 +38,7 @@ const cache = new Map<
 const requests = new Map<string, Promise<WebsiteAnalyticsSnapshot>>();
 
 function analyticsConfiguration() {
-  const propertyId = process.env.GA4_PROPERTY_ID?.trim() ?? "";
+  const propertyId = HARMONY_GA4_PROPERTY_ID;
   const clientEmail = process.env.GA4_SERVICE_ACCOUNT_EMAIL?.trim() ?? "";
   const privateKey = (process.env.GA4_SERVICE_ACCOUNT_PRIVATE_KEY ?? "")
     .trim()
