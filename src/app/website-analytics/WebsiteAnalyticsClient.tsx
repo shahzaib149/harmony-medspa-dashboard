@@ -233,29 +233,6 @@ function AnalyticsSkeleton() {
 
 const HARMONY_HOSTNAME = "www.harmonymedspafl.com";
 
-function WebsiteIdentity() {
-  return (
-    <div
-      className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl border px-3.5 sm:min-w-[260px] xl:flex-none"
-      style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
-    >
-      <span
-        className="grid size-9 shrink-0 place-items-center rounded-xl"
-        style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}
-      >
-        <Globe2 size={16} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--text-muted)" }}>
-          Website
-        </span>
-        <span className="mt-0.5 block truncate text-xs font-bold" style={{ color: "var(--text-primary)" }}>
-          Harmony Med Spa FL
-        </span>
-      </span>
-    </div>
-  );
-}
 function SetupState({ error }: { error: AnalyticsError }) {
   const missing = error.missing?.length
     ? error.missing
@@ -733,99 +710,65 @@ export default function WebsiteAnalyticsClient() {
 
   return (
     <div className="space-y-5">
-      <header
-        className="relative z-30 flex flex-col gap-5 rounded-3xl border p-5 sm:p-6 xl:flex-row xl:items-end xl:justify-between"
+            <section
+        className="relative z-30 flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:px-5 xl:flex-row xl:items-center xl:justify-between"
         style={{
           borderColor: "var(--border-subtle)",
-          background: "linear-gradient(135deg, var(--surface-1), color-mix(in srgb, var(--brand-primary-soft) 34%, var(--surface-1)))",
+          background: "var(--surface-1)",
           boxShadow: "var(--shadow-soft)",
         }}
       >
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <p
-              className="text-[10px] font-bold uppercase tracking-[.18em]"
-              style={{ color: "var(--brand-primary-strong)" }}
-            >
-              Digital front door
-            </p>
-            <span
-              className="flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold"
-              style={{
-                color: snapshot ? "var(--success-text)" : "var(--text-muted)",
-                background: snapshot ? "var(--success-bg)" : "var(--surface-2)",
-              }}
-            >
-              <Globe2 size={11} />
-              {snapshot ? "Live GA4 reporting" : "GA4 connection"}
-            </span>
-          </div>
-          <h1
-            className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl"
-            style={{ color: "var(--text-primary)" }}
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="relative grid size-10 shrink-0 place-items-center rounded-xl"
+            style={{ color: snapshot ? "var(--success-text)" : "var(--brand-primary-strong)", background: snapshot ? "var(--success-bg)" : "var(--brand-primary-soft)" }}
           >
-            Website analytics
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-            See who visits Harmony online, what brings them in, which pages hold attention, and where visits become leads.
-          </p>
-          {snapshot && (
-            <p className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-              Property {snapshot.propertyId} · Updated {new Date(snapshot.fetchedAt).toLocaleString()} · Comparing with the previous {days} days
+            <Activity size={18} />
+            {snapshot && <span className="absolute right-0 top-0 size-2.5 rounded-full border-2 border-white bg-emerald-500" />}
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-bold" style={{ color: "var(--text-primary)" }}>Harmony Med Spa FL</p>
+              <span className="rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: snapshot ? "var(--success-text)" : "var(--text-muted)", background: snapshot ? "var(--success-bg)" : "var(--surface-2)" }}>
+                {snapshot ? "GA4 connected" : "Connecting"}
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--text-muted)" }}>
+              {snapshot
+                ? `Property ${snapshot.propertyId} · Updated ${new Date(snapshot.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · Auto-refreshes every minute`
+                : "Realtime and historical website reporting"}
             </p>
-          )}
+          </div>
         </div>
 
         {configurationRequired ? (
-          <div
-            className="flex min-w-0 items-center gap-3 rounded-2xl border px-4 py-3 xl:min-w-[285px]"
-            style={{ borderColor: "var(--warning-border)", background: "var(--warning-bg)" }}
-          >
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ color: "var(--warning-text)", background: "var(--surface-1)" }}>
-              <LockKeyhole size={16} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-bold" style={{ color: "var(--warning-text)" }}>Analytics connection required</p>
-              <p className="mt-0.5 text-[10px]" style={{ color: "var(--text-muted)" }}>Reporting filters unlock after setup</p>
-            </div>
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold" style={{ color: "var(--warning-text)", background: "var(--warning-bg)" }}>
+            <LockKeyhole size={14} />
+            Analytics connection required
           </div>
         ) : (
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap xl:w-auto xl:justify-end">
-            <WebsiteIdentity />
-            <div
-              className="flex min-h-14 flex-1 items-center rounded-2xl border p-1 sm:flex-none"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
-              role="group"
-              aria-label="Website Analytics date range"
-            >
-              <CalendarDays size={14} className="ml-2" style={{ color: "var(--text-muted)" }} />
+          <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
+            <div className="flex min-h-11 flex-1 items-center rounded-xl border p-1 sm:flex-none" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-2)" }} role="group" aria-label="Website Analytics date range">
+              <CalendarDays size={13} className="ml-2" style={{ color: "var(--text-muted)" }} />
               {[7, 14, 30, 90].map((value) => (
                 <button
                   key={value}
                   onClick={() => setFilter("days", String(value))}
                   aria-pressed={days === value}
-                  className="min-h-11 min-w-11 flex-1 rounded-xl px-2 text-xs font-bold sm:flex-none"
-                  style={{
-                    background: days === value ? "var(--brand-primary-soft)" : "transparent",
-                    color: days === value ? "var(--brand-primary-strong)" : "var(--text-muted)",
-                  }}
+                  className="min-h-9 min-w-10 flex-1 rounded-lg px-2 text-[11px] font-bold sm:flex-none"
+                  style={{ background: days === value ? "var(--surface-1)" : "transparent", color: days === value ? "var(--brand-primary-strong)" : "var(--text-muted)", boxShadow: days === value ? "var(--shadow-soft)" : "none" }}
                 >
                   {value}d
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => void load(true)}
-              disabled={refreshing || loading}
-              className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-bold disabled:opacity-50"
-              style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
-            >
-              {refreshing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+            <button onClick={() => void load(true)} disabled={refreshing || loading} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-bold disabled:opacity-50" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}>
+              {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               Refresh
             </button>
           </div>
         )}
-      </header>
+      </section>
 
       {error?.code === "GA4_NOT_CONFIGURED" ? (
         <SetupState error={error} />
