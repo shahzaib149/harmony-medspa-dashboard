@@ -122,6 +122,10 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
     join(root, "src", "app", "website-analytics", "WebsiteAnalyticsClient.tsx"),
     "utf8",
   );
+  const analyticsClient = readFileSync(
+    join(root, "src", "lib", "google", "analytics-client.ts"),
+    "utf8",
+  );
   const api = readFileSync(
     join(root, "src", "app", "api", "google-analytics", "overview", "route.ts"),
     "utf8",
@@ -129,6 +133,8 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
 
   assert.match(page, /requirePageAuth\(\{ next: "\/website-analytics" \}\)/);
   assert.match(api, /requireRole\(request, "viewer"\)/);
+  assert.match(api, /fetchWebsiteAnalytics/);
+  assert.match(analyticsClient, /runRealtimeReport/);
   assert.match(client, /searchParams\.get\("days"\)/);
   assert.match(client, /const HARMONY_HOSTNAME = "www\.harmonymedspafl\.com"/);
   assert.match(client, /md:hidden/);
@@ -137,5 +143,7 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
   assert.match(client, /www\.harmonymedspafl\.com/);
   assert.match(client, /Harmony Med Spa FL/);
   assert.match(client, /Awaiting GA4 access/);
+  assert.match(client, /Website activity is arriving/);
+  assert.match(client, /Last 30 minutes/);
   assert.doesNotMatch(client, /<select/);
 });

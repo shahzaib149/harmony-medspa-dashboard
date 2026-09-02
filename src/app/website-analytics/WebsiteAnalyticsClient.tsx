@@ -32,6 +32,7 @@ import {
 } from "@/app/website-analytics/WebsiteAnalyticsCharts";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
 import type {
+  WebsiteAnalyticsRealtime,
   WebsiteAnalyticsSnapshot,
   WebsiteAnalyticsSummary,
 } from "@/lib/google/analytics-types";
@@ -365,7 +366,78 @@ function SetupState({ error }: { error: AnalyticsError }) {
   );
 }
 
-function EmptyState({ hostname }: { hostname: string | null }) {
+function EmptyState({
+  hostname,
+  realtime,
+}: {
+  hostname: string | null;
+  realtime: WebsiteAnalyticsRealtime;
+}) {
+  const hasRealtimeActivity =
+    realtime.activeUsers > 0 ||
+    realtime.sessions > 0 ||
+    realtime.pageViews > 0 ||
+    realtime.leads > 0;
+
+  if (hasRealtimeActivity) {
+    const liveMetrics = [
+      { label: "Active visitors", value: realtime.activeUsers, icon: Users },
+      { label: "Sessions started", value: realtime.sessions, icon: Route },
+      { label: "Page views", value: realtime.pageViews, icon: FileBarChart },
+      { label: "Lead events", value: realtime.leads, icon: Target },
+    ];
+
+    return (
+      <section
+        className="overflow-hidden rounded-3xl border"
+        style={{
+          borderColor: "var(--success-border)",
+          background:
+            "linear-gradient(135deg, var(--surface-1), color-mix(in srgb, var(--success-bg) 58%, var(--surface-1)))",
+          boxShadow: "var(--shadow-soft)",
+        }}
+      >
+        <div className="flex flex-col gap-4 border-b p-6 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="flex items-start gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-2xl" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>
+              <Activity size={21} />
+            </span>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: "var(--success-text)" }}>
+                Live now
+              </p>
+              <h2 className="mt-1 text-xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+                Website activity is arriving
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+                GA4 is receiving events from Harmony Med Spa FL. Standard reports are still processing this brand-new data stream and will populate automatically.
+              </p>
+            </div>
+          </div>
+          <span className="w-fit rounded-full px-3 py-1.5 text-xs font-bold" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>
+            Last 30 minutes
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-px bg-[var(--border-subtle)] lg:grid-cols-4">
+          {liveMetrics.map(({ label, value, icon: Icon }) => (
+            <article key={label} className="bg-[var(--surface-1)] p-5">
+              <Icon size={17} style={{ color: "var(--brand-primary)" }} />
+              <p className="mt-4 text-3xl font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>
+                {numberFormatter.format(value)}
+              </p>
+              <p className="mt-1 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>{label}</p>
+            </article>
+          ))}
+        </div>
+
+        <p className="px-6 py-4 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
+          Google can take up to 24 hours to move new events into standard acquisition, page, device, and trend reports. Realtime confirms the installation is working.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--border-strong)" }}>
       <Globe2 className="mx-auto" size={28} style={{ color: "var(--brand-primary)" }} />
@@ -374,7 +446,7 @@ function EmptyState({ hostname }: { hostname: string | null }) {
       </h3>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
         {hostname
-          ? `GA4 returned no sessions for ${hostname}. Confirm that Harmony Med Spa FL is receiving the GA4 measurement tag.`
+          ? "GA4 has not processed sessions for Harmony Med Spa FL yet. Open the live website, browse a few pages, and refresh this report."
           : "The property returned no sessions. Verify the measurement tag in GA4 Realtime and try a wider date range."}
       </p>
     </div>
@@ -674,7 +746,7 @@ export default function WebsiteAnalyticsClient() {
             </div>
           )}
           {empty ? (
-            <EmptyState hostname={hostname} />
+            <EmptyState hostname={hostname} realtime={snapshot.realtime} />
           ) : (
             <>
               <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">

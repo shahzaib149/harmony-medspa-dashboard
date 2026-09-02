@@ -254,6 +254,30 @@ function reportRequestsFor(
   };
 }
 
+function realtimeMetricTotal(
+  report: analyticsdata_v1beta.Schema$RunRealtimeReportResponse | undefined,
+) {
+  return Number(report?.rows?.[0]?.metricValues?.[0]?.value ?? 0) || 0;
+}
+
+function realtimeEventCounts(
+  report: analyticsdata_v1beta.Schema$RunRealtimeReportResponse | undefined,
+) {
+  const counts = new Map<string, number>();
+  let eventCount = 0;
+  for (const row of report?.rows ?? []) {
+    const eventName = row.dimensionValues?.[0]?.value ?? "";
+    const count = Number(row.metricValues?.[0]?.value ?? 0) || 0;
+    counts.set(eventName, count);
+    eventCount += count;
+  }
+  return {
+    eventCount,
+    sessions: counts.get("session_start") ?? 0,
+    pageViews: counts.get("page_view") ?? 0,
+    leads: counts.get("generate_lead") ?? 0,
+  };
+}
 async function loadWebsiteAnalytics(
   days: number,
   hostname: string | null,
@@ -266,7 +290,8 @@ async function loadWebsiteAnalytics(
   const analytics = google.analyticsdata({ version: "v1beta", auth });
   const { first, second, ranges } = reportRequestsFor(days, hostname);
 
-  const [firstBatch, secondBatch] = await Promise.all([
+  const [firstBatch, secondBatch, realtimeUsers, realtimeEvents] =
+    await Promise.all([
     analytics.properties.batchRunReports({
       property: `properties/${propertyId}`,
       requestBody: { requests: first },
@@ -275,12 +300,25 @@ async function loadWebsiteAnalytics(
       property: `properties/${propertyId}`,
       requestBody: { requests: second },
     }),
+    analytics.properties.runRealtimeReport({
+      property: "properties/" + propertyId,
+      requestBody: { metrics: [{ name: "activeUsers" }] },
+    }),
+    analytics.properties.runRealtimeReport({
+      property: "properties/" + propertyId,
+      requestBody: {
+        dimensions: [{ name: "eventName" }],
+        metrics: [{ name: "eventCount" }],
+        limit: "50",
+      },
+    }),
   ]);
 
   const firstReports = firstBatch.data.reports ?? [];
   const secondReports = secondBatch.data.reports ?? [];
   const currentLeads = reportMetricTotal(firstReports[2]);
   const previousLeads = reportMetricTotal(firstReports[3]);
+  const realtimeCounts = realtimeEventCounts(realtimeEvents.data);
 
   return {
     source: "ga4",
@@ -301,6 +339,10 @@ async function loadWebsiteAnalytics(
     pages: normalizePages(secondReports[3]),
     devices: normalizeDevices(secondReports[4]),
     sites: normalizeSites(firstReports[4]),
+      realtime: {
+      activeUsers: realtimeMetricTotal(realtimeUsers.data),
+      ...realtimeCounts,
+    },
   };
 }
 

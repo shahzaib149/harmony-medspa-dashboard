@@ -60,6 +60,14 @@ export type WebsiteAnalyticsSite = {
   share: number;
 };
 
+export type WebsiteAnalyticsRealtime = {
+  activeUsers: number;
+  sessions: number;
+  pageViews: number;
+  leads: number;
+  eventCount: number;
+};
+
 export type WebsiteAnalyticsSnapshot = {
   source: "ga4";
   fetchedAt: string;
@@ -77,4 +85,5 @@ export type WebsiteAnalyticsSnapshot = {
   pages: WebsiteAnalyticsPage[];
   devices: WebsiteAnalyticsDevice[];
   sites: WebsiteAnalyticsSite[];
+  realtime: WebsiteAnalyticsRealtime;
 };
