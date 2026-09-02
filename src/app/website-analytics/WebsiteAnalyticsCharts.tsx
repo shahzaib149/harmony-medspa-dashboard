@@ -1,17 +1,24 @@
 "use client";
 
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import type {
+  WebsiteAnalyticsRealtimeBreakdown,
+  WebsiteAnalyticsRealtimeTrendPoint,
   WebsiteAnalyticsSource,
   WebsiteAnalyticsTrendPoint,
 } from "@/lib/google/analytics-types";
@@ -25,6 +32,62 @@ const tooltipStyle = {
   fontSize: "12px",
 };
 const axisTick = { fill: "var(--chart-axis)", fontSize: 11 };
+const liveColors = ["#b7831f", "#2a867a", "#5879a7", "#a45f69"];
+
+export function WebsiteLiveActivityChart({
+  data,
+}: {
+  data: WebsiteAnalyticsRealtimeTrendPoint[];
+}) {
+  return (
+    <figure className="min-w-0" aria-label="Live website activity during the last 30 minutes" tabIndex={0}>
+      <div className="h-[240px] min-w-0 w-full sm:h-[285px]">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
+          <AreaChart data={data} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
+            <defs>
+              <linearGradient id="liveViews" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--brand-primary)" stopOpacity={0.32} />
+                <stop offset="100%" stopColor="var(--brand-primary)" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 5" vertical={false} />
+            <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={26} tick={axisTick} interval="preserveStartEnd" />
+            <YAxis allowDecimals={false} axisLine={false} tickLine={false} width={38} tick={axisTick} />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "var(--text-primary)", fontWeight: 700 }} />
+            <Area type="monotone" dataKey="pageViews" name="Page views" stroke="var(--brand-primary)" strokeWidth={2.5} fill="url(#liveViews)" isAnimationActive={false} />
+            <Line type="monotone" dataKey="activeUsers" name="Active visitors" stroke="var(--success-text)" strokeWidth={2} dot={false} isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
+  );
+}
+
+export function WebsiteRealtimeDeviceChart({
+  data,
+}: {
+  data: WebsiteAnalyticsRealtimeBreakdown[];
+}) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  return (
+    <figure className="relative min-w-0" aria-label="Live visitors by device" tabIndex={0}>
+      <div className="h-[210px] min-w-0 w-full">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={82} paddingAngle={3} stroke="none" isAnimationActive={false}>
+              {data.map((item, index) => <Cell key={item.name} fill={liveColors[index % liveColors.length]} />)}
+            </Pie>
+            <Tooltip contentStyle={tooltipStyle} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-[78px] text-center">
+        <strong className="block text-2xl tabular-nums" style={{ color: "var(--text-primary)" }}>{total}</strong>
+        <span className="text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: "var(--text-muted)" }}>Visitors</span>
+      </div>
+    </figure>
+  );
+}
 
 export function WebsiteTrafficChart({
   data,

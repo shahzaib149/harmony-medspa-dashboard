@@ -65,6 +65,19 @@ export type WebsiteAnalyticsRealtimePage = {
   views: number;
 };
 
+export type WebsiteAnalyticsRealtimeTrendPoint = {
+  minute: number;
+  label: string;
+  activeUsers: number;
+  pageViews: number;
+  events: number;
+};
+
+export type WebsiteAnalyticsRealtimeBreakdown = {
+  name: string;
+  value: number;
+};
+
 export type WebsiteAnalyticsRealtime = {
   activeUsers: number;
   sessions: number;
@@ -72,6 +85,10 @@ export type WebsiteAnalyticsRealtime = {
   leads: number;
   eventCount: number;
   pages: WebsiteAnalyticsRealtimePage[];
+  trend: WebsiteAnalyticsRealtimeTrendPoint[];
+  devices: WebsiteAnalyticsRealtimeBreakdown[];
+  locations: WebsiteAnalyticsRealtimeBreakdown[];
+  events: WebsiteAnalyticsRealtimeBreakdown[];
 };
 
 export type WebsiteAnalyticsSnapshot = {

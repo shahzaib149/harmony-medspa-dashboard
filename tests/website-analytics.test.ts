@@ -144,8 +144,12 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
   assert.match(client, /www\.harmonymedspafl\.com/);
   assert.match(client, /Harmony Med Spa FL/);
   assert.match(client, /Awaiting GA4 access/);
-  assert.match(client, /Website activity is arriving/);
+  assert.match(client, /Live command center/);
+  assert.match(client, /WebsiteLiveActivityChart/);
+  assert.match(client, /Visitor locations/);
+  assert.match(analyticsClient, /minutesAgo/);
+  assert.match(analyticsClient, /deviceCategory/);
   assert.match(client, /Last 30 minutes/);
-  assert.match(client, /Recently viewed pages/);
+  assert.match(client, /Pages being viewed/);
   assert.doesNotMatch(client, /<select/);
 });

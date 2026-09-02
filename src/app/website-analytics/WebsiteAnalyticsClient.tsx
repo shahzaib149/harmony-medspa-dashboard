@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
+  WebsiteLiveActivityChart,
+  WebsiteRealtimeDeviceChart,
   WebsiteSourceChart,
   WebsiteTrafficChart,
 } from "@/app/website-analytics/WebsiteAnalyticsCharts";
@@ -381,105 +383,182 @@ function EmptyState({
 
   if (hasRealtimeActivity) {
     const liveMetrics = [
-      { label: "Active visitors", value: realtime.activeUsers, icon: Users },
-      { label: "Sessions started", value: realtime.sessions, icon: Route },
-      { label: "Page views", value: realtime.pageViews, icon: FileBarChart },
-      { label: "Lead events", value: realtime.leads, icon: Target },
+      { label: "Active visitors", value: realtime.activeUsers, detail: "On the site now", icon: Users },
+      { label: "Sessions", value: realtime.sessions, detail: "Visits started", icon: Route },
+      { label: "Page views", value: realtime.pageViews, detail: "Pages opened", icon: FileBarChart },
+      { label: "Interactions", value: realtime.eventCount, detail: "All tracked events", icon: MousePointerClick },
+      { label: "Lead events", value: realtime.leads, detail: "Forms completed", icon: Target },
     ];
+    const conversionRate = realtime.sessions > 0 ? realtime.leads / realtime.sessions : 0;
+    const viewsPerVisitor = realtime.activeUsers > 0 ? realtime.pageViews / realtime.activeUsers : 0;
 
     return (
-      <section
-        className="overflow-hidden rounded-3xl border"
-        style={{
-          borderColor: "var(--success-border)",
-          background:
-            "linear-gradient(135deg, var(--surface-1), color-mix(in srgb, var(--success-bg) 58%, var(--surface-1)))",
-          boxShadow: "var(--shadow-soft)",
-        }}
-      >
-        <div className="flex flex-col gap-4 border-b p-6 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "var(--border-subtle)" }}>
-          <div className="flex items-start gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-2xl" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>
-              <Activity size={21} />
-            </span>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: "var(--success-text)" }}>
-                Live now
-              </p>
-              <h2 className="mt-1 text-xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-                Website activity is arriving
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-                GA4 is receiving events from Harmony Med Spa FL. Standard reports are still processing this brand-new data stream and will populate automatically.
-              </p>
+      <div className="space-y-5">
+        <section
+          className="relative overflow-hidden rounded-3xl border"
+          style={{
+            borderColor: "var(--success-border)",
+            background: "linear-gradient(135deg, var(--surface-1), color-mix(in srgb, var(--success-bg) 62%, var(--surface-1)))",
+            boxShadow: "var(--shadow-soft)",
+          }}
+        >
+          <div className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full blur-3xl" style={{ background: "var(--success-bg)", opacity: 0.8 }} />
+          <div className="relative flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6" style={{ borderColor: "var(--border-subtle)" }}>
+            <div className="flex items-start gap-3">
+              <span className="relative grid size-11 shrink-0 place-items-center rounded-2xl" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>
+                <Activity size={21} />
+                <span className="absolute right-0 top-0 size-2.5 rounded-full border-2 border-white bg-emerald-500">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400" />
+                </span>
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: "var(--success-text)" }}>Live command center</p>
+                  <span className="rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>Connected</span>
+                </div>
+                <h2 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl" style={{ color: "var(--text-primary)" }}>Website activity, right now</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
+                  A live operational view of visitors, content, devices, locations, and conversion activity from GA4.
+                </p>
+              </div>
+            </div>
+            <div className="flex w-fit items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-bold" style={{ color: "var(--success-text)", background: "var(--surface-1)", borderColor: "var(--success-border)" }}>
+              <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
+              Last 30 minutes
             </div>
           </div>
-          <span className="w-fit rounded-full px-3 py-1.5 text-xs font-bold" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}>
-            Last 30 minutes
-          </span>
-        </div>
 
-        <div className="grid grid-cols-2 gap-px bg-[var(--border-subtle)] lg:grid-cols-4">
-          {liveMetrics.map(({ label, value, icon: Icon }) => (
-            <article key={label} className="bg-[var(--surface-1)] p-5">
-              <Icon size={17} style={{ color: "var(--brand-primary)" }} />
-              <p className="mt-4 text-3xl font-bold tabular-nums" style={{ color: "var(--text-primary)" }}>
-                {numberFormatter.format(value)}
-              </p>
-              <p className="mt-1 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>{label}</p>
-            </article>
-          ))}
-        </div>
+          <div className="relative grid grid-cols-2 gap-px bg-[var(--border-subtle)] lg:grid-cols-5">
+            {liveMetrics.map(({ label, value, detail, icon: Icon }) => (
+              <article key={label} className="bg-[var(--surface-1)] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <Icon size={17} style={{ color: "var(--brand-primary)" }} />
+                  <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Live</span>
+                </div>
+                <p className="mt-4 text-3xl font-bold tracking-tight tabular-nums" style={{ color: "var(--text-primary)" }}>{numberFormatter.format(value)}</p>
+                <p className="mt-1 text-xs font-bold" style={{ color: "var(--text-primary)" }}>{label}</p>
+                <p className="mt-0.5 text-[10px]" style={{ color: "var(--text-muted)" }}>{detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-        {realtime.pages.length > 0 && (
-          <div className="border-t px-6 py-5" style={{ borderColor: "var(--border-subtle)" }}>
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--brand-primary-strong)" }}>
-                  Recently viewed pages
-                </p>
-                <h3 className="mt-1 text-base font-bold" style={{ color: "var(--text-primary)" }}>
-                  What visitors are viewing now
-                </h3>
-              </div>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Page titles · Last 30 minutes</p>
+        <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,.65fr)]">
+          <Panel eyebrow="Live pulse" title="Activity over the last 30 minutes" description="Page views and active visitors minute by minute.">
+            <div className="mb-2 flex flex-wrap gap-4 text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
+              <span className="flex items-center gap-2"><span className="size-2 rounded-full" style={{ background: "var(--brand-primary)" }} />Page views</span>
+              <span className="flex items-center gap-2"><span className="size-2 rounded-full" style={{ background: "var(--success-text)" }} />Active visitors</span>
             </div>
+            <WebsiteLiveActivityChart data={realtime.trend} />
+          </Panel>
 
-            <div className="mt-4 divide-y rounded-2xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}>
-              {realtime.pages.map((page, index) => (
-                <div key={page.name} className="flex items-center gap-3 px-4 py-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-xl text-xs font-bold" style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}>
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{page.name}</p>
-                    <p className="mt-0.5 text-[10px]" style={{ color: "var(--text-muted)" }}>Live GA4 page title</p>
+          <Panel eyebrow="Live quality" title="Visit health" description="Immediate signals while daily GA4 reporting finishes processing.">
+            <div className="space-y-3">
+              {[
+                { label: "Views per visitor", value: viewsPerVisitor.toFixed(2), hint: "Content depth" },
+                { label: "Live conversion rate", value: percent(conversionRate), hint: "Leads ÷ sessions" },
+                { label: "Events per visitor", value: realtime.activeUsers ? (realtime.eventCount / realtime.activeUsers).toFixed(1) : "0.0", hint: "Interaction depth" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-2)" }}>
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>{item.label}</p>
+                      <p className="mt-1 text-[10px]" style={{ color: "var(--text-muted)" }}>{item.hint}</p>
+                    </div>
+                    <strong className="text-2xl tracking-tight tabular-nums" style={{ color: "var(--brand-primary-strong)" }}>{item.value}</strong>
                   </div>
-                  <span className="text-sm font-bold tabular-nums" style={{ color: "var(--brand-primary-strong)" }}>
-                    {numberFormatter.format(page.views)} {page.views === 1 ? "view" : "views"}
-                  </span>
                 </div>
               ))}
+              <div className="flex items-start gap-2 rounded-2xl p-3 text-[10px] leading-5" style={{ color: "var(--text-muted)", background: "var(--brand-primary-soft)" }}>
+                <Clock3 size={14} className="mt-0.5 shrink-0" />
+                Standard trends, acquisition, engagement, and exact URL reports can take up to 24 hours to populate for a new stream.
+              </div>
             </div>
+          </Panel>
+        </section>
+
+        <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,.55fr)_minmax(300px,.65fr)]">
+          <Panel eyebrow="Live content" title="Pages being viewed" description="Current page titles ranked by views.">
+            {realtime.pages.length ? (
+              <div className="space-y-2">
+                {realtime.pages.map((page, index) => {
+                  const maxViews = realtime.pages[0]?.views || 1;
+                  return (
+                    <div key={page.name} className="relative overflow-hidden rounded-xl border px-3 py-3" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-2)" }}>
+                      <span className="absolute inset-y-0 left-0 opacity-10" style={{ width: `${Math.max(4, (page.views / maxViews) * 100)}%`, background: "var(--brand-primary)" }} />
+                      <div className="relative flex items-center gap-3">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold" style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}>{String(index + 1).padStart(2, "0")}</span>
+                        <p className="min-w-0 flex-1 truncate text-xs font-bold" style={{ color: "var(--text-primary)" }}>{page.name}</p>
+                        <span className="text-xs font-bold tabular-nums" style={{ color: "var(--brand-primary-strong)" }}>{page.views} {page.views === 1 ? "view" : "views"}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="text-sm" style={{ color: "var(--text-muted)" }}>No page titles reported in this live window.</p>}
+          </Panel>
+
+          <Panel eyebrow="Technology" title="Live device mix" description="Visitors by device category.">
+            {realtime.devices.length ? (
+              <>
+                <WebsiteRealtimeDeviceChart data={realtime.devices} />
+                <div className="space-y-2">
+                  {realtime.devices.map((device, index) => (
+                    <div key={device.name} className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-2 font-semibold capitalize" style={{ color: "var(--text-primary)" }}>
+                        <span className="size-2.5 rounded-full" style={{ background: ["#b7831f", "#2a867a", "#5879a7", "#a45f69"][index % 4] }} />
+                        {device.name}
+                      </span>
+                      <strong className="tabular-nums">{device.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : <p className="text-sm" style={{ color: "var(--text-muted)" }}>Device data will appear with live visitors.</p>}
+          </Panel>
+
+          <div className="grid gap-5">
+            <Panel eyebrow="Geography" title="Visitor locations" description="Live cities and countries.">
+              <div className="space-y-3">
+                {realtime.locations.length ? realtime.locations.map((location, index) => (
+                  <div key={location.name} className="flex items-center gap-3">
+                    <span className="grid size-8 place-items-center rounded-lg text-[10px] font-bold" style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}>{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{location.name}</span>
+                    <strong className="text-xs tabular-nums">{location.value}</strong>
+                  </div>
+                )) : <p className="text-sm" style={{ color: "var(--text-muted)" }}>Location data will appear with live visitors.</p>}
+              </div>
+            </Panel>
+            <Panel eyebrow="Event stream" title="Top interactions" description="GA4 events in the live window.">
+              <div className="space-y-2">
+                {realtime.events.length ? realtime.events.slice(0, 6).map((event) => (
+                  <div key={event.name} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--border-subtle)" }}>
+                    <span className="truncate text-[11px] font-semibold" style={{ color: "var(--text-primary)" }}>{event.name.replaceAll("_", " ")}</span>
+                    <strong className="text-xs tabular-nums" style={{ color: "var(--brand-primary-strong)" }}>{event.value}</strong>
+                  </div>
+                )) : <p className="text-sm" style={{ color: "var(--text-muted)" }}>No events reported yet.</p>}
+              </div>
+            </Panel>
           </div>
-        )}
-        <p className="px-6 py-4 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
-          Google can take up to 24 hours to move new events into standard acquisition, page, device, and trend reports. Realtime confirms the installation is working.
-        </p>
-      </section>
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}>
+          <div>
+            <p className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>Historical reporting is preparing</p>
+            <p className="mt-1 text-[11px] leading-5" style={{ color: "var(--text-muted)" }}>This live dashboard proves tracking is active. The same page will automatically expand into daily trend, source, campaign, device, content, engagement, and lead reports as GA4 processes the new stream.</p>
+          </div>
+          <a href="https://analytics.google.com/" target="_blank" rel="noreferrer" className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-bold" style={{ borderColor: "var(--border-subtle)", color: "var(--brand-primary-strong)" }}>Open GA4 <ExternalLink size={13} /></a>
+        </section>
+      </div>
     );
   }
 
   return (
     <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--border-strong)" }}>
       <Globe2 className="mx-auto" size={28} style={{ color: "var(--brand-primary)" }} />
-      <h3 className="mt-3 font-bold" style={{ color: "var(--text-primary)" }}>
-        No GA4 activity in this range
-      </h3>
+      <h3 className="mt-3 font-bold" style={{ color: "var(--text-primary)" }}>No GA4 activity in this range</h3>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6" style={{ color: "var(--text-muted)" }}>
-        {hostname
-          ? "GA4 has not processed sessions for Harmony Med Spa FL yet. Open the live website, browse a few pages, and refresh this report."
-          : "The property returned no sessions. Verify the measurement tag in GA4 Realtime and try a wider date range."}
+        {hostname ? "No visitors are active in the current 30-minute window, and GA4 is still processing the new stream. Open the website, browse a few pages, then refresh." : "The property returned no sessions. Verify the measurement tag in GA4 Realtime and try a wider date range."}
       </p>
     </div>
   );

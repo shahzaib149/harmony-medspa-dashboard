@@ -276,6 +276,9 @@ function realtimeEventCounts(
     sessions: counts.get("session_start") ?? 0,
     pageViews: counts.get("page_view") ?? 0,
     leads: counts.get("generate_lead") ?? 0,
+    eventBreakdown: Array.from(counts, ([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8),
   };
 }
 function realtimePageRows(
@@ -285,6 +288,38 @@ function realtimePageRows(
     name: row.dimensionValues?.[0]?.value?.trim() || "Untitled page",
     views: Number(row.metricValues?.[0]?.value ?? 0) || 0,
   }));
+}
+
+function realtimeBreakdownRows(
+  report: analyticsdata_v1beta.Schema$RunRealtimeReportResponse | undefined,
+) {
+  return (report?.rows ?? []).map((row) => ({
+    name: row.dimensionValues?.map((value) => value.value?.trim()).filter(Boolean).join(", ") || "Unknown",
+    value: Number(row.metricValues?.[0]?.value ?? 0) || 0,
+  }));
+}
+
+function realtimeTrendRows(
+  report: analyticsdata_v1beta.Schema$RunRealtimeReportResponse | undefined,
+) {
+  const byMinute = new Map<number, { activeUsers: number; pageViews: number; events: number }>();
+  for (const row of report?.rows ?? []) {
+    const minute = Number(row.dimensionValues?.[0]?.value ?? 0) || 0;
+    byMinute.set(minute, {
+      activeUsers: Number(row.metricValues?.[0]?.value ?? 0) || 0,
+      pageViews: Number(row.metricValues?.[1]?.value ?? 0) || 0,
+      events: Number(row.metricValues?.[2]?.value ?? 0) || 0,
+    });
+  }
+  return Array.from({ length: 30 }, (_, index) => {
+    const minute = 29 - index;
+    const point = byMinute.get(minute) ?? { activeUsers: 0, pageViews: 0, events: 0 };
+    return {
+      minute,
+      label: minute === 0 ? "Now" : `${minute}m`,
+      ...point,
+    };
+  });
 }
 async function loadWebsiteAnalytics(
   days: number,
@@ -298,7 +333,7 @@ async function loadWebsiteAnalytics(
   const analytics = google.analyticsdata({ version: "v1beta", auth });
   const { first, second, ranges } = reportRequestsFor(days, hostname);
 
-  const [firstBatch, secondBatch, realtimeUsers, realtimeEvents, realtimePages] =
+  const [firstBatch, secondBatch, realtimeUsers, realtimeEvents, realtimePages, realtimeTrend, realtimeDevices, realtimeLocations] =
     await Promise.all([
     analytics.properties.batchRunReports({
       property: `properties/${propertyId}`,
@@ -319,13 +354,41 @@ async function loadWebsiteAnalytics(
         metrics: [{ name: "eventCount" }],
         limit: "50",
       },
-    }),    analytics.properties.runRealtimeReport({
+    }),
+    analytics.properties.runRealtimeReport({
       property: "properties/" + propertyId,
       requestBody: {
         dimensions: [{ name: "unifiedScreenName" }],
         metrics: [{ name: "screenPageViews" }],
         orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
         limit: "10",
+      },
+    }),
+    analytics.properties.runRealtimeReport({
+      property: "properties/" + propertyId,
+      requestBody: {
+        dimensions: [{ name: "minutesAgo" }],
+        metrics: [{ name: "activeUsers" }, { name: "screenPageViews" }, { name: "eventCount" }],
+        orderBys: [{ dimension: { dimensionName: "minutesAgo", orderType: "NUMERIC" } }],
+        limit: "30",
+      },
+    }),
+    analytics.properties.runRealtimeReport({
+      property: "properties/" + propertyId,
+      requestBody: {
+        dimensions: [{ name: "deviceCategory" }],
+        metrics: [{ name: "activeUsers" }],
+        orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+        limit: "5",
+      },
+    }),
+    analytics.properties.runRealtimeReport({
+      property: "properties/" + propertyId,
+      requestBody: {
+        dimensions: [{ name: "city" }, { name: "country" }],
+        metrics: [{ name: "activeUsers" }],
+        orderBys: [{ metric: { metricName: "activeUsers" }, desc: true }],
+        limit: "8",
       },
     }),
   ]);
@@ -359,6 +422,10 @@ async function loadWebsiteAnalytics(
       activeUsers: realtimeMetricTotal(realtimeUsers.data),
       ...realtimeCounts,
       pages: realtimePageRows(realtimePages.data),
+      trend: realtimeTrendRows(realtimeTrend.data),
+      devices: realtimeBreakdownRows(realtimeDevices.data),
+      locations: realtimeBreakdownRows(realtimeLocations.data),
+      events: Array.from(realtimeCounts.eventBreakdown),
     },
   };
 }
