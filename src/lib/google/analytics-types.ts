@@ -60,12 +60,18 @@ export type WebsiteAnalyticsSite = {
   share: number;
 };
 
+export type WebsiteAnalyticsRealtimePage = {
+  name: string;
+  views: number;
+};
+
 export type WebsiteAnalyticsRealtime = {
   activeUsers: number;
   sessions: number;
   pageViews: number;
   leads: number;
   eventCount: number;
+  pages: WebsiteAnalyticsRealtimePage[];
 };
 
 export type WebsiteAnalyticsSnapshot = {

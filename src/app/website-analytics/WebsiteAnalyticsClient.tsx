@@ -431,6 +431,38 @@ function EmptyState({
           ))}
         </div>
 
+        {realtime.pages.length > 0 && (
+          <div className="border-t px-6 py-5" style={{ borderColor: "var(--border-subtle)" }}>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--brand-primary-strong)" }}>
+                  Recently viewed pages
+                </p>
+                <h3 className="mt-1 text-base font-bold" style={{ color: "var(--text-primary)" }}>
+                  What visitors are viewing now
+                </h3>
+              </div>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Page titles · Last 30 minutes</p>
+            </div>
+
+            <div className="mt-4 divide-y rounded-2xl border" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}>
+              {realtime.pages.map((page, index) => (
+                <div key={page.name} className="flex items-center gap-3 px-4 py-3">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-xl text-xs font-bold" style={{ color: "var(--brand-primary-strong)", background: "var(--brand-primary-soft)" }}>
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{page.name}</p>
+                    <p className="mt-0.5 text-[10px]" style={{ color: "var(--text-muted)" }}>Live GA4 page title</p>
+                  </div>
+                  <span className="text-sm font-bold tabular-nums" style={{ color: "var(--brand-primary-strong)" }}>
+                    {numberFormatter.format(page.views)} {page.views === 1 ? "view" : "views"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <p className="px-6 py-4 text-xs leading-5" style={{ color: "var(--text-muted)" }}>
           Google can take up to 24 hours to move new events into standard acquisition, page, device, and trend reports. Realtime confirms the installation is working.
         </p>

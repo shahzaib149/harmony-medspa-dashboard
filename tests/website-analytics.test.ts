@@ -135,6 +135,7 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
   assert.match(api, /requireRole\(request, "viewer"\)/);
   assert.match(api, /fetchWebsiteAnalytics/);
   assert.match(analyticsClient, /runRealtimeReport/);
+  assert.match(analyticsClient, /unifiedScreenName/);
   assert.match(client, /searchParams\.get\("days"\)/);
   assert.match(client, /const HARMONY_HOSTNAME = "www\.harmonymedspafl\.com"/);
   assert.match(client, /md:hidden/);
@@ -145,5 +146,6 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
   assert.match(client, /Awaiting GA4 access/);
   assert.match(client, /Website activity is arriving/);
   assert.match(client, /Last 30 minutes/);
+  assert.match(client, /Recently viewed pages/);
   assert.doesNotMatch(client, /<select/);
 });

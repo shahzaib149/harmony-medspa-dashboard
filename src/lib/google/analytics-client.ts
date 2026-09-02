@@ -278,6 +278,14 @@ function realtimeEventCounts(
     leads: counts.get("generate_lead") ?? 0,
   };
 }
+function realtimePageRows(
+  report: analyticsdata_v1beta.Schema$RunRealtimeReportResponse | undefined,
+) {
+  return (report?.rows ?? []).map((row) => ({
+    name: row.dimensionValues?.[0]?.value?.trim() || "Untitled page",
+    views: Number(row.metricValues?.[0]?.value ?? 0) || 0,
+  }));
+}
 async function loadWebsiteAnalytics(
   days: number,
   hostname: string | null,
@@ -290,7 +298,7 @@ async function loadWebsiteAnalytics(
   const analytics = google.analyticsdata({ version: "v1beta", auth });
   const { first, second, ranges } = reportRequestsFor(days, hostname);
 
-  const [firstBatch, secondBatch, realtimeUsers, realtimeEvents] =
+  const [firstBatch, secondBatch, realtimeUsers, realtimeEvents, realtimePages] =
     await Promise.all([
     analytics.properties.batchRunReports({
       property: `properties/${propertyId}`,
@@ -310,6 +318,14 @@ async function loadWebsiteAnalytics(
         dimensions: [{ name: "eventName" }],
         metrics: [{ name: "eventCount" }],
         limit: "50",
+      },
+    }),    analytics.properties.runRealtimeReport({
+      property: "properties/" + propertyId,
+      requestBody: {
+        dimensions: [{ name: "unifiedScreenName" }],
+        metrics: [{ name: "screenPageViews" }],
+        orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+        limit: "10",
       },
     }),
   ]);
@@ -342,6 +358,7 @@ async function loadWebsiteAnalytics(
       realtime: {
       activeUsers: realtimeMetricTotal(realtimeUsers.data),
       ...realtimeCounts,
+      pages: realtimePageRows(realtimePages.data),
     },
   };
 }
