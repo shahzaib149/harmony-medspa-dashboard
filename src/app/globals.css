@@ -907,6 +907,8 @@ select:disabled {
   font-size: 0.625rem;
 }
 .blog-filter-bar {
+  position: relative;
+  z-index: 30;
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) 145px 190px;
   gap: 0.6rem;
@@ -976,6 +978,8 @@ select:disabled {
 .blog-category-option:hover, .blog-category-option:focus-visible { outline: 0; background: var(--surface-2); }
 .blog-category-option[data-selected] { color: var(--brand-primary); background: var(--brand-primary-soft); }
 .blog-queue-shell {
+  position: relative;
+  z-index: 1;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: 1.25rem;
