@@ -1,19 +1,34 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ExternalLink,
   Eye,
   FilePenLine,
   Link2,
+  Loader2,
+  Send,
 } from "lucide-react";
-import { blogSiteUrl } from "@/lib/blogs/seo";
+import { useMemo, useState } from "react";
+import { blogSiteUrl, validateBlog } from "@/lib/blogs/seo";
 import { type BlogContentBlock, type BlogRecord, type BlogTextBlock } from "@/lib/blogs/types";
 import BlogImage from "@/app/blogs/BlogImage";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Toast } from "@/components/ui/Toast";
 
 function textLines(value: string) {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
+
+function formatArticleDate(value: string | null) {
+  if (!value) return "Not published yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
 function PreviewBlock({ block }: { block: BlogContentBlock }) {
   if (block.type === "heading2") return <h2>{block.text}</h2>;
   if (block.type === "heading3") return <h3>{block.text}</h3>;
@@ -54,7 +69,7 @@ function PreviewBlock({ block }: { block: BlogContentBlock }) {
 }
 
 export default function BlogPreview({
-  blog,
+  blog: initialBlog,
   canEdit,
   siteUrl,
 }: {
@@ -62,8 +77,61 @@ export default function BlogPreview({
   canEdit: boolean;
   siteUrl?: string;
 }) {
+  const router = useRouter();
+  const [blog, setBlog] = useState(initialBlog);
+  const [confirmPublish, setConfirmPublish] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [toast, setToast] = useState<{ variant: "success" | "warning" | "danger"; message: string } | null>(null);
   const publicUrl = `${blogSiteUrl(siteUrl)}/blog/${blog.slug}`;
   const published = blog.status === "Published";
+  const publishInput = useMemo(() => ({
+    title: blog.title,
+    slug: blog.slug,
+    status: "Published" as const,
+    primaryKeyword: blog.primaryKeyword,
+    category: blog.category,
+    tags: blog.tags,
+    excerpt: blog.excerpt,
+    content: blog.content,
+    seoTitle: blog.seoTitle,
+    metaDescription: blog.metaDescription,
+    relatedServiceUrl: blog.relatedServiceUrl,
+    relatedArticleUrls: blog.relatedArticleUrls,
+    ctaLabel: blog.ctaLabel,
+    ctaUrl: blog.ctaUrl,
+  }), [blog]);
+  const publishValidation = useMemo(() => validateBlog(publishInput), [publishInput]);
+
+  function requestPublish() {
+    if (publishValidation.errors.length) {
+      setToast({ variant: "danger", message: `This draft needs attention before publishing: ${publishValidation.errors[0]}` });
+      return;
+    }
+    setConfirmPublish(true);
+  }
+
+  async function publishArticle() {
+    setPublishing(true);
+    try {
+      const response = await fetch(`/api/airtable/blogs/${blog.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(publishInput),
+      });
+      const body = await response.json() as { blog?: BlogRecord; error?: string; publicationSync?: { ok: boolean; message?: string } };
+      if (!response.ok || !body.blog) throw new Error(body.error || "Article could not be published.");
+      setBlog(body.blog);
+      setConfirmPublish(false);
+      setToast(body.publicationSync && !body.publicationSync.ok
+        ? { variant: "warning", message: `Published in Airtable, but the website refresh is pending. ${body.publicationSync.message || "Please check the publishing connection."}` }
+        : { variant: "success", message: "Article published and the public website was refreshed." });
+      router.refresh();
+    } catch (error) {
+      setToast({ variant: "danger", message: error instanceof Error ? error.message : "Article could not be published." });
+    } finally {
+      setPublishing(false);
+    }
+  }
   const featuredImage = blog.content.find(
     (block): block is Extract<BlogContentBlock, { type: "image" }> => block.type === "image" && Boolean(block.url),
   ) || null;
@@ -77,6 +145,11 @@ export default function BlogPreview({
       <div className="blog-preview-toolbar">
         <Link href="/blogs" className="blog-back-link"><ArrowLeft size={17} /> Blog library</Link>
         <div className="blog-preview-actions">
+          {canEdit && !published && (
+            <button type="button" className="blog-preview-action" data-action="publish" disabled={publishing} onClick={requestPublish}>
+              {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {publishing ? "Publishing…" : "Publish article"}
+            </button>
+          )}
           {canEdit && (
             <Link href={`/blogs/${blog.id}/edit`} className="blog-preview-action" data-action="edit">
               <FilePenLine size={16} /> Edit article
@@ -97,6 +170,12 @@ export default function BlogPreview({
           <span>{published ? "Use the published URL to check the live website version." : "This draft is not visible on the public website."}</span>
         </div>
       </div>
+
+      <dl className="blog-preview-dates" aria-label="Article dates">
+        <div><dt>Created</dt><dd>{formatArticleDate(blog.createdAt)}</dd></div>
+        <div><dt>Last updated</dt><dd>{formatArticleDate(blog.updatedAt)}</dd></div>
+        <div data-published={published || undefined}><dt>Published</dt><dd>{formatArticleDate(blog.publishedAt)}</dd></div>
+      </dl>
 
       <div className="blog-preview-url-card">
         <span><Link2 size={15} /> {published ? "Published URL" : "Planned URL"}</span>
@@ -139,6 +218,24 @@ export default function BlogPreview({
           </footer>
         )}
       </article>
+
+      {toast && <Toast variant={toast.variant} message={toast.message} onClose={() => setToast(null)} />}
+      <ConfirmDialog
+        open={confirmPublish}
+        title="Publish this article?"
+        description="This will publish the draft and refresh the public Harmony website."
+        confirmLabel="Publish article"
+        loading={publishing}
+        loadingLabel="Publishing…"
+        onCancel={() => setConfirmPublish(false)}
+        onConfirm={() => void publishArticle()}
+      >
+        {publishValidation.warnings.length > 0 ? (
+          <div><p className="font-bold">Review these reminders:</p><ul className="mt-2 list-disc space-y-1 pl-5">{publishValidation.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>
+        ) : (
+          <p>The article has passed publishing validation and is ready to go live.</p>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
