@@ -4,13 +4,15 @@ import Link from "next/link";
 import {
   ArrowRight,
   BookOpenText,
+  Check,
+  ChevronDown,
   FileText,
   PenLine,
   Plus,
   Search,
   Sparkles,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BlogSummary } from "@/lib/blogs/types";
 
 function formatDate(value: string | null) {
@@ -34,6 +36,48 @@ function StatusBadge({ status }: { status: BlogSummary["status"] }) {
   );
 }
 
+function CategoryFilter({ value, options, counts, onChange }: {
+  value: string;
+  options: string[];
+  counts: Record<string, number>;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const items = ["All", ...options];
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  return (
+    <div className="blog-category-filter" ref={rootRef}>
+      <button type="button" className="blog-category-trigger" aria-label="Blog category" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
+        <span className="blog-category-trigger-copy"><small>Category</small><strong>{value === "All" ? "All categories" : value}</strong></span>
+        <span className="blog-category-trigger-meta"><b>{counts[value] ?? 0}</b><ChevronDown size={15} aria-hidden="true" /></span>
+      </button>
+      {open && (
+        <div className="blog-category-menu" role="listbox" aria-label="Filter by blog category">
+          <div className="blog-category-menu-heading"><span>Category</span><span>Articles</span></div>
+          {items.map((item) => {
+            const selected = item === value;
+            return (
+              <button type="button" role="option" aria-selected={selected} className="blog-category-option" data-selected={selected || undefined} key={item} onClick={() => { onChange(item); setOpen(false); }}>
+                <span><i aria-hidden="true">{selected ? <Check size={13} /> : null}</i>{item === "All" ? "All categories" : item}</span>
+                <b>{counts[item] ?? 0}</b>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 export default function BlogsClient({ canManage }: { canManage: boolean }) {
   const [blogs, setBlogs] = useState<BlogSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +107,19 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
     () => [...new Set(blogs.map((blog) => blog.category).filter(Boolean))].sort(),
     [blogs],
   );
+  const categoryCounts = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const matching = blogs.filter((blog) =>
+      (status === "All" || blog.status === status)
+      && (!needle || `${blog.title} ${blog.primaryKeyword} ${blog.category} ${blog.slug}`.toLowerCase().includes(needle)),
+    );
+    return matching.reduce<Record<string, number>>((totals, blog) => {
+      totals.All = (totals.All || 0) + 1;
+      const item = blog.category || "Uncategorized";
+      totals[item] = (totals[item] || 0) + 1;
+      return totals;
+    }, { All: 0 });
+  }, [blogs, query, status]);
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return blogs.filter((blog) =>
@@ -136,10 +193,7 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
           <option>Draft</option>
           <option>Published</option>
         </select>
-        <select aria-label="Blog category" value={category} onChange={(event) => setCategory(event.target.value)} className="blog-filter-select blog-filter-select--category">
-          <option>All</option>
-          {categories.map((item) => <option key={item}>{item}</option>)}
-        </select>
+        <CategoryFilter value={category} options={categories} counts={categoryCounts} onChange={setCategory} />
       </section>
 
       {loading ? (
