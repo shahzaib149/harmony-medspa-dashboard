@@ -13,6 +13,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import type { BlogSummary } from "@/lib/blogs/types";
 
 function formatDate(value: string | null) {
@@ -43,26 +45,58 @@ function CategoryFilter({ value, options, counts, onChange }: {
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<CSSProperties>({});
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const items = ["All", ...options];
+
+  const placeMenu = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.max(rect.width, 272);
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const openAbove = spaceBelow < 340 && spaceAbove > spaceBelow;
+    const available = Math.max(180, (openAbove ? spaceAbove : spaceBelow) - 8);
+    setPosition({
+      position: "fixed",
+      zIndex: 100,
+      left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
+      right: "auto",
+      width,
+      maxHeight: Math.min(420, available),
+      top: openAbove ? "auto" : rect.bottom + 8,
+      bottom: openAbove ? window.innerHeight - rect.top + 8 : "auto",
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+    const closeOnScroll = () => setOpen(false);
+    document.addEventListener("mousedown", closeOutside);
+    window.addEventListener("resize", placeMenu);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      window.removeEventListener("resize", placeMenu);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
+  }, [open, placeMenu]);
 
   return (
     <div className="blog-category-filter" ref={rootRef}>
-      <button type="button" className="blog-category-trigger" aria-label="Blog category" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
+      <button ref={triggerRef} type="button" className="blog-category-trigger" aria-label="Blog category" aria-haspopup="listbox" aria-expanded={open} onClick={() => { if (!open) placeMenu(); setOpen((current) => !current); }} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
         <span className="blog-category-trigger-copy"><strong>{value === "All" ? "All categories" : value}</strong></span>
         <span className="blog-category-trigger-meta"><b>{counts[value] ?? 0}</b><ChevronDown size={15} aria-hidden="true" /></span>
       </button>
-      {open && (
-        <div className="blog-category-menu" role="listbox" aria-label="Filter by blog category">
+      {open && createPortal(
+        <div ref={menuRef} className="blog-category-menu" style={position} role="listbox" aria-label="Filter by blog category">
           <div className="blog-category-menu-heading"><span>Category</span><span>Articles</span></div>
           {items.map((item) => {
             const selected = item === value;
@@ -73,7 +107,8 @@ function CategoryFilter({ value, options, counts, onChange }: {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
