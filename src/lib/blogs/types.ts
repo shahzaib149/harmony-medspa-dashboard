@@ -106,15 +106,13 @@ export type BlogTechnicalSeo = {
 export function imageSourceForSite(url: string) {
   try {
     const parsed = new URL(url);
-    if (
-      parsed.hostname === "harmony-medspa.vercel.app" ||
-      parsed.hostname === "harmonymedspafl.com" ||
-      parsed.hostname === "www.harmonymedspafl.com"
-    ) {
-      return `${parsed.pathname}${parsed.search}`;
+    if (parsed.hostname === "harmony-medspa.vercel.app" || parsed.hostname === "harmonymedspafl.com") {
+      parsed.hostname = "www.harmonymedspafl.com";
+      return parsed.toString();
     }
+    if (parsed.hostname === "www.harmonymedspafl.com") return parsed.toString();
   } catch {
-    // Keep the original value when it is not an absolute URL.
+    // Local dashboard assets should remain relative to the dashboard origin.
   }
   return url;
 }
