@@ -58,7 +58,7 @@ function CategoryFilter({ value, options, counts, onChange }: {
   return (
     <div className="blog-category-filter" ref={rootRef}>
       <button type="button" className="blog-category-trigger" aria-label="Blog category" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
-        <span className="blog-category-trigger-copy"><small>Category</small><strong>{value === "All" ? "All categories" : value}</strong></span>
+        <span className="blog-category-trigger-copy"><strong>{value === "All" ? "All categories" : value}</strong></span>
         <span className="blog-category-trigger-meta"><b>{counts[value] ?? 0}</b><ChevronDown size={15} aria-hidden="true" /></span>
       </button>
       {open && (
