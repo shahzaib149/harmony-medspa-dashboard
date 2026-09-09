@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  BadgeCheck,
+  CalendarDays,
+  Clock3,
   ExternalLink,
   Eye,
   FilePenLine,
@@ -171,20 +174,41 @@ export default function BlogPreview({
         </div>
       </div>
 
-      <dl className="blog-preview-dates" aria-label="Article dates">
-        <div><dt>Created</dt><dd>{formatArticleDate(blog.createdAt)}</dd></div>
-        <div><dt>Last updated</dt><dd>{formatArticleDate(blog.updatedAt)}</dd></div>
-        <div data-published={published || undefined}><dt>Published</dt><dd>{formatArticleDate(blog.publishedAt)}</dd></div>
-      </dl>
+      <section className="blog-preview-meta-card" aria-labelledby="article-details-heading">
+        <div className="blog-preview-meta-heading">
+          <div>
+            <span>Article record</span>
+            <h2 id="article-details-heading">Publication details</h2>
+          </div>
+          <span className="blog-preview-meta-status" data-status={blog.status.toLowerCase()}>
+            <span aria-hidden="true" /> {blog.status}
+          </span>
+        </div>
 
-      <div className="blog-preview-url-card">
-        <span><Link2 size={15} /> {published ? "Published URL" : "Planned URL"}</span>
-        {published ? (
-          <a href={publicUrl} target="_blank" rel="noreferrer">{publicUrl}<ExternalLink size={13} /></a>
-        ) : (
-          <code>{publicUrl}</code>
-        )}
-      </div>
+        <dl className="blog-preview-dates" aria-label="Article dates">
+          <div>
+            <span className="blog-preview-date-icon"><CalendarDays size={17} /></span>
+            <div className="blog-preview-date-copy"><dt>Created</dt><dd>{formatArticleDate(blog.createdAt)}</dd></div>
+          </div>
+          <div>
+            <span className="blog-preview-date-icon"><Clock3 size={17} /></span>
+            <div className="blog-preview-date-copy"><dt>Last updated</dt><dd>{formatArticleDate(blog.updatedAt)}</dd></div>
+          </div>
+          <div data-published={published || undefined}>
+            <span className="blog-preview-date-icon"><BadgeCheck size={17} /></span>
+            <div className="blog-preview-date-copy"><dt>Published</dt><dd>{formatArticleDate(blog.publishedAt)}</dd></div>
+          </div>
+        </dl>
+
+        <div className="blog-preview-url-card">
+          <span><Link2 size={15} /> {published ? "Published URL" : "Planned URL"}</span>
+          {published ? (
+            <a href={publicUrl} target="_blank" rel="noreferrer"><span>{publicUrl}</span><ExternalLink size={14} /></a>
+          ) : (
+            <code>{publicUrl}</code>
+          )}
+        </div>
+      </section>
 
       <article className="blog-preview-paper blog-preview-paper--simple" aria-label="Lightweight website preview">
         <header className="blog-simple-preview-hero">
