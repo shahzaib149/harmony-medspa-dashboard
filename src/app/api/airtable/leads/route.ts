@@ -162,29 +162,45 @@ export async function GET(request: Request) {
   }
 }
 
-type NewLeadInput = { name?: unknown; phone?: unknown; email?: unknown; message?: unknown };
+type NewLeadInput = {
+  name?: unknown;
+  phone?: unknown;
+  email?: unknown;
+  message?: unknown;
+  source?: unknown;
+  treatment?: unknown;
+  leadCreatedAt?: unknown;
+};
 
 function validateNewLead(input: NewLeadInput, row?: number) {
   const name = typeof input.name === "string" ? input.name.trim() : "";
   const phone = typeof input.phone === "string" ? input.phone.trim() : "";
   const email = typeof input.email === "string" ? input.email.trim() : "";
   const message = typeof input.message === "string" ? input.message.trim() : "";
+  const treatment = typeof input.treatment === "string" ? input.treatment.trim() : "";
+  const source = input.source === "Call Leads" ? "Call Leads" : "Manual Entry";
+  const requestedCreatedAt = typeof input.leadCreatedAt === "string" ? input.leadCreatedAt.trim() : "";
+  const parsedCreatedAt = Date.parse(requestedCreatedAt);
+  const leadCreatedAt = source === "Call Leads" && Number.isFinite(parsedCreatedAt)
+    ? new Date(parsedCreatedAt).toISOString()
+    : new Date().toISOString();
   const prefix = row ? `Row ${row}: ` : "";
   const normalizedPhone = normalizeUsPhone(phone);
   if (!name || !phone) throw new Error(`${prefix}Name and phone are required`);
   if (!normalizedPhone) throw new Error(`${prefix}Enter a valid US phone number`);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`${prefix}Enter a valid email address`);
-  return { name, phone: normalizedPhone, email, message };
+  return { name, phone: normalizedPhone, email, message, source, treatment, leadCreatedAt };
 }
 
 function newLeadFields(input: ReturnType<typeof validateNewLead>) {
   const fields: Record<string, unknown> = {
-    Name: input.name, Phone: input.phone, Source: "Manual Entry", Status: "New",
-    "Lead Created At": new Date().toISOString(), "Duplicate Flag": false,
+    Name: input.name, Phone: input.phone, Source: input.source, Status: "New",
+    "Lead Created At": input.leadCreatedAt, "Duplicate Flag": false,
     "Last Contacted At": null, "Email Sent Status": null, "SMS Sent Status": null,
     Notes: input.message, Message: input.message, Replied: false,
   };
   if (input.email) fields.Email = input.email;
+  if (input.treatment) fields["Treatment Interest"] = input.treatment;
   return fields;
 }
 
@@ -247,7 +263,7 @@ export async function POST(request: Request) {
   }
   invalidateLeadsBaseCache();
   bustCachePrefix("leads:");
-  await logAuditEvent({ actor, action: "lead_created", category: "leads", resource: { type: "lead", id: data.id, label: validated.name }, summary: `Created lead ${validated.name}`, after: { name: validated.name, email: validated.email, phone: validated.phone, source: "Manual Entry", status: "New" }, request });
+  await logAuditEvent({ actor, action: "lead_created", category: "leads", resource: { type: "lead", id: data.id, label: validated.name }, summary: `Created lead ${validated.name}`, after: { name: validated.name, email: validated.email, phone: validated.phone, source: validated.source, status: "New" }, request });
   return Response.json({ success: true, id: data.id }, { status: 201 });
 }
 

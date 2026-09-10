@@ -25,6 +25,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Sparkline from "@/components/overview/Sparkline";
+import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
 import { getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import { useAuth } from "@/contexts/AuthContext";
 import type {
@@ -380,6 +381,8 @@ function OverviewContent({
           <KpiCard key={item.label} {...item} previousLabel={data.period.previousLabel} />
         ))}
       </div>
+
+      <CallLeadsPanel onLeadCreated={onRetry} />
 
       {/* Analytical grid */}
       <div className="mt-4 grid grid-cols-12 gap-4">
