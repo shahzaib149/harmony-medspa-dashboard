@@ -14,10 +14,6 @@ function text(fields: Record<string, unknown>, ...keys: string[]) {
   return "";
 }
 
-function appOrigin(request: Request) {
-  return (process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://crm.harmonymedspafl.com").replace(/\/$/, "");
-}
-
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   let actor;
   try { ({ profile: actor } = await requireRole(request, "editor")); }
@@ -52,7 +48,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     lead_source: text(lead.fields, "Source") || "Not captured",
     lead_created_at: text(lead.fields, "Lead Created At") || lead.createdTime,
     lead_message: text(lead.fields, "Message") || "No message captured.",
-    lead_profile_url: `${appOrigin(request)}/leads?search=${encodeURIComponent(searchValue)}`,
+    lead_profile_url: "https://crm.harmonymedspafl.com/leads?view=all",
     notified_by: actor.full_name || actor.email || "Harmony dashboard user",
     notified_at: notifiedAt,
   };
