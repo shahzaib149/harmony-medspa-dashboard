@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Activity,
+  Bell,
   CalendarDays,
   Check,
   ChevronDown,
@@ -251,6 +252,49 @@ function DeliveryPill({ label, value }: { label: string; value: string }) {
       />
       {value || "-"}
     </span>
+  );
+}
+
+function NotifyHaydenButton({
+  lead,
+  notifying,
+  notified,
+  onNotify,
+  compact = false,
+}: {
+  lead: Lead;
+  notifying: boolean;
+  notified: boolean;
+  onNotify: (lead: Lead) => void;
+  compact?: boolean;
+}) {
+  const label = notifying
+    ? "Sending…"
+    : notified
+      ? "Hayden notified"
+      : "Notify Hayden";
+  return (
+    <button
+      type="button"
+      disabled={notifying}
+      onClick={(event) => {
+        event.stopPropagation();
+        onNotify(lead);
+      }}
+      className={compact
+        ? "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition hover:brightness-125 disabled:cursor-wait disabled:opacity-70"
+        : "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"}
+      style={{
+        color: notified ? "var(--success-text)" : TEAL,
+        backgroundColor: notified ? "var(--success-bg)" : "color-mix(in srgb, var(--healthy) 10%, transparent)",
+        borderColor: notified ? "var(--success-border)" : "color-mix(in srgb, var(--healthy) 35%, transparent)",
+      }}
+      aria-label={`${label} for ${lead.name || "lead"}`}
+      title={label}
+    >
+      {notifying ? <Loader2 size={compact ? 15 : 14} className="animate-spin" /> : notified ? <Check size={compact ? 15 : 14} /> : <Bell size={compact ? 15 : 14} />}
+      {!compact && label}
+    </button>
   );
 }
 
@@ -536,6 +580,9 @@ function LeadDetailsModal({
   getAuthHeaders,
   onLeadUpdate,
   onAddToCampaign,
+  onNotify,
+  notifying,
+  notified,
 }: {
   lead: Lead | null;
   duplicate: boolean;
@@ -547,6 +594,9 @@ function LeadDetailsModal({
   getAuthHeaders: () => Promise<HeadersInit>;
   onLeadUpdate: (lead: Lead) => void;
   onAddToCampaign?: (lead: Lead) => void;
+  onNotify: (lead: Lead) => void;
+  notifying: boolean;
+  notified: boolean;
 }) {
   const [updating, setUpdating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1071,11 +1121,15 @@ function LeadDetailsModal({
             </div>
           </div>
 
-          {canDelete && (
+          {(canUpdate || canDelete) && (
             <div
-              className="mt-4 flex justify-end border-t pt-4"
+              className="mt-4 flex flex-wrap justify-end gap-2 border-t pt-4"
               style={{ borderColor: BORDER_SOFT }}
             >
+              {canUpdate && (
+                <NotifyHaydenButton lead={lead} notifying={notifying} notified={notified} onNotify={onNotify} />
+              )}
+              {canDelete && (
               <button
                 type="button"
                 onClick={() => onDelete(lead)}
@@ -1088,6 +1142,7 @@ function LeadDetailsModal({
               >
                 <Trash2 size={14} /> Delete lead
               </button>
+              )}
             </div>
           )}
         </div>
@@ -1472,6 +1527,8 @@ export default function LeadsClient() {
   const [updatingReplied, setUpdatingReplied] = useState<Set<string>>(
     new Set(),
   );
+  const [notifyingHayden, setNotifyingHayden] = useState<Set<string>>(new Set());
+  const [notifiedHayden, setNotifiedHayden] = useState<Set<string>>(new Set());
   const [importingLeads, setImportingLeads] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -1924,6 +1981,33 @@ export default function LeadsClient() {
       );
     } finally {
       setUpdatingReplied((current) => {
+        const next = new Set(current);
+        next.delete(lead.id);
+        return next;
+      });
+    }
+  }
+
+  async function notifyHayden(lead: Lead) {
+    if (!canUpdateLeads || notifyingHayden.has(lead.id)) return;
+    setOpenMenuId(null);
+    setNotifyingHayden((current) => new Set(current).add(lead.id));
+    const notificationId = crypto.randomUUID();
+    try {
+      const response = await fetch(`/api/airtable/leads/${lead.id}/notify-hayden`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ notificationId }),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error || "Couldn’t notify Hayden. Try again.");
+      setNotifiedHayden((current) => new Set(current).add(lead.id));
+      showToast("success", `Hayden notified about ${lead.name || "this lead"}.`);
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Couldn’t notify Hayden. Try again.");
+    } finally {
+      setNotifyingHayden((current) => {
         const next = new Set(current);
         next.delete(lead.id);
         return next;
@@ -2733,6 +2817,15 @@ export default function LeadsClient() {
                           onClick={(event) => event.stopPropagation()}
                         >
                           <div className="flex items-center justify-end gap-2">
+                            {canUpdateLeads && (
+                              <NotifyHaydenButton
+                                lead={lead}
+                                compact
+                                notifying={notifyingHayden.has(lead.id)}
+                                notified={notifiedHayden.has(lead.id)}
+                                onNotify={(item) => void notifyHayden(item)}
+                              />
+                            )}
                             {canDeleteLeads && (
                               <button
                                 type="button"
@@ -2945,6 +3038,15 @@ export default function LeadsClient() {
                         <Mail size={15} />
                       </a>
                     )}
+                    {canUpdateLeads && (
+                      <NotifyHaydenButton
+                        lead={lead}
+                        compact
+                        notifying={notifyingHayden.has(lead.id)}
+                        notified={notifiedHayden.has(lead.id)}
+                        onNotify={(item) => void notifyHayden(item)}
+                      />
+                    )}
                     {canDeleteLeads && (
                       <button type="button" onClick={(event) => { event.stopPropagation(); void deleteLead(lead); }} className="grid size-10 place-items-center rounded-xl border" style={{ color: "var(--danger-text)", backgroundColor: "var(--danger-bg)", borderColor: "var(--danger-border)" }} aria-label={`Delete ${lead.name || "lead"}`}>
                         <Trash2 size={15} />
@@ -3037,6 +3139,9 @@ export default function LeadsClient() {
           void reloadRowsAndSummary();
         }}
         onAddToCampaign={role === "admin" ? setCampaignLead : undefined}
+        onNotify={(lead) => void notifyHayden(lead)}
+        notifying={selectedLead ? notifyingHayden.has(selectedLead.id) : false}
+        notified={selectedLead ? notifiedHayden.has(selectedLead.id) : false}
       />
       {role === "admin" && <AddLeadsToCampaignModal
         open={Boolean(campaignLead)}

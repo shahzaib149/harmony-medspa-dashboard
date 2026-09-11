@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Harmony lead notification</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background: #fffdf9;
+      color: #182126;
+      font-family:
+        Segoe UI,
+        Arial,
+        sans-serif;
+    "
+  >
+    <div style="display: none; max-height: 0; overflow: hidden">
+      {{1.lead_name}} is ready for follow-up.
+    </div>
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      style="background: #fffdf9"
+    >
+      <tr>
+        <td align="center" style="padding: 24px 12px">
+          <table
+            role="presentation"
+            width="900"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="
+              width: 100%;
+              max-width: 900px;
+              background: #fff;
+              border: 1px solid #e5dece;
+              border-radius: 16px;
+              overflow: hidden;
+              box-shadow: 0 12px 36px rgba(113, 83, 23, 0.1);
+            "
+          >
+            <tr>
+              <td style="height: 4px; background: #a97813; font-size: 0">
+                &nbsp;
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 21px 28px; border-bottom: 1px solid #eee8dc">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                >
+                  <tr>
+                    <td width="220" valign="middle">
+                      <a
+                        href="https://harmonymedspafl.com"
+                        target="_blank"
+                        style="
+                          display: inline-block;
+                          color: #a57412;
+                          text-decoration: none;
+                        "
+                        ><span
+                          style="
+                            display: block;
+                            font-family:
+                              Georgia, &quot;Times New Roman&quot;, serif;
+                            font-size: 31px;
+                            line-height: 31px;
+                            font-style: italic;
+                            letter-spacing: -1px;
+                            color: #a57412;
+                          "
+                          >Harmony</span
+                        ><span
+                          style="
+                            display: block;
+                            margin-top: 4px;
+                            padding-left: 37px;
+                            font-family: Arial, sans-serif;
+                            font-size: 8px;
+                            line-height: 10px;
+                            font-weight: 700;
+                            letter-spacing: 4px;
+                            color: #a57412;
+                          "
+                          >MED SPA</span
+                        ></a
+                      >
+                    </td>
+                    <td
+                      valign="middle"
+                      style="padding-left: 24px; border-left: 1px solid #e8dfcc"
+                    >
+                      <p
+                        style="
+                          margin: 0 0 5px;
+                          color: #9b6b0b;
+                          font-size: 10px;
+                          font-weight: 700;
+                          letter-spacing: 2px;
+                        "
+                      >
+                        LEAD NOTIFICATION
+                      </p>
+                      <h1
+                        style="
+                          margin: 0;
+                          color: #172027;
+                          font-family: Georgia, serif;
+                          font-size: 28px;
+                          line-height: 34px;
+                          font-weight: 400;
+                        "
+                      >
+                        A lead needs your attention
+                      </h1>
+                      <p
+                        style="margin: 5px 0 0; color: #738089; font-size: 12px"
+                      >
+                        Shared by {{1.notified_by}}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td
+                style="
+                  padding: 17px 28px;
+                  background: #faf8f2;
+                  color: #4f5c64;
+                  font-size: 14px;
+                  line-height: 22px;
+                "
+              >
+                Hi Hayden — please follow up with
+                <strong style="color: #172027">{{1.lead_name}}</strong>. The
+                details and original message are below.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 21px 28px 23px">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                >
+                  <tr>
+                    <td width="60%" valign="top" style="padding-right: 12px">
+                      <table
+                        role="presentation"
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        style="
+                          background: #fcfbf8;
+                          border: 1px solid #e7e1d5;
+                          border-radius: 11px;
+                        "
+                      >
+                        <tr>
+                          <td
+                            colspan="4"
+                            style="
+                              padding: 14px 16px 7px;
+                              color: #9b6b0b;
+                              font-size: 10px;
+                              font-weight: 700;
+                              letter-spacing: 1.7px;
+                            "
+                          >
+                            LEAD DETAILS
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            width="18%"
+                            style="
+                              padding: 7px 7px 7px 16px;
+                              color: #78848b;
+                              font-size: 12px;
+                            "
+                          >
+                            Name
+                          </td>
+                          <td
+                            width="32%"
+                            style="
+                              padding: 7px 10px 7px 0;
+                              font-size: 13px;
+                              font-weight: 700;
+                            "
+                          >
+                            {{1.lead_name}}
+                          </td>
+                          <td
+                            width="17%"
+                            style="
+                              padding: 7px;
+                              color: #78848b;
+                              font-size: 12px;
+                            "
+                          >
+                            Status
+                          </td>
+                          <td style="padding: 7px 16px 7px 0">
+                            <span
+                              style="
+                                padding: 4px 8px;
+                                border: 1px solid #e3bb5f;
+                                border-radius: 20px;
+                                background: #fff8e6;
+                                color: #835900;
+                                font-size: 11px;
+                                font-weight: 700;
+                              "
+                              >{{1.lead_status}}</span
+                            >
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 7px 7px 7px 16px;
+                              color: #78848b;
+                              font-size: 12px;
+                            "
+                          >
+                            Phone
+                          </td>
+                          <td style="padding: 7px 10px 7px 0; font-size: 13px">
+                            <a
+                              href="tel:{{1.lead_phone}}"
+                              style="color: #9b6b0b; text-decoration: none"
+                              >{{1.lead_phone}}</a
+                            >
+                          </td>
+                          <td
+                            style="
+                              padding: 7px;
+                              color: #78848b;
+                              font-size: 12px;
+                            "
+                          >
+                            Source
+                          </td>
+                          <td style="padding: 7px 16px 7px 0; font-size: 13px">
+                            {{1.lead_source}}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 7px 7px 7px 16px;
+                              color: #78848b;
+                              font-size: 12px;
+                            "
+                          >
+                            Email
+                          </td>
+                          <td
+                            colspan="3"
+                            style="
+                              padding: 7px 16px 7px 0;
+                              font-size: 13px;
+                              word-break: break-word;
+                            "
+                          >
+                            <a
+                              href="mailto:{{1.lead_email}}"
+                              style="color: #9b6b0b; text-decoration: none"
+                              >{{1.lead_email}}</a
+                            >
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style="
+                              padding: 7px 7px 14px 16px;
+                              color: #78848b;
+                              font-size: 12px;
+                            "
+                          >
+                            Received
+                          </td>
+                          <td
+                            colspan="3"
+                            style="padding: 7px 16px 14px 0; font-size: 12px"
+                          >
+                            {{1.lead_created_at}}
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td width="40%" valign="top" style="padding-left: 12px">
+                      <p
+                        style="
+                          margin: 0 0 8px;
+                          color: #9b6b0b;
+                          font-size: 10px;
+                          font-weight: 700;
+                          letter-spacing: 1.7px;
+                        "
+                      >
+                        ORIGINAL MESSAGE
+                      </p>
+                      <div
+                        style="
+                          min-height: 70px;
+                          padding: 14px 15px;
+                          background: #fff9ed;
+                          border-left: 3px solid #b8861b;
+                          color: #46525a;
+                          font-size: 13px;
+                          line-height: 20px;
+                          white-space: pre-wrap;
+                        "
+                      >
+                        {{1.lead_message}}
+                      </div>
+                      <table
+                        role="presentation"
+                        cellpadding="0"
+                        cellspacing="0"
+                        style="margin-top: 14px"
+                      >
+                        <tr>
+                          <td bgcolor="#a57412" style="border-radius: 8px">
+                            <a
+                              href="{{1.lead_profile_url}}"
+                              target="_blank"
+                              style="
+                                display: inline-block;
+                                padding: 12px 20px;
+                                color: #fff;
+                                font-size: 12px;
+                                font-weight: 700;
+                                text-decoration: none;
+                              "
+                              >View lead in dashboard &nbsp;&rarr;</a
+                            >
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td
+                style="
+                  padding: 15px 28px;
+                  background: #faf8f2;
+                  border-top: 1px solid #d8c28f;
+                "
+              >
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                >
+                  <tr>
+                    <td style="color: #737d82; font-size: 10px">
+                      Harmony Med Spa · Lead Management
+                    </td>
+                    <td align="right" style="color:#858b8e;font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;">MANAGED BY&nbsp;&nbsp; <a href="https://codesquad.ai" target="_blank" style="color:#a57412;font-size:15px;font-weight:700;letter-spacing:0;text-decoration:none;">CodeSquad</a> <span style="color:#667078;font-size:9px;letter-spacing:1px;">&nbsp;AI SOLUTIONS</span></td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
