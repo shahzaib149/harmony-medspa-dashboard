@@ -282,7 +282,7 @@ function NotifyHaydenButton({
         onNotify(lead);
       }}
       className={compact
-        ? "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition hover:brightness-125 disabled:cursor-wait disabled:opacity-70"
+        ? "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition hover:brightness-125 disabled:cursor-wait disabled:opacity-70"
         : "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70"}
       style={{
         color: notified ? "var(--success-text)" : TEAL,
@@ -2602,7 +2602,7 @@ export default function LeadsClient() {
                     ].map((heading) => (
                       <th
                         key={heading.key}
-                        className="border-b px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em]"
+                        className={`border-b py-3 text-left text-[10px] font-bold uppercase tracking-[0.09em] ${heading.key === "actions" ? "w-[108px] min-w-[108px] px-2" : "px-3"}`}
                         style={{ color: DIM, borderColor: BORDER_SOFT }}
                       >
                         {heading.label}
@@ -2812,11 +2812,11 @@ export default function LeadsClient() {
                             : "Not contacted"}
                         </td>
                         <td
-                          className="relative border-b px-4 py-3 text-right"
+                          className="relative w-[108px] min-w-[108px] border-b px-2 py-3 text-right"
                           style={{ borderColor: BORDER_SOFT }}
                           onClick={(event) => event.stopPropagation()}
                         >
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1">
                             {canUpdateLeads && (
                               <NotifyHaydenButton
                                 lead={lead}
@@ -2829,7 +2829,7 @@ export default function LeadsClient() {
                             {canDeleteLeads && (
                               <button
                                 type="button"
-                                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition hover:brightness-125"
+                                className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border transition hover:brightness-125"
                                 style={{
                                   borderColor: "rgba(248,113,113,0.25)",
                                   color: "#F87171",
@@ -2843,7 +2843,7 @@ export default function LeadsClient() {
                               </button>
                             )}
                             <button
-                              className="rounded-lg border p-1.5"
+                              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border"
                               style={{
                                 borderColor: BORDER_SOFT,
                                 color: MUTED,
