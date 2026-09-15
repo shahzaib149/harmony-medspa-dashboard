@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, Skeleton } from "@/components/ui/Skeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -541,7 +543,7 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
   }
 
   if (loading) {
-    return <div className="grid min-h-[50vh] place-items-center"><div className="text-center"><Loader2 className="mx-auto animate-spin" size={28} style={{ color: "var(--brand-primary)" }} /><p className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>Loading article...</p></div></div>;
+    return <LoadingRegion label="Loading article" className="grid gap-5"><div className="flex flex-wrap items-center justify-between gap-3"><Skeleton className="h-9 w-64 rounded-xl" /><div className="flex gap-2"><Skeleton className="h-11 w-24 rounded-xl" /><Skeleton className="h-11 w-32 rounded-xl" /></div></div><div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="grid gap-4 rounded-2xl border p-5" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}><Skeleton className="h-4 w-24 rounded-full" /><Skeleton className="h-11 w-full rounded-xl" /><Skeleton className="h-4 w-32 rounded-full" /><Skeleton className="h-72 w-full rounded-xl" /></div><div className="grid content-start gap-4 rounded-2xl border p-5" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}><Skeleton className="h-40 w-full rounded-xl" /><Skeleton className="h-4 w-2/3 rounded-full" /><Skeleton className="h-4 w-1/2 rounded-full" /><Skeleton className="h-11 w-full rounded-xl" /></div></div></LoadingRegion>;
   }
 
   if (loadError) {

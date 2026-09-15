@@ -1,5 +1,7 @@
 "use client";
 
+
+import { Skeleton } from "@/components/ui/Skeleton";
 import {
   BadgeCheck,
   Clock3,
@@ -315,7 +317,7 @@ export default function CallLeadsPanel({
                   </td>
                   <td className="px-5 py-3 text-right">
                     {checking ? (
-                      <span className="inline-flex min-h-9 items-center gap-1.5 px-3 text-xs text-[var(--text-muted)]"><Loader2 size={14} className="animate-spin" /> Checking</span>
+                      <span className="inline-flex min-h-9 items-center justify-end"><Skeleton className="h-9 w-28 rounded-lg" /><span className="sr-only">Checking lead status</span></span>
                     ) : added ? (
                       <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--success-border)] bg-[var(--success-bg)] px-3 text-xs font-bold text-[var(--success-text)]"><BadgeCheck size={14} /> Added</span>
                     ) : canAddLead ? (

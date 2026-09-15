@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, Skeleton } from "@/components/ui/Skeleton";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -157,7 +159,7 @@ export default function PendingAdsPanel() {
       </div>
       <div className="p-3 sm:p-5" style={{ background: "var(--background-subtle)" }}>
         {notice && <div className="mb-4 flex items-center justify-between rounded-xl border p-3 text-sm" style={{ color: "var(--success-text)", background: "var(--success-bg)", borderColor: "var(--success-border)" }}><span>{notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
-        {loading ? <div className="flex min-h-64 items-center justify-center gap-3"><Loader2 size={24} className="animate-spin" style={{ color: "var(--brand-primary)" }} /><span className="text-sm" style={{ color: "var(--text-muted)" }}>Loading ad publishing records…</span></div>
+        {loading ? <LoadingRegion label="Loading ad publishing records" className="grid gap-3 md:grid-cols-2">{[0, 1, 2, 3].map((item) => <div key={item} className="rounded-2xl border p-4" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}><div className="flex items-center justify-between gap-3"><Skeleton className="h-3 w-24 rounded-full" /><Skeleton className="h-6 w-20 rounded-full" /></div><Skeleton className="mt-4 h-4 w-3/4 rounded-full" /><Skeleton className="mt-2 h-3 w-1/2 rounded-full" /><Skeleton className="mt-4 h-16 w-full rounded-xl" /></div>)}</LoadingRegion>
           : error ? <div className="flex gap-3 rounded-2xl border p-4" style={{ color: "var(--danger-text)", background: "var(--danger-bg)", borderColor: "var(--danger-border)" }}><AlertCircle size={19} /><div><p className="font-bold">Could not load ad publishing</p><p className="mt-1 text-sm">{error}</p></div></div>
             : ads.length === 0 ? <div className="flex min-h-64 flex-col items-center justify-center text-center"><div className="grid size-14 place-items-center rounded-2xl" style={{ color: "var(--success-text)", background: "var(--success-bg)" }}><FileSearch size={23} /></div><p className="mt-4 font-bold" style={{ color: "var(--text-primary)" }}>No {tabs.find((item) => item.id === tab)?.label.toLowerCase()} ads</p><p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>Use Sync status to check Airtable again.</p></div>
               : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{ads.map((ad) => <AdCard key={ad.id} ad={ad} onOpen={() => setSelected(ad)} onReturnPending={() => void returnPending(ad)} />)}</div>}

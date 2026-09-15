@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -557,8 +559,7 @@ function LeadTicker({
             <Clock3 size={13} />
             {lead
               ? timeAgo(lead.createdAt)
-              : loading
-                ? "Loading…"
+              : loading ? <Skeleton className="h-3 w-14 rounded-full" />
                 : error
                   ? "Not available"
                   : "No activity"}
@@ -2515,19 +2516,7 @@ export default function LeadsClient() {
       )}
 
       {loading ? (
-        <div
-          className="flex items-center justify-center gap-3 rounded-2xl border py-20"
-          style={{ borderColor: BORDER, backgroundColor: CARD }}
-        >
-          <RefreshCw
-            size={18}
-            className="animate-spin"
-            style={{ color: GOLD }}
-          />
-          <span className="text-sm font-semibold" style={{ color: MUTED }}>
-            Loading live Airtable leads...
-          </span>
-        </div>
+        <LoadingRegion label="Loading leads" className="overflow-hidden rounded-2xl border" ><SkeletonRows rows={8} /></LoadingRegion>
       ) : error ? (
         <div
           className="flex items-start gap-3 rounded-2xl border p-5"
@@ -3180,12 +3169,12 @@ export default function LeadsClient() {
       >
         <div className="space-y-1">
           <p>
-            {deleteImpact?.nurtureEnrollments ?? "…"} Nurture Enrollment records
+            {deleteImpact?.nurtureEnrollments ?? <Skeleton className="inline-block h-3 w-6 rounded align-middle" />} Nurture Enrollment records
           </p>
-          <p>{deleteImpact?.messageLogs ?? "…"} Message Log records</p>
+          <p>{deleteImpact?.messageLogs ?? <Skeleton className="inline-block h-3 w-6 rounded align-middle" />} Message Log records</p>
           <p>
             Current campaign status:{" "}
-            {deleteImpact?.activeCampaign ?? "Loading…"}
+            {deleteImpact?.activeCampaign ?? <Skeleton className="inline-block h-3 w-24 rounded-full align-middle" />}
           </p>
         </div>
       </DestructiveConfirmDialog>

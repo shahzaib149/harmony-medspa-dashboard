@@ -1,4 +1,6 @@
 "use client";
+
+import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -266,14 +268,12 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
   }
   if (loading)
     return (
-      <div className="space-y-4 p-8">
-        {[1, 2, 3].map((item) => (
-          <div
-            key={item}
-            className="h-28 animate-pulse rounded-xl bg-white/5"
-          />
-        ))}
-      </div>
+      <LoadingRegion label="Loading campaign" className="grid gap-4">
+        <Skeleton className="h-4 w-32 rounded-full" />
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-28 rounded-2xl" />)}</div>
+        <Skeleton className="h-11 w-full max-w-md rounded-xl" />
+        <div className="overflow-hidden rounded-2xl border" style={{ borderColor: "var(--border-subtle)" }}><SkeletonRows rows={6} /></div>
+      </LoadingRegion>
     );
   if (error || !data)
     return (

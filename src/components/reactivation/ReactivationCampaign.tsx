@@ -24,7 +24,7 @@ export default function ReactivationCampaign({initial,initialError,canManage,can
     try{const r=await fetch("/api/reactivation/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enrollmentId:target.id})});const b=await r.json();if(!r.ok)throw new Error(b.error);setTarget(null);setNotice("Removed from campaign. Scheduled sends cleared; history retained.");await refresh();}
     catch(e){setActionError(e instanceof Error?e.message:"Could not remove enrollment.");}finally{setBusy(false);}
   }
-  if(!data)return <div className={s.empty}><HeartHandshake size={28}/><h3>Reactivation campaign unavailable</h3><p role="alert">{error}</p><button className={s.button} disabled={loading} onClick={refresh}>{loading?"Loading…":"Retry"}</button></div>;
+  if(!data)return <div className={s.empty}><HeartHandshake size={28}/><h3>Reactivation campaign unavailable</h3><p role="alert">{error}</p><button className={s.button} disabled={loading} onClick={refresh}><RefreshCw size={14} className={loading?"animate-spin":""}/>Retry</button></div>;
   const patients=new Map(data.patients.map(p=>[p.id,p]));
   const name=(ids:string[])=>ids.map(id=>patients.get(id)?.name||"Patient unavailable").join(", ")||"Patient deleted";
   const needle=query.trim().toLowerCase();

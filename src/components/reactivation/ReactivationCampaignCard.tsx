@@ -1,4 +1,6 @@
 "use client";
+
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { HeartHandshake } from "lucide-react";
@@ -17,7 +19,7 @@ export default function ReactivationCampaignCard({query,status,type,onMetrics}:{
   return <Link href={REACTIVATION_PATH} className="block rounded-2xl border p-4 transition-colors hover:bg-white/[.02] sm:p-5" style={style}><article>
     <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><div className="grid size-11 shrink-0 place-items-center rounded-xl" style={{background:"var(--brand-primary-soft)",color:"var(--brand-primary)"}}><HeartHandshake size={20}/></div><div className="min-w-0"><h2 className="text-base font-bold sm:text-lg">{DEFAULT_CAMPAIGN}</h2><p className="mt-1 line-clamp-2 text-sm leading-5" style={{color:"var(--text-muted)"}}>Three-step email follow-up for returning patients.</p></div></div>{!loading&&<CampaignStatusBadge status={state}/>}</div>
     <div className="mt-4 flex flex-wrap gap-2 text-[11px]" style={{color:"var(--text-muted)"}}>{["Manual Enrollment","Email"].map(v=><span key={v} className="rounded-full bg-white/5 px-2 py-1">{v}</span>)}</div>
-    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-busy={loading}>{[["Patients",data?.metrics.total],["Active",data?.metrics.active],["Completed",data?.metrics.completed],["Emails sent",data?.metrics.email]].map(([label,value])=><div key={label} className="rounded-xl bg-white/[.025] px-3 py-2.5"><p className="font-bold">{loading?"…":value}</p><p className="text-[10px]" style={{color:"var(--text-muted)"}}>{label}</p></div>)}</div>
-    <div className="mt-4 border-t border-white/5 pt-3"><p className="text-xs" style={{color:"var(--text-muted)"}}>Last activity: {loading?"Loading…":formatCampaignDate(data?.lastActivity||null,"No activity yet")}</p></div>
+    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-busy={loading}>{[["Patients",data?.metrics.total],["Active",data?.metrics.active],["Completed",data?.metrics.completed],["Emails sent",data?.metrics.email]].map(([label,value])=><div key={label} className="rounded-xl bg-white/[.025] px-3 py-2.5"><p className="font-bold">{loading?<Skeleton className="h-5 w-10 rounded-md"/>:value}</p><p className="text-[10px]" style={{color:"var(--text-muted)"}}>{label}</p></div>)}</div>
+    <div className="mt-4 border-t border-white/5 pt-3"><p className="text-xs" style={{color:"var(--text-muted)"}}>Last activity: {loading?<Skeleton className="inline-block h-3 w-24 rounded-full align-middle"/>:formatCampaignDate(data?.lastActivity||null,"No activity yet")}</p></div>
   </article></Link>;
 }

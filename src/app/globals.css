@@ -2598,3 +2598,22 @@ select:disabled {
     grid-template-columns: minmax(0, 1fr) 44px auto;
   }
 }
+
+/* Shared loading skeleton (components/ui/Skeleton.tsx). Layered so utilities can size it. */
+@layer components {
+.ui-skeleton {
+  display: block;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  background: linear-gradient(90deg, var(--surface-2) 0%, color-mix(in srgb, var(--border-subtle) 75%, transparent) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: ui-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes ui-skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton { animation: none; }
+}
+}

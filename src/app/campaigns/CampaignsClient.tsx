@@ -1,5 +1,7 @@
 "use client";
 
+
+import { Skeleton } from "@/components/ui/Skeleton";
 import Link from "next/link";
 import ReactivationCampaignCard from "@/components/reactivation/ReactivationCampaignCard";
 import { DEFAULT_CAMPAIGN, type ReactivationMetrics } from "@/lib/reactivation/model";
@@ -167,12 +169,17 @@ export default function CampaignsClient() {
 
       <div className="grid gap-4 md:grid-cols-2">
       {loading ? (
-        <div className="contents">
+        <div className="contents" role="status" aria-label="Loading campaigns">
           {[1, 2].map((item) => (
             <div
               key={item}
-              className="h-72 animate-pulse rounded-2xl bg-white/5"
-            />
+              className="grid gap-4 rounded-2xl border p-5"
+              style={{ background: PANEL, borderColor: "var(--border-subtle)" }}
+            >
+              <div className="flex items-center gap-3"><Skeleton className="size-11 rounded-xl" /><div className="grid flex-1 gap-2"><Skeleton className="h-4 w-1/2 rounded-full" /><Skeleton className="h-3 w-3/4 rounded-full" /></div></div>
+              <div className="flex gap-2"><Skeleton className="h-6 w-24 rounded-full" /><Skeleton className="h-6 w-14 rounded-full" /></div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{[0, 1, 2, 3].map((cell) => <Skeleton key={cell} className="h-14 rounded-xl" />)}</div>
+            </div>
           ))}
         </div>
       ) : error ? (

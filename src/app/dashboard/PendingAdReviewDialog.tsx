@@ -1,5 +1,7 @@
 "use client";
 
+
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -520,16 +522,14 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Strategy label<input disabled={!editing} value={draft.strategyLabel} onChange={(e) => updateDraft((r) => ({ ...r, strategyLabel: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>
                     Campaign
-                    <select
-                      disabled={!editing || campaignsLoading}
+                    {campaignsLoading ? <Skeleton className="mt-1.5 h-11 w-full rounded-xl" /> : <select
+                      disabled={!editing}
                       value={selectedCampaignId}
                       onChange={(e) => handleCampaignSelect(e.target.value)}
                       className={`${fieldClass} mt-1.5`}
                     >
                       <option value="">
-                        {campaignsLoading
-                          ? "Loading campaigns..."
-                          : draft.campaignName && !selectedCampaignId
+                        {draft.campaignName && !selectedCampaignId
                             ? draft.campaignName
                             : "Select Campaign"}
                       </option>
@@ -545,12 +545,12 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                             {c.campaignName} {c.status !== "ENABLED" ? `(${c.status})` : ""}
                           </option>
                         ))}
-                    </select>
+                    </select>}
                   </label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>
                     Ad group
-                    <select
-                      disabled={!editing || !selectedCampaignId || adGroupsLoading}
+                    {adGroupsLoading ? <Skeleton className="mt-1.5 h-11 w-full rounded-xl" /> : <select
+                      disabled={!editing || !selectedCampaignId}
                       value={selectedAdGroupId}
                       onChange={(e) => handleAdGroupSelect(e.target.value)}
                       className={`${fieldClass} mt-1.5`}
@@ -558,9 +558,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                       <option value="">
                         {!selectedCampaignId
                           ? "Select a campaign first"
-                          : adGroupsLoading
-                            ? "Loading ad groups..."
-                            : draft.adGroupName && !selectedAdGroupId
+                          : draft.adGroupName && !selectedAdGroupId
                               ? draft.adGroupName
                               : "Select Ad Group"}
                       </option>
@@ -576,7 +574,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                             {g.adGroupName} {g.status !== "ENABLED" ? `(${g.status})` : ""}
                           </option>
                         ))}
-                    </select>
+                    </select>}
                   </label>
                   <label className="text-xs font-bold sm:col-span-2" style={{ color: "var(--text-secondary)" }}>Final URL<input disabled={!editing} type="url" value={draft.finalUrl} onChange={(e) => updateDraft((r) => ({ ...r, finalUrl: e.target.value }))} className={`${fieldClass} mt-1.5`} /></label>
                   <label className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>Display path 1<div className="mt-1.5 flex items-center gap-2"><input disabled={!editing} value={draft.path1} onChange={(e) => updateDraft((r) => ({ ...r, path1: e.target.value }))} className={fieldClass} /><Count value={draft.path1} max={15} /></div></label>
@@ -651,7 +649,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                 <div className="p-4"><p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Required approvals</p><div className="mt-3 space-y-3">{draft.approvalChecklist.map((item, index) => <label key={item.key} className={`flex gap-2.5 text-xs leading-5 ${editing && isAdmin ? "cursor-pointer" : ""}`} style={{ color: "var(--text-secondary)" }}><input type="checkbox" disabled={!editing || !isAdmin} checked={item.confirmed} onChange={(e) => updateDraft((r) => ({ ...r, approvalChecklist: r.approvalChecklist.map((current, i) => i === index ? { ...current, confirmed: e.target.checked } : current) }))} className="mt-0.5 size-4 shrink-0 accent-[var(--success)]" />{item.label}</label>)}</div></div>
               </section>
               <div className="rounded-2xl border p-4" style={{ background: tracking.configured ? "var(--info-bg)" : "var(--warning-bg)", borderColor: tracking.configured ? "var(--info-border)" : "var(--warning-border)", color: tracking.configured ? "var(--info-text)" : "var(--warning-text)" }}>
-                <p className="text-sm font-bold">{tracking.loading ? "Checking conversion tracking…" : tracking.configured ? "Conversion actions detected." : conversionApproved ? "Tracking bypass explicitly confirmed." : "Conversion tracking is not confirmed."}</p>
+                <p className="text-sm font-bold">{tracking.loading ? <Skeleton className="h-4 w-48 rounded-full" /> : tracking.configured ? "Conversion actions detected." : conversionApproved ? "Tracking bypass explicitly confirmed." : "Conversion tracking is not confirmed."}</p>
                 <p className="mt-2 text-xs leading-5">{tracking.configured ? `${tracking.enabledActionCount} enabled conversion action${tracking.enabledActionCount === 1 ? "" : "s"} (${tracking.primaryActionCount} primary) found in Google Ads. The /lead submit event still requires admin confirmation.` : "This ad may receive clicks but still show 0 conversions in reporting. Set up tracking on the /lead form submit or redirect event before launching, or explicitly confirm an intentional bypass."}</p>
               </div>
             </aside>

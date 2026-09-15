@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, SkeletonRows } from "@/components/ui/Skeleton";
 import { useState, useEffect, useCallback } from "react";
 import { Star, MessageSquare, MapPin, Phone, Globe, Navigation, Loader2, Send, Pencil, RefreshCw, AlertCircle } from "lucide-react";
 
@@ -231,9 +233,7 @@ export default function GoogleBusinessClient() {
       {/* ─── Reviews Tab ─── */}
       {tab === "reviews" && (
         loadingReviews ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 size={28} className="animate-spin" style={{ color: GOLD }} />
-          </div>
+          <LoadingRegion label="Loading Google Business data" className="overflow-hidden rounded-xl border" ><SkeletonRows rows={4} /></LoadingRegion>
         ) : reviewError ? (
           <div className="flex items-start gap-3 p-5 rounded-xl" style={{ backgroundColor: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}>
             <AlertCircle size={18} className="mt-0.5 flex-shrink-0" style={{ color: "#F87171" }} />
@@ -350,9 +350,7 @@ export default function GoogleBusinessClient() {
       {/* ─── Insights Tab ─── */}
       {tab === "insights" && (
         loadingInsights ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 size={28} className="animate-spin" style={{ color: GOLD }} />
-          </div>
+          <LoadingRegion label="Loading Google Business data" className="overflow-hidden rounded-xl border" ><SkeletonRows rows={4} /></LoadingRegion>
         ) : insightError ? (
           <div className="flex items-start gap-3 p-5 rounded-xl" style={{ backgroundColor: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}>
             <AlertCircle size={18} className="mt-0.5 flex-shrink-0" style={{ color: "#F87171" }} />

@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, SkeletonRows } from "@/components/ui/Skeleton";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -115,21 +117,9 @@ function LoadingBlock({
   label?: string;
 }) {
   return (
-    <div
-      className="flex min-h-64 items-center justify-center gap-3 rounded-2xl border"
-      style={{
-        borderColor: "var(--border-subtle)",
-        background: "var(--surface-1)",
-        color: "var(--text-muted)",
-      }}
-    >
-      <Loader2
-        size={20}
-        className="animate-spin"
-        style={{ color: "var(--brand-primary)" }}
-      />
-      <span className="text-sm font-semibold">{label}…</span>
-    </div>
+    <LoadingRegion label={label} className="min-h-64 overflow-hidden rounded-2xl border" >
+      <SkeletonRows rows={5} />
+    </LoadingRegion>
   );
 }
 

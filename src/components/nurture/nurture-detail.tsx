@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, Skeleton } from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
 import { AlertCircle, Check, Clock3, Mail, MessageSquare, Phone, Sparkles, X } from "lucide-react";
 import { NURTURE_STEPS, type NurtureEnrollment, type NurtureMessage } from "@/lib/types/nurture";
@@ -46,7 +48,7 @@ export default function NurtureDetail({ enrollment, onClose }: { enrollment: Nur
           {enrollment.status === "Stopped" && <div className="mt-4 rounded-2xl border p-4" style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,.08)", borderColor: "rgba(248,113,113,.24)" }}><p className="text-xs font-bold uppercase tracking-wider">Sequence stopped</p><p className="mt-1 text-sm">{enrollment.stopReason || "No reason recorded"} at {enrollment.currentStep || "unknown step"}</p></div>}
           <div className="mt-5 rounded-2xl border p-4" style={{ backgroundColor: "var(--surface-1)", borderColor: "var(--border-subtle)" }}>
             <p className="mb-4 text-[10px] font-bold uppercase tracking-[.1em] text-[#C9A84C]">Sequence timeline</p>
-            {loading ? <p className="flex items-center gap-2 text-sm text-[var(--text-muted)]"><Clock3 className="animate-spin" size={15} />Loading messages...</p> : error ? <p className="flex gap-2 text-sm text-[#F87171]"><AlertCircle size={16} />{error}</p> : (
+            {loading ? <LoadingRegion label="Loading messages" className="grid gap-4">{[0, 1, 2, 3, 4].map((item) => <div key={item} className="flex gap-3"><Skeleton className="size-7 shrink-0 rounded-full" /><div className="grid flex-1 gap-2"><Skeleton className="h-3 w-1/3 rounded-full" /><Skeleton className="h-3 w-2/3 rounded-full" /></div></div>)}</LoadingRegion> : error ? <p className="flex gap-2 text-sm text-[#F87171]"><AlertCircle size={16} />{error}</p> : (
               <div className="space-y-0">
                 {NURTURE_STEPS.map((step, index) => {
                   const message = messages.find((item) => item.sequenceStep === step);

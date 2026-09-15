@@ -1,4 +1,6 @@
 "use client";
+
+import { Skeleton } from "@/components/ui/Skeleton";
 import { AlertCircle, CheckCircle2, FileUp, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BulkActionConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -568,7 +570,7 @@ function Existing({
         </button>
       </div>
       <div className="mt-3 flex items-center justify-between text-xs text-(--text-muted)">
-        <span>{loading ? "Loading Leads…" : `Page ${page + 1} · ${leads.length} Leads`}</span>
+        <span>{loading ? <Skeleton className="h-3 w-28 rounded-full" /> : `Page ${page + 1} · ${leads.length} Leads`}</span>
         <span className="flex gap-2">
           <button type="button" disabled={page === 0 || loading} onClick={onPrevious} className="min-h-9 rounded-lg border border-(--border-subtle) px-3 font-bold disabled:opacity-40">Previous</button>
           <button type="button" disabled={!hasNext || loading} onClick={onNext} className="min-h-9 rounded-lg border border-(--border-subtle) px-3 font-bold disabled:opacity-40">Next</button>

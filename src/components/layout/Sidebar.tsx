@@ -1,5 +1,7 @@
 "use client";
 
+
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -52,7 +54,7 @@ export default function Sidebar({
   const { profile, role, isLoading, signOut } = useAuth();
   // Never assert an identity we have not verified. Until the server-verified
   // profile loads we show a neutral loading label — never "Signed in".
-  const displayName = profile?.full_name || profile?.email || (isLoading ? "Loading account…" : "Not signed in");
+  const displayName = profile?.full_name || profile?.email || (isLoading ? "" : "Not signed in");
 
   const filteredNavItems = useMemo(
     () => navItems.filter((item) => !item.adminOnly || role === "admin"),
@@ -238,7 +240,7 @@ export default function Sidebar({
                 className="truncate text-xs font-bold"
                 style={{ color: "var(--text-primary)" }}
               >
-                {displayName}
+                {displayName || <Skeleton className="h-3.5 w-28 rounded-full" />}
               </p>
               {role && (
                 <span

@@ -1,5 +1,7 @@
 "use client";
 
+
+import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -749,13 +751,7 @@ export default function SettingsClient() {
 
   if (isLoading)
     return (
-      <div
-        className="flex items-center gap-3 rounded-2xl border p-8"
-        style={{ backgroundColor: CARD, borderColor: BORDER, color: MUTED }}
-      >
-        <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} />{" "}
-        Loading…
-      </div>
+      <LoadingRegion label="Loading settings" className="grid gap-4">{[0, 1, 2].map((item) => <div key={item} className="grid gap-3 rounded-2xl border p-6" style={{ backgroundColor: CARD, borderColor: BORDER }}><Skeleton className="h-4 w-40 rounded-full" /><Skeleton className="h-3 w-2/3 rounded-full" /><Skeleton className="h-11 w-full rounded-xl" /></div>)}</LoadingRegion>
     );
 
   const myRole = profile?.role ?? role ?? "viewer";
@@ -1150,17 +1146,7 @@ export default function SettingsClient() {
                 style={{ backgroundColor: CARD, borderColor: BORDER }}
               >
                 {loading ? (
-                  <div
-                    className="flex items-center justify-center gap-3 py-16"
-                    style={{ color: MUTED }}
-                  >
-                    <Loader2
-                      size={16}
-                      className="animate-spin"
-                      style={{ color: GOLD }}
-                    />{" "}
-                    Loading staff…
-                  </div>
+                  <LoadingRegion label="Loading staff"><SkeletonRows rows={4} /></LoadingRegion>
                 ) : (
                   <>
                     <div className="grid gap-3 p-3 md:hidden">
