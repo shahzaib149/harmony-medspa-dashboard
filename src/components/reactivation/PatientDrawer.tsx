@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { DateTime } from "luxon";
-import { CalendarCheck, MailX, MessageCircleReply, RefreshCw } from "lucide-react";
+import { CalendarCheck, ChevronDown, Mail, MailX, MessageCircleReply, MessageSquare, RefreshCw } from "lucide-react";
 import { LoadingRegion, Skeleton } from "@/components/ui/Skeleton";
-import { CLINIC_ZONE, type Patient, type PatientMessage } from "@/lib/reactivation/model";
+import { CLINIC_ZONE, deliveryState, type Patient, type PatientMessage } from "@/lib/reactivation/model";
 import PatientDialog from "./PatientDialog";
 import DeletePatientButton from "./DeletePatientButton";
 import s from "./reactivation.module.css";
@@ -23,6 +23,46 @@ async function json<T>(url: string, options?: RequestInit): Promise<T> {
   return data;
 }
 
+const DELIVERY_TONE = {
+  sent: { color: "var(--neutral-text)", background: "var(--neutral-bg)", border: "var(--neutral-border)" },
+  failed: { color: "var(--danger-text)", background: "var(--danger-bg)", border: "var(--danger-border)" },
+  pending: { color: "var(--warning-text)", background: "var(--warning-bg)", border: "var(--warning-border)" },
+};
+
+// Collapsed to a two-line preview; expands to the full message and delivery details.
+function MessageCard({ message, open, onToggle }: { message: PatientMessage; open: boolean; onToggle: () => void }) {
+  const tone = DELIVERY_TONE[deliveryState(message.status)];
+  return <article className="overflow-hidden rounded-2xl border transition-colors" style={{ borderColor: open ? "var(--brand-primary)" : "var(--border-subtle)", background: "var(--surface-1)" }}>
+    <button type="button" aria-expanded={open} aria-controls={"message-" + message.id} onClick={onToggle} className="w-full p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--brand-primary)]">
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex min-w-0 items-center gap-2 text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+          {message.channel.toLowerCase() === "sms" ? <MessageSquare size={15} /> : <Mail size={15} />}
+          <span className="truncate">Reactivation · {message.step || message.channel}</span>
+        </p>
+        <span className="flex shrink-0 items-center gap-3">
+          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: tone.color, background: tone.background, borderColor: tone.border }}><span className="mr-1.5 size-1.5 rounded-full" style={{ background: tone.color }} aria-hidden="true" />{message.status}</span>
+          <ChevronDown size={16} className="transition-transform duration-300" style={{ color: "var(--text-muted)", transform: open ? "rotate(180deg)" : "none" }} />
+        </span>
+      </div>
+      <p className="mt-3 line-clamp-2 text-sm leading-6" style={{ color: "var(--text-secondary)" }}>{message.body || "No message body was recorded."}</p>
+      <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>{date(message.sentAt, true)}</p>
+    </button>
+    <div id={"message-" + message.id} className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none" style={{ gridTemplateRows: open ? "1fr" : "0fr" }}>
+      <div className="overflow-hidden">
+        <div className="border-t px-4 pb-4 pt-4" style={{ borderColor: "var(--border-subtle)" }}>
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--brand-primary)" }}>Full message</p>
+          <p className="whitespace-pre-wrap break-words text-sm leading-7" style={{ color: "var(--text-primary)" }}>{message.body || "No message body was recorded."}</p>
+          <div className="mt-4 rounded-xl p-3 text-xs leading-5" style={{ background: "var(--background-subtle)", color: "var(--text-muted)" }}>
+            <p>Channel: {message.channel}</p>
+            <p>Sent: {date(message.sentAt, true)}</p>
+            <p>Delivery status: {message.status}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>;
+}
+
 // Patient profile, enrollment and message history, with staff actions. Shared by the
 // Dormant Patients directory and the reactivation campaign page.
 export default function PatientDrawer({ patientId, onClose, canManage, canDelete, onChanged, enrollSlot }: {
@@ -39,6 +79,7 @@ export default function PatientDrawer({ patientId, onClose, canManage, canDelete
   const [stopId, setStopId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState<Action | "">("");
+  const [openMessage, setOpenMessage] = useState<string | null>(null);
 
   const reload = useCallback(async (id: string, signal?: AbortSignal) => {
     setLoading(true); setError("");
@@ -50,7 +91,7 @@ export default function PatientDrawer({ patientId, onClose, canManage, canDelete
   useEffect(() => {
     if (!patientId) return;
     const controller = new AbortController();
-    setDetail(null); setStopId(null);
+    setDetail(null); setStopId(null); setOpenMessage(null);
     void reload(patientId, controller.signal);
     return () => controller.abort();
   }, [patientId, reload]);
@@ -95,7 +136,7 @@ export default function PatientDrawer({ patientId, onClose, canManage, canDelete
       {canManage && <div className={s.actionRow}>{([["replied", "Mark replied", MessageCircleReply], ["booked", "Mark booked", CalendarCheck], ["opted-out", "Unsubscribe", MailX]] as const).map(([action, label, Icon]) => <button key={action} className={s.button} disabled={Boolean(actionBusy) || busy} onClick={() => void patientAction(action)}>{actionBusy === action ? <RefreshCw size={14} className="animate-spin" /> : <Icon size={14} />}{label}</button>)}</div>}
       {canDelete && <DeletePatientButton id={patient.id} name={patient.name} onDeleted={async () => { onClose(); setDetail(null); await onChanged("Patient permanently deleted. History retained.", true); }} />}
       <section><h3 className={s.sectionTitle}>Enrollment history · {patient.enrollments.length}</h3>{!patient.enrollments.length ? <p className={s.muted}>This patient hasn’t been enrolled in reactivation.</p> : <div className={s.timeline}>{patient.enrollments.map(e => <article key={e.id} className={s.history}><div className="flex justify-between gap-2"><h4>{e.campaign}</h4><span className={s.badge + " " + (e.status === "Active" ? "" : s.neutral)}>{e.status}</span></div><p>{e.currentStep}</p><p className={s.muted}>Enrolled: {date(e.createdAt, true)}<br />Next send: {date(e.nextSendAt, true)}<br />Last sent: {date(e.lastSentAt, true)}<br />Stop reason: {e.stopReason || "—"}</p>{["Active", "Paused"].includes(e.status) && canManage && (stopId === e.id ? <div className={s.notice}><p>Remove this patient from the campaign? Scheduled sends will be cleared; enrollment and message history will remain.</p><div className="mt-3 flex gap-2"><button className={s.button} disabled={busy} onClick={() => setStopId(null)}>Cancel</button><button className={s.button} disabled={busy} onClick={stop}>{busy ? "Stopping…" : "Remove from campaign"}</button></div></div> : <button className={s.button + " mt-3"} disabled={busy} onClick={() => setStopId(e.id)}>Remove from campaign</button>)}</article>)}</div>}</section>
-      <section><h3 className={s.sectionTitle}>Message history · {detail.messages.length}</h3>{!detail.messages.length ? <p className={s.muted}>No messages have been logged for this patient yet.</p> : <div className={s.timeline}>{detail.messages.map(m => <article key={m.id} className={s.history}><div className="flex justify-between gap-2"><h4>{m.channel} · {m.step || "Step not recorded"}</h4><span className={s.badge + " " + s.neutral}>{m.status}</span></div><span className={s.muted}>{date(m.sentAt, true)}</span><p>{m.body || "Message body not recorded."}</p></article>)}</div>}</section>
+      <section><h3 className={s.sectionTitle}>Message history · {detail.messages.length}</h3>{!detail.messages.length ? <p className={s.muted}>No messages have been logged for this patient yet.</p> : <div className="grid gap-3">{detail.messages.map(m => <MessageCard key={m.id} message={m} open={openMessage === m.id} onToggle={() => setOpenMessage(current => current === m.id ? null : m.id)} />)}</div>}</section>
     </>}
   </PatientDialog>;
 }
