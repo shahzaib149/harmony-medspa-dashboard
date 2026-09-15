@@ -16,7 +16,7 @@ function tables() {
 // no parallel batch writes and no blind retry of a potentially committed create.
 let queue: Promise<unknown> = Promise.resolve();
 let lastRequest = 0;
-async function request(path: string, init?: RequestInit, api: "data" | "schema" = "data"): Promise<Response> {
+export async function request(path: string, init?: RequestInit, api: "data" | "schema" = "data"): Promise<Response> {
   const run = queue.then(async () => {
     await new Promise(resolve => setTimeout(resolve, Math.max(0, 250 - (Date.now() - lastRequest))));
     lastRequest = Date.now();
@@ -31,7 +31,7 @@ async function request(path: string, init?: RequestInit, api: "data" | "schema" 
   queue = run.catch(() => undefined);
   return run;
 }
-async function records(table: string, query = new URLSearchParams()) {
+export async function records(table: string, query = new URLSearchParams()) {
   const result: AirtableRecord[] = [];
   let offset: string | undefined;
   do {
@@ -94,7 +94,7 @@ export async function campaignMetrics() {
 }
 // Reuse the CRM's server-only claim table for a cross-instance enrollment lock.
 // A fixed key prevents two staff requests from passing the same active check.
-async function withEnrollmentLock<T>(operation: () => Promise<T>): Promise<T> {
+export async function withEnrollmentLock<T>(operation: () => Promise<T>): Promise<T> {
   const service = createServiceClient(); const requestId = randomUUID(); const key = "reactivation-enrollment-lock";
   const { error: cleanup } = await service.from("campaign_enrollment_claims").delete().eq("idempotency_key", key).lt("expires_at",new Date().toISOString());
   if (cleanup) throw new ReactivationError("Enrollment coordination is unavailable. Please retry.");
