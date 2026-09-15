@@ -17,8 +17,8 @@ export function DeletePatientDialog({ id, name, open, onClose, onDeleted }: { id
     } catch (e) { setError(e instanceof Error ? e.message : "Could not confirm deletion. Refresh before retrying."); } finally { setBusy(false); }
   }
   return <PatientDialog open={open} onClose={() => { if (!busy) onClose(); }} title="Permanently delete patient?" eyebrow="Admin action" busy={busy} footer={<><button className={s.button} disabled={busy} onClick={onClose}>Cancel</button><button className={s.button + " " + s.dangerButton} disabled={busy || confirmation !== "DELETE"} onClick={remove}>{busy ? "Deleting…" : "Permanently delete"}</button></>}>
-    <p>This removes <strong>{name}</strong> from the Patients table. It cannot be undone in the CRM.</p>
-    <div className={s.notice}>Scheduled reactivation sends will be cleared first. Enrollment and message history remain; the patient link will be removed. Any original lead stays unchanged. Messages already handed to a delivery provider cannot be recalled.</div>
+    <p>This permanently deletes <strong>{name}</strong>, their campaign enrollments and their message history. It cannot be undone.</p>
+    <div className={s.notice}>Scheduled emails are cancelled first. Emails already sent can’t be recalled. Any matching lead in Leads stays unchanged. To keep the history, use Remove from campaign instead.</div>
     <label className={s.label}>Type DELETE to confirm<input className={s.input} value={confirmation} autoComplete="off" disabled={busy} onChange={e => setConfirmation(e.target.value)} /></label>
     {error && <p role="alert" className={s.notice + " " + s.warning}>{error}</p>}
   </PatientDialog>;

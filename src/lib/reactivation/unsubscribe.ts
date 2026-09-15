@@ -17,6 +17,12 @@ export function unsubscribeToken(patientId: string) {
   return signPatientToken(key, patientId);
 }
 
+// Full link stored on the enrollment so the sender never has to compute the signature.
+export function unsubscribeUrl(patientId: string) {
+  const origin = (process.env.NEXT_PUBLIC_APP_URL || "https://crm.harmonymedspafl.com").replace(/\/$/, "");
+  return `${origin}/unsubscribe?p=${patientId}&t=${unsubscribeToken(patientId)}`;
+}
+
 export function verifyUnsubscribe(patientId: unknown, token: unknown): patientId is string {
   const key = secret();
   return key !== null && verifyPatientToken(key, patientId, token);

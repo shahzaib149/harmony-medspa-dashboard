@@ -15,13 +15,15 @@ test("empty campaign has truthful zero states",()=>{
  const result=buildCampaign([],[],[]);
  assert.equal(result.metrics.total,0);assert.equal(result.lastActivity,"");assert.deepEqual(result.messages,[]);
 });
-test("deleting patients requires admin and confirmation and preserves historical tables",()=>{
+test("deleting patients requires admin and confirmation, stops sends first, then removes history and the patient",()=>{
  const route=fs.readFileSync("src/app/api/reactivation/patients/[id]/route.ts","utf8");
  const service=fs.readFileSync("src/lib/reactivation/delete-patient.ts","utf8");
  assert.match(route,/requireRole\(request,"admin"\)/);
  assert.match(service,/confirmation!=="DELETE"/);
  assert.match(service,/withEnrollmentLock/);
  assert.match(service,/"Next Send At":null/);
- assert.equal((service.match(/method:"DELETE"/g)||[]).length,1);
+ assert.equal((service.match(/method:"DELETE"/g)||[]).length,2);
+ const stopAt=service.indexOf("\"Next Send At\":null"),logsAt=service.indexOf("\"Message Log\",messages"),patientAt=service.indexOf("request(\"Patients/\"+id,{method:\"DELETE\"})");
+ assert.ok(stopAt>0&&stopAt<logsAt&&logsAt<patientAt);
  assert.ok(service.includes('request("Patients/"+id,{method:"DELETE"})')); 
 });

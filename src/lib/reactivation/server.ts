@@ -6,7 +6,7 @@ import { airtableFetch, linkedIds, textField, type AirtableRecord } from "@/lib/
 import { createServiceClient } from "@/lib/supabase/server";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
 import { patientContactKeys } from "./patient-input";
-import { isUnsubscribeConfigured } from "./unsubscribe";
+import { isUnsubscribeConfigured, unsubscribeUrl } from "./unsubscribe";
 import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, exclusionReasons, staggeredSendAt, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
 
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
@@ -163,7 +163,7 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
       }
       try {
         // typecast lets Airtable add the email step choice if the base still lists SMS steps.
-        const response = await request(encodeURIComponent(ids.enrollments),{ method: "POST", body: JSON.stringify({ typecast: true, records: batch.map(p => ({ fields: { Patient: [p.id], Campaign: input.campaign, Status: "Active", "Current Step": FIRST_STEP, "Next Send At": sendAt.get(p.id), "Messages Sent": 0 } })) }) });
+        const response = await request(encodeURIComponent(ids.enrollments),{ method: "POST", body: JSON.stringify({ typecast: true, records: batch.map(p => ({ fields: { Patient: [p.id], Campaign: input.campaign, Status: "Active", "Current Step": FIRST_STEP, "Next Send At": sendAt.get(p.id), "Messages Sent": 0, "Unsubscribe URL": unsubscribeUrl(p.id) } })) }) });
         const body = await response.json() as { records: AirtableRecord[] };
         result.created += body.records.length;
       } catch {
