@@ -19,7 +19,7 @@ export function hasValidEmail(email: string) { return /^[^\s@]+@[^\s@]+\.[^\s@]+
 export type Enrollment = { id: string; patientIds: string[]; campaign: string; status: string; currentStep: string; nextSendAt: string; lastSentAt: string; stopReason: string; createdAt: string; messagesSent: number };
 export type Patient = { id: string; name: string; phone: string; email: string; lastVisit: string; days: number | null; lastTreatment: string; status: string; smsConsent: boolean; emailConsent: boolean; optedOut: boolean; doNotContact: boolean; futureBooking: boolean; replied: boolean; activeNurture?: boolean; enrollments: Enrollment[] };
 export type PatientMessage = { id: string; channel: string; step: string; sentAt: string; status: string; body: string; patientIds: string[]; enrollmentIds: string[] };
-export type Workspace = { patients: Patient[]; campaigns: string[]; source: string };
+export type Workspace = { patients: Patient[]; campaigns: string[]; source: string; unsubscribeReady?: boolean };
 export type SkippedPatient = { id: string; name: string; reason: string };
 export type EnrollmentResult = { created: number; skipped: SkippedPatient[] };
 export type ReactivationMetrics = { paused?: number; total: number; active: number; completed: number; stopped: number; sms: number; email: number; failures: number; pending: number; replies: number; bookings: number; stopReasons: Record<string, number> };

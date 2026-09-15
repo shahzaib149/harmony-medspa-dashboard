@@ -6,6 +6,7 @@ import { airtableFetch, linkedIds, textField, type AirtableRecord } from "@/lib/
 import { createServiceClient } from "@/lib/supabase/server";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
 import { patientContactKeys } from "./patient-input";
+import { isUnsubscribeConfigured } from "./unsubscribe";
 import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, exclusionReasons, staggeredSendAt, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
 
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
@@ -82,7 +83,7 @@ export async function workspace(all = false): Promise<Workspace> {
   const patients = await records(ids.patients, query);
   const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
   const nurture = await activeNurtureContacts();
-  return { patients: patients.map(p => mapPatient(p,enrollments,nurture)), campaigns: meta.campaigns, source: !all && meta.hasView ? VIEW : all ? "Patients table · custom filters" : "Eligible patients · 90+ days away" };
+  return { patients: patients.map(p => mapPatient(p,enrollments,nurture)), campaigns: meta.campaigns, unsubscribeReady: isUnsubscribeConfigured(), source: !all && meta.hasView ? VIEW : all ? "Patients table · custom filters" : "Eligible patients · 90+ days away" };
 }
 export async function patientDetail(id: string) {
   if (!/^rec\w{14}$/.test(id)) throw new ReactivationError("Invalid patient ID.",400);
@@ -135,6 +136,7 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
   return withEnrollmentLock(async () => {
     const ids = tables(); const meta = await schema();
     if (!meta.campaigns.includes(input.campaign)) throw new ReactivationError("Campaign is no longer available. Refresh and select again.",400);
+    if (!isUnsubscribeConfigured()) throw new ReactivationError("Unsubscribe links are not configured on the server. Add REACTIVATION_UNSUBSCRIBE_SECRET before enrolling patients.",409);
     const result: EnrollmentResult = { created: 0, skipped: [] };
     // One fresh read under the lock re-checks every patient without a per-batch table scan.
     const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
