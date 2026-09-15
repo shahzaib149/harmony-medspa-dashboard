@@ -193,3 +193,5 @@
 .rowMenu .menuDanger:hover { background:var(--danger-soft); }
 .rowLink { text-align:left; color:inherit; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px; }
 .rowLink:hover { text-decoration-color:currentColor; }
+.messageList { display:grid; gap:12px; padding:0 22px 8px; }
+@media(max-width:540px) { .messageList { padding:0 16px 8px; } }

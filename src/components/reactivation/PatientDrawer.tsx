@@ -30,9 +30,13 @@ const DELIVERY_TONE = {
 };
 
 // Collapsed to a two-line preview; expands to the full message and delivery details.
-function MessageCard({ message, open, onToggle }: { message: PatientMessage; open: boolean; onToggle: () => void }) {
+export function MessageCard({ message, open, onToggle, patientName, onPatient }: { message: PatientMessage; open: boolean; onToggle: () => void; patientName?: string; onPatient?: () => void }) {
   const tone = DELIVERY_TONE[deliveryState(message.status)];
   return <article className="overflow-hidden rounded-2xl border transition-colors" style={{ borderColor: open ? "var(--brand-primary)" : "var(--border-subtle)", background: "var(--surface-1)" }}>
+    {patientName && <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: "var(--border-subtle)", background: "var(--background-subtle)" }}>
+      {onPatient ? <button type="button" onClick={onPatient} className={"text-xs font-bold " + s.rowLink}>{patientName}</button> : <span className="text-xs font-bold">{patientName}</span>}
+      {onPatient && <button type="button" onClick={onPatient} className="text-[11px] font-semibold" style={{ color: "var(--brand-primary)" }}>View patient</button>}
+    </div>}
     <button type="button" aria-expanded={open} aria-controls={"message-" + message.id} onClick={onToggle} className="w-full p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--brand-primary)]">
       <div className="flex items-center justify-between gap-3">
         <p className="flex min-w-0 items-center gap-2 text-sm font-bold" style={{ color: "var(--text-primary)" }}>
