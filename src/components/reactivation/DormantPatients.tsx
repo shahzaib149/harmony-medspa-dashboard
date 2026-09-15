@@ -7,6 +7,7 @@ import { Toast } from "@/components/ui/Toast";
 import { DEFAULT_CAMPAIGN, CLINIC_ZONE, activeEnrollment, exclusionReasons, nextClinicSend, clinicSendISO, type Patient, type PatientMessage, type Workspace, type EnrollmentResult } from "@/lib/reactivation/model";
 import PatientDialog from "./PatientDialog";
 import AddPatients from "./AddPatients";
+import DeletePatientButton from "./DeletePatientButton";
 import s from "./reactivation.module.css";
 
 function date(value:string,withTime=false) {
@@ -24,7 +25,7 @@ async function json<T>(url:string,options?:RequestInit):Promise<T> {
   if(!response.ok)throw new Error(data.error||"Request failed. Please retry.");
   return data;
 }
-export default function DormantPatients({initial,initialError,canManage}:{initial:Workspace|null;initialError:string;canManage:boolean}) {
+export default function DormantPatients({initial,initialError,canManage,canDelete=false}:{initial:Workspace|null;initialError:string;canManage:boolean;canDelete?:boolean}) {
   const router=useRouter();
   const [data,setData]=useState(initial);
   const [error,setError]=useState(initialError);
@@ -101,7 +102,7 @@ export default function DormantPatients({initial,initialError,canManage}:{initia
     if(!stopId)return;setBusy(true);setDetailError("");
     try{
       await json("/api/reactivation/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enrollmentId:stopId})});
-      setStopId(null);setToast({message:"Enrollment stopped. Future sends have been cleared.",variant:"success"});
+      setStopId(null);setToast({message:"Removed from campaign. Scheduled sends cleared; history retained.",variant:"success"});
       if(patientId)setDetail(await json("/api/reactivation/patients/"+patientId));
       await load();router.refresh();
     }catch(e){setDetailError(e instanceof Error?e.message:"Could not stop enrollment.");}finally{setBusy(false);}
@@ -139,7 +140,7 @@ export default function DormantPatients({initial,initialError,canManage}:{initia
     <PatientDialog open={Boolean(patientId)} onClose={()=>{if(!busy)setPatientId(null);}} title={detail?.patient.name||"Patient details"} eyebrow="Patient profile" drawer busy={busy}>
       {detailLoading?<p role="status">Loading patient history…</p>:detailError?<div className={s.notice+" "+s.warning} role="alert">{detailError}<button className={s.button+" mt-3"} onClick={async()=>{setDetailLoading(true);try{setDetail(await json("/api/reactivation/patients/"+patientId));setDetailError("");}catch(e){setDetailError(e instanceof Error?e.message:"Could not load history.");}finally{setDetailLoading(false);}}}>Retry history</button></div>:null}
       {detail&&!detailLoading&&<><dl className={s.detailGrid}>{[["Phone",detail.patient.phone],["Email",detail.patient.email],["Last visit",date(detail.patient.lastVisit)],["Days since last visit",String(detail.patient.days??"Not recorded")],["Last treatment",detail.patient.lastTreatment],["Status",detail.patient.status]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value||"Not recorded"}</dd></div>)}</dl><div className="flex flex-wrap gap-2">{[["SMS consent",detail.patient.smsConsent],["Opted out",detail.patient.optedOut],["Do not contact",detail.patient.doNotContact],["Future booking",detail.patient.futureBooking]].map(([label,value])=><span key={String(label)} className={s.badge+" "+s.neutral}>{label}: {value?"Yes":"No"}</span>)}</div>
-      <section><h3 className={s.sectionTitle}>Enrollment history · {detail.patient.enrollments.length}</h3>{!detail.patient.enrollments.length?<p className={s.muted}>This patient hasn’t been enrolled in reactivation.</p>:<div className={s.timeline}>{detail.patient.enrollments.map(e=><article key={e.id} className={s.history}><div className="flex justify-between gap-2"><h4>{e.campaign}</h4><span className={s.badge+" "+(e.status==="Active"?"":s.neutral)}>{e.status}</span></div><p>{e.currentStep}</p><p className={s.muted}>Enrolled: {date(e.createdAt,true)}<br/>Next send: {date(e.nextSendAt,true)}<br/>Last sent: {date(e.lastSentAt,true)}<br/>Stop reason: {e.stopReason||"—"}</p>{e.status==="Active"&&canManage&&(stopId===e.id?<div className={s.notice}><p>Stop this enrollment and clear its next scheduled send?</p><div className="flex gap-2 mt-3"><button className={s.button} disabled={busy} onClick={()=>setStopId(null)}>Cancel</button><button className={s.button} disabled={busy} onClick={stop}>{busy?"Stopping…":"Confirm stop"}</button></div></div>:<button className={s.button+" mt-3"} disabled={busy} onClick={()=>setStopId(e.id)}>Stop enrollment</button>)}</article>)}</div>}</section>
+      {canDelete&&<DeletePatientButton id={detail.patient.id} name={detail.patient.name} onDeleted={async()=>{setPatientId(null);setDetail(null);await load();router.refresh();setToast({message:"Patient permanently deleted. History retained.",variant:"success"});}}/>}<section><h3 className={s.sectionTitle}>Enrollment history · {detail.patient.enrollments.length}</h3>{!detail.patient.enrollments.length?<p className={s.muted}>This patient hasn’t been enrolled in reactivation.</p>:<div className={s.timeline}>{detail.patient.enrollments.map(e=><article key={e.id} className={s.history}><div className="flex justify-between gap-2"><h4>{e.campaign}</h4><span className={s.badge+" "+(e.status==="Active"?"":s.neutral)}>{e.status}</span></div><p>{e.currentStep}</p><p className={s.muted}>Enrolled: {date(e.createdAt,true)}<br/>Next send: {date(e.nextSendAt,true)}<br/>Last sent: {date(e.lastSentAt,true)}<br/>Stop reason: {e.stopReason||"—"}</p>{["Active","Paused"].includes(e.status)&&canManage&&(stopId===e.id?<div className={s.notice}><p>Remove this patient from the campaign? Scheduled sends will be cleared; enrollment and message history will remain.</p><div className="flex gap-2 mt-3"><button className={s.button} disabled={busy} onClick={()=>setStopId(null)}>Cancel</button><button className={s.button} disabled={busy} onClick={stop}>{busy?"Stopping…":"Remove from campaign"}</button></div></div>:<button className={s.button+" mt-3"} disabled={busy} onClick={()=>setStopId(e.id)}>Remove from campaign</button>)}</article>)}</div>}</section>
       <section><h3 className={s.sectionTitle}>Message history · {detail.messages.length}</h3>{!detail.messages.length?<p className={s.muted}>No messages have been logged for this patient yet.</p>:<div className={s.timeline}>{detail.messages.map(m=><article key={m.id} className={s.history}><div className="flex justify-between gap-2"><h4>{m.channel} · {m.step||"Step not recorded"}</h4><span className={s.badge+" "+s.neutral}>{m.status}</span></div><span className={s.muted}>{date(m.sentAt,true)}</span><p>{m.body||"Message body not recorded."}</p></article>)}</div>}</section></>}
     </PatientDialog>
   </div>;

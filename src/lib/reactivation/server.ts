@@ -1,4 +1,5 @@
 import "server-only";
+import { buildCampaign } from "./campaign";
 import { randomUUID } from "node:crypto";
 import { DateTime } from "luxon";
 import { airtableFetch, linkedIds, textField, type AirtableRecord } from "@/lib/airtable/leads-base";
@@ -92,6 +93,12 @@ export async function campaignMetrics() {
   const messages = (await records("Message Log")).map(mapMessage);
   return summarizeReactivation(data.patients, all.length ? all : enrollments, messages, DEFAULT_CAMPAIGN);
 }
+export async function campaignWorkspace() {
+  const enrollments=(await records(tables().enrollments)).map(mapEnrollment);
+  const patients=(await records(tables().patients)).map(p=>mapPatient(p,enrollments));
+  const messages=(await records("Message Log")).map(mapMessage);
+  return buildCampaign(patients,enrollments,messages);
+}
 // Reuse the CRM's server-only claim table for a cross-instance enrollment lock.
 // A fixed key prevents two staff requests from passing the same active check.
 export async function withEnrollmentLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -155,7 +162,7 @@ export async function stopEnrollment(id: string) {
   return withEnrollmentLock(async () => {
     const path = `${tables().enrollments}/${id}`;
     const enrollment = await (await request(path)).json() as AirtableRecord;
-    if (enrollment.fields.Status !== "Active") throw new ReactivationError("This enrollment is no longer active. Refresh its history.",409);
+    if (!["Active","Paused"].includes(String(enrollment.fields.Status))) throw new ReactivationError("This enrollment is no longer active or paused. Refresh its history.",409);
     await request(path,{ method: "PATCH", body: JSON.stringify({ fields: { Status: "Stopped", "Stop Reason": "Manual", "Next Send At": null } }) });
   });
 }

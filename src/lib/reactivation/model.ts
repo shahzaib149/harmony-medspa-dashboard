@@ -8,7 +8,7 @@ export type PatientMessage = { id: string; channel: string; step: string; sentAt
 export type Workspace = { patients: Patient[]; campaigns: string[]; source: string };
 export type SkippedPatient = { id: string; name: string; reason: string };
 export type EnrollmentResult = { created: number; skipped: SkippedPatient[] };
-export type ReactivationMetrics = { total: number; active: number; completed: number; stopped: number; sms: number; email: number; failures: number; replies: number; bookings: number; stopReasons: Record<string, number> };
+export type ReactivationMetrics = { paused?: number; total: number; active: number; completed: number; stopped: number; sms: number; email: number; failures: number; replies: number; bookings: number; stopReasons: Record<string, number> };
 
 export function activeEnrollment(patient: Patient) {
   return patient.enrollments.filter(e => e.status === "Active").sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];

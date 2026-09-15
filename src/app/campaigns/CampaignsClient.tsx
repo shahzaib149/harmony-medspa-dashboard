@@ -32,7 +32,7 @@ export default function CampaignsClient() {
   const [status, setStatus] = useState("All");
   const [type, setType] = useState("All");
   const [reactivation, setReactivation] = useState<ReactivationMetrics | null>(null);
-  const showReactivation = DEFAULT_CAMPAIGN.toLowerCase().includes(query.toLowerCase()) && (type === "All" || type === "Manual Enrollment") && (status === "All" || status === "Active");
+  const showReactivation = DEFAULT_CAMPAIGN.toLowerCase().includes(query.toLowerCase()) && (type === "All" || type === "Manual Enrollment") && (status === "All" || (reactivation && status === (reactivation.active ? "Active" : reactivation.paused ? "Paused" : "Idle")));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,7 +145,7 @@ export default function CampaignsClient() {
           className="h-11 w-full rounded-xl border bg-[#101016] px-3 text-sm text-white"
           style={{ borderColor: "#292932" }}
         >
-          {["All", "Active", "Paused", "Coming Soon"].map((option) => (
+          {["All", "Active", "Paused", "Idle", "Coming Soon"].map((option) => (
             <option key={option}>{option}</option>
           ))}
         </select>
@@ -162,9 +162,9 @@ export default function CampaignsClient() {
         </select>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2"><ReactivationCampaignCard query={query} status={status} type={type} onMetrics={setReactivation}/></div>
+      <div className="grid gap-4 md:grid-cols-2"><ReactivationCampaignCard query={query} status={status} type={type} onMetrics={setReactivation}/>
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="contents">
           {[1, 2].map((item) => (
             <div
               key={item}
@@ -190,7 +190,7 @@ export default function CampaignsClient() {
           No campaigns match these filters.
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="contents">
           {visible.map((campaign) => (
             <Link
               key={campaign.slug}
@@ -279,6 +279,7 @@ export default function CampaignsClient() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
