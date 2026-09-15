@@ -29,6 +29,7 @@ const navItems = [
   { href: "/google-ads-analytics", label: "Google Ads", icon: TrendingUp },
   { href: "/website-analytics", label: "Website Analytics", icon: ChartNoAxesCombined },
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/dashboard/dormant-patients", label: "Dormant Patients", icon: Users },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/blogs", label: "Blogs", icon: BookOpenText },
   { href: "/audit-log", label: "Audit Log", icon: ScrollText, adminOnly: true },
@@ -176,7 +177,7 @@ export default function Sidebar({
       {/* Nav */}
       <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
         {filteredNavItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
           return (
             <Link
               key={href}

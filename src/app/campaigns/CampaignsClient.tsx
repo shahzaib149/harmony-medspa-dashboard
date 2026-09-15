@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import ReactivationCampaignCard from "@/components/reactivation/ReactivationCampaignCard";
+import { DEFAULT_CAMPAIGN, type ReactivationMetrics } from "@/lib/reactivation/model";
 import {
   GitBranch,
   Megaphone,
@@ -29,6 +31,8 @@ export default function CampaignsClient() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
   const [type, setType] = useState("All");
+  const [reactivation, setReactivation] = useState<ReactivationMetrics | null>(null);
+  const showReactivation = DEFAULT_CAMPAIGN.toLowerCase().includes(query.toLowerCase()) && (type === "All" || type === "Manual Enrollment") && (status === "All" || status === "Active");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,18 +80,18 @@ export default function CampaignsClient() {
   const summaryCards = [
     {
       label: "Total Campaigns",
-      value: items.length,
+      value: items.length + 1,
       icon: <Megaphone size={18} />,
     },
     {
       label: "Active Campaigns",
-      value: items.filter((campaign) => campaign.status === "Active").length,
+      value: items.filter((campaign) => campaign.status === "Active").length + (reactivation && reactivation.active > 0 ? 1 : 0),
       icon: <Zap size={18} />,
     },
     { label: "Campaign Leads", value: totalLeads, icon: <Users size={18} /> },
     {
       label: "Messages Sent",
-      value: messages,
+      value: messages + (reactivation ? reactivation.sms + reactivation.email : 0),
       icon: <MessageSquare size={18} />,
     },
   ];
@@ -158,6 +162,7 @@ export default function CampaignsClient() {
         </select>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2"><ReactivationCampaignCard query={query} status={status} type={type} onMetrics={setReactivation}/></div>
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2">
           {[1, 2].map((item) => (
@@ -177,7 +182,7 @@ export default function CampaignsClient() {
             Retry
           </button>
         </div>
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && !showReactivation ? (
         <div
           className="rounded-xl border border-white/10 p-10 text-center"
           style={{ color: MUTED }}

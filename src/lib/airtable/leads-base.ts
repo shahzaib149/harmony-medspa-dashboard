@@ -29,7 +29,7 @@ export function safeAirtableError(status: number) {
   return status === 401 || status === 403 ? "Airtable access is not authorized" : `Airtable request failed (${status})`;
 }
 
-export async function airtableFetch(path: string, init?: RequestInit) {
+export async function airtableFetch(path: string, init?: RequestInit, api: "data" | "schema" = "data") {
   const method = (init?.method ?? "GET").toUpperCase();
   const maxAttempts = method === "GET" ? 3 : 2;
 
@@ -37,7 +37,7 @@ export async function airtableFetch(path: string, init?: RequestInit) {
     const timeout = AbortSignal.timeout(AIRTABLE_TIMEOUT_MS);
     const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
     try {
-      const response = await fetch(`${root}/${path}`, {
+      const response = await fetch(`${api === "schema" ? `https://api.airtable.com/v0/meta/bases/${AIRTABLE_LEADS_BASE_ID}` : root}/${path}`, {
         ...init,
         signal,
         headers: { Authorization: `Bearer ${getAirtableApiKey()}`, "Content-Type": "application/json", ...init?.headers },

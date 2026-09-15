@@ -1,0 +1,1 @@
+export default function Loading() { return <div role="status" className="p-8 space-y-5"><p>Loading patient workspace…</p><div className="h-40 rounded-2xl animate-pulse bg-[var(--surface-2)]"/><div className="h-96 rounded-2xl animate-pulse bg-[var(--surface-2)]"/></div>; }
