@@ -4,12 +4,12 @@ import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DateTime } from "luxon";
-import { ArrowDownUp, ArrowUpRight, CalendarCheck, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, HeartHandshake, Plus, MailX, MessageCircleReply, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { ArrowDownUp, ArrowUpRight, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, HeartHandshake, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { Toast } from "@/components/ui/Toast";
-import { DEFAULT_CAMPAIGN, CLINIC_ZONE, MAX_ENROLL, MAX_PER_DAY, staggeredSendAt, activeEnrollment, exclusionReasons, nextClinicSend, clinicSendISO, type Patient, type PatientMessage, type Workspace, type EnrollmentResult } from "@/lib/reactivation/model";
+import { DEFAULT_CAMPAIGN, CLINIC_ZONE, MAX_ENROLL, MAX_PER_DAY, staggeredSendAt, activeEnrollment, exclusionReasons, nextClinicSend, clinicSendISO, type Patient, type Workspace, type EnrollmentResult } from "@/lib/reactivation/model";
 import PatientDialog from "./PatientDialog";
 import AddPatients from "./AddPatients";
-import DeletePatientButton from "./DeletePatientButton";
+import PatientDrawer from "./PatientDrawer";
 import s from "./reactivation.module.css";
 
 function date(value:string,withTime=false) {
@@ -44,7 +44,6 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
   const [page,setPage]=useState(1);
   const [perDay,setPerDay]=useState("");
   const [resultRows,setResultRows]=useState<string[][]>([]);
-  const [actionBusy,setActionBusy]=useState("");
   const [sort,setSort]=useState<{key:SortKey;desc:boolean}>({key:"days",desc:true});
   const [selected,setSelected]=useState<Set<string>>(new Set());
   const [modal,setModal]=useState(false);
@@ -56,10 +55,6 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
   const [result,setResult]=useState<EnrollmentResult|null>(null);
   const [toast,setToast]=useState<{message:string;variant:"success"|"danger"|"warning"}|null>(null);
   const [patientId,setPatientId]=useState<string|null>(null);
-  const [detail,setDetail]=useState<{patient:Patient;messages:PatientMessage[]}|null>(null);
-  const [detailError,setDetailError]=useState("");
-  const [detailLoading,setDetailLoading]=useState(false);
-  const [stopId,setStopId]=useState<string|null>(null);
   const allCheck=useRef<HTMLInputElement>(null);
   const loadVersion=useRef(0);
   const load=useCallback(async()=>{
@@ -68,12 +63,6 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
     catch(e){if(version===loadVersion.current)setError(e instanceof Error?e.message:"Could not load patients.");}
     finally{if(version===loadVersion.current)setLoading(false);}
   },[]);
-  useEffect(()=>{
-    if(!patientId)return;
-    const controller=new AbortController();setDetail(null);setDetailError("");setDetailLoading(true);setStopId(null);
-    json<{patient:Patient;messages:PatientMessage[]}>("/api/reactivation/patients/"+patientId,{signal:controller.signal}).then(setDetail).catch(e=>{if(!controller.signal.aborted)setDetailError(e.message);}).finally(()=>{if(!controller.signal.aborted)setDetailLoading(false);});
-    return()=>controller.abort();
-  },[patientId]);
   const patients=useMemo(()=>data?.patients??[],[data]);
   const visible=useMemo(()=>{
     const needle=query.trim().toLowerCase();
@@ -124,24 +113,6 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
     }catch(e){setReviewError(e instanceof Error?e.message:"Enrollment failed.");}
     finally{setBusy(false);}
   }
-  async function patientAction(action:"replied"|"booked"|"opted-out"){
-    if(!patientId||actionBusy)return;setActionBusy(action);setDetailError("");
-    try{
-      const r=await json<{stopped:number}>("/api/reactivation/patients/"+patientId+"/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})});
-      const label=action==="replied"?"Marked as replied":action==="booked"?"Marked as booked":"Unsubscribed from emails";
-      setToast({message:label+(r.stopped?" · "+r.stopped+" enrollment stopped":""),variant:"success"});
-      setDetail(await json("/api/reactivation/patients/"+patientId));await load();router.refresh();
-    }catch(e){setDetailError(e instanceof Error?e.message:"Could not update patient.");}finally{setActionBusy("");}
-  }
-  async function stop(){
-    if(!stopId)return;setBusy(true);setDetailError("");
-    try{
-      await json("/api/reactivation/stop",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enrollmentId:stopId})});
-      setStopId(null);setToast({message:"Removed from campaign. Scheduled sends cleared; history retained.",variant:"success"});
-      if(patientId)setDetail(await json("/api/reactivation/patients/"+patientId));
-      await load();router.refresh();
-    }catch(e){setDetailError(e instanceof Error?e.message:"Could not stop enrollment.");}finally{setBusy(false);}
-  }
   const statusOptions=[...new Set(patients.map(p=>p.status))].sort();
   const ready=patients.filter(p=>(p.days===null||p.days>=90)&&!exclusionReasons(p,DEFAULT_CAMPAIGN).length).length;
   return <div className={s.workspace}>
@@ -177,13 +148,6 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
       {excluded.length>0&&<div className={s.notice+" "+s.warning}><strong>{excluded.length} patients will be excluded</strong><ul className={s.exclusions}>{excluded.map(({patient,reasons})=><li key={patient.id}><strong>{patient.name}</strong> — {reasons.join("; ")}</li>)}</ul></div>}
       {reviewError&&<div role="alert" className={s.notice+" "+s.warning}>{reviewError}<button className={s.button+" mt-2"} disabled={busy} onClick={openReview}>Recheck eligibility</button></div>}
     </PatientDialog>
-    <PatientDialog open={Boolean(patientId)} onClose={()=>{if(!busy)setPatientId(null);}} title={detail?.patient.name||"Patient details"} eyebrow="Patient profile" drawer busy={busy}>
-      {detailLoading?<LoadingRegion label="Loading patient history" className="grid gap-5"><div className={s.detailGrid}>{[0,1,2,3,4,5].map(i=><div key={i}><Skeleton className="h-2.5 w-16 rounded-full"/><Skeleton className="mt-2.5 h-3.5 w-3/4 rounded-full"/></div>)}</div><div className="flex flex-wrap gap-2">{[0,1,2,3].map(i=><Skeleton key={i} className="h-6 w-28 rounded-full"/>)}</div><Skeleton className="h-3.5 w-40 rounded-full"/>{[0,1].map(i=><div key={i} className={s.history}><Skeleton className="h-3.5 w-1/2 rounded-full"/><Skeleton className="mt-3 h-3 w-1/3 rounded-full"/><Skeleton className="mt-3 h-14 w-full rounded-lg"/></div>)}</LoadingRegion>:detailError?<div className={s.notice+" "+s.warning} role="alert">{detailError}<button className={s.button+" mt-3"} onClick={async()=>{setDetailLoading(true);try{setDetail(await json("/api/reactivation/patients/"+patientId));setDetailError("");}catch(e){setDetailError(e instanceof Error?e.message:"Could not load history.");}finally{setDetailLoading(false);}}}>Retry history</button></div>:null}
-      {detail&&!detailLoading&&<><dl className={s.detailGrid}>{[["Phone",detail.patient.phone],["Email",detail.patient.email],["Last visit",date(detail.patient.lastVisit)],["Days since last visit",detail.patient.days===null?"Unknown":String(detail.patient.days)],["Last treatment",detail.patient.lastTreatment],["Status",detail.patient.status]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value||"Not recorded"}</dd></div>)}</dl><div className="flex flex-wrap gap-2">{[["Email consent",detail.patient.emailConsent],["Opted out",detail.patient.optedOut],["Do not contact",detail.patient.doNotContact],["Future booking",detail.patient.futureBooking]].map(([label,value])=><span key={String(label)} className={s.badge+" "+s.neutral}>{label}: {value?"Yes":"No"}</span>)}</div>
-      {canManage&&(()=>{const current=activeEnrollment(detail.patient);const reasons=exclusionReasons(detail.patient,campaign||DEFAULT_CAMPAIGN).filter(r=>r!=="Already active in this campaign");return current?<p className={s.notice}>Enrolled in {current.campaign} · {current.currentStep}</p>:<><button className={s.button+" "+s.primary} disabled={reasons.length>0||busy} onClick={()=>enrollOne(detail.patient.id)}><Plus size={15}/>Enroll in {campaign||DEFAULT_CAMPAIGN}</button>{reasons.length>0&&<p className={s.muted}>Can’t enroll: {reasons.join("; ")}.</p>}</>;})()}
-      {canManage&&<div className={s.actionRow}>{([["replied","Mark replied",MessageCircleReply],["booked","Mark booked",CalendarCheck],["opted-out","Unsubscribe",MailX]] as const).map(([action,label,Icon])=><button key={action} className={s.button} disabled={Boolean(actionBusy)||busy} onClick={()=>void patientAction(action)}>{actionBusy===action?<RefreshCw size={14} className="animate-spin"/>:<Icon size={14}/>}{label}</button>)}</div>}
-      {canDelete&&<DeletePatientButton id={detail.patient.id} name={detail.patient.name} onDeleted={async()=>{setPatientId(null);setDetail(null);await load();router.refresh();setToast({message:"Patient permanently deleted. History retained.",variant:"success"});}}/>}<section><h3 className={s.sectionTitle}>Enrollment history · {detail.patient.enrollments.length}</h3>{!detail.patient.enrollments.length?<p className={s.muted}>This patient hasn’t been enrolled in reactivation.</p>:<div className={s.timeline}>{detail.patient.enrollments.map(e=><article key={e.id} className={s.history}><div className="flex justify-between gap-2"><h4>{e.campaign}</h4><span className={s.badge+" "+(e.status==="Active"?"":s.neutral)}>{e.status}</span></div><p>{e.currentStep}</p><p className={s.muted}>Enrolled: {date(e.createdAt,true)}<br/>Next send: {date(e.nextSendAt,true)}<br/>Last sent: {date(e.lastSentAt,true)}<br/>Stop reason: {e.stopReason||"—"}</p>{["Active","Paused"].includes(e.status)&&canManage&&(stopId===e.id?<div className={s.notice}><p>Remove this patient from the campaign? Scheduled sends will be cleared; enrollment and message history will remain.</p><div className="flex gap-2 mt-3"><button className={s.button} disabled={busy} onClick={()=>setStopId(null)}>Cancel</button><button className={s.button} disabled={busy} onClick={stop}>{busy?"Stopping…":"Remove from campaign"}</button></div></div>:<button className={s.button+" mt-3"} disabled={busy} onClick={()=>setStopId(e.id)}>Remove from campaign</button>)}</article>)}</div>}</section>
-      <section><h3 className={s.sectionTitle}>Message history · {detail.messages.length}</h3>{!detail.messages.length?<p className={s.muted}>No messages have been logged for this patient yet.</p>:<div className={s.timeline}>{detail.messages.map(m=><article key={m.id} className={s.history}><div className="flex justify-between gap-2"><h4>{m.channel} · {m.step||"Step not recorded"}</h4><span className={s.badge+" "+s.neutral}>{m.status}</span></div><span className={s.muted}>{date(m.sentAt,true)}</span><p>{m.body||"Message body not recorded."}</p></article>)}</div>}</section></>}
-    </PatientDialog>
+    <PatientDrawer patientId={patientId} onClose={()=>setPatientId(null)} canManage={canManage} canDelete={canDelete} onChanged={async(message)=>{setToast({message,variant:"success"});await load();router.refresh();}} enrollSlot={patient=>canManage&&(()=>{const current=activeEnrollment(patient);const reasons=exclusionReasons(patient,campaign||DEFAULT_CAMPAIGN).filter(r=>r!=="Already active in this campaign");return current?<p className={s.notice}>Enrolled in {current.campaign} · {current.currentStep}</p>:<><button className={s.button+" "+s.primary} disabled={reasons.length>0||busy} onClick={()=>enrollOne(patient.id)}><Plus size={15}/>Enroll in {campaign||DEFAULT_CAMPAIGN}</button>{reasons.length>0&&<p className={s.muted}>Can’t enroll: {reasons.join("; ")}.</p>}</>;})()}/>
   </div>;
 }

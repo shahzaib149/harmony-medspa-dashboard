@@ -1,18 +1,36 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw, UserPlus, HeartHandshake, Mail, Search } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, RefreshCw, Trash2, UserMinus, UserPlus, HeartHandshake, Mail, Search } from "lucide-react";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import type { ReactivationCampaignData } from "@/lib/reactivation/campaign";
 import { EMAIL_STEPS, stepNumber, type Enrollment, type PatientMessage } from "@/lib/reactivation/model";
 import PatientDialog from "./PatientDialog";
-import DeletePatientButton from "./DeletePatientButton";
+import { DeletePatientDialog } from "./DeletePatientButton";
+import PatientDrawer from "./PatientDrawer";
 import s from "./reactivation.module.css";
 const date=(value:string)=>formatCampaignDate(value||null,"Not recorded");
 const SIZE=25;
+// Row actions in a small menu. Fixed positioning keeps it clear of the table's scroll area.
+function RowMenu({label,children}:{label:string;children:(close:()=>void)=>ReactNode}){
+  const [pos,setPos]=useState<{top?:number;bottom?:number;right:number}|null>(null);
+  const button=useRef<HTMLButtonElement>(null),menu=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!pos)return;
+    const onPointer=(e:MouseEvent)=>{if(!menu.current?.contains(e.target as Node)&&!button.current?.contains(e.target as Node))setPos(null);};
+    const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape"){setPos(null);button.current?.focus();}};
+    const close=()=>setPos(null);
+    document.addEventListener("mousedown",onPointer);document.addEventListener("keydown",onKey);window.addEventListener("scroll",close,true);window.addEventListener("resize",close);
+    menu.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return()=>{document.removeEventListener("mousedown",onPointer);document.removeEventListener("keydown",onKey);window.removeEventListener("scroll",close,true);window.removeEventListener("resize",close);};
+  },[pos]);
+  return <><button ref={button} className={s.iconButton} aria-label={label} aria-haspopup="menu" aria-expanded={Boolean(pos)} onClick={e=>{e.stopPropagation();if(pos){setPos(null);return;}const r=e.currentTarget.getBoundingClientRect();const right=window.innerWidth-r.right;setPos(window.innerHeight-r.bottom<140?{bottom:window.innerHeight-r.top+6,right}:{top:r.bottom+6,right});}}><MoreHorizontal size={17}/></button>
+    {pos&&<div ref={menu} role="menu" className={s.rowMenu} style={pos} onClick={e=>e.stopPropagation()}>{children(()=>setPos(null))}</div>}</>;
+}
 export default function ReactivationCampaign({initial,initialError,canManage,canDelete}:{initial:ReactivationCampaignData|null;initialError:string;canManage:boolean;canDelete:boolean}){
   const [data,setData]=useState(initial),[error,setError]=useState(initialError),[loading,setLoading]=useState(false);
   const [tab,setTab]=useState("overview"),[query,setQuery]=useState(""),[status,setStatus]=useState("All"),[channel,setChannel]=useState("All"),[page,setPage]=useState(1);
+  const [patientId,setPatientId]=useState<string|null>(null),[deleting,setDeleting]=useState<{id:string;name:string}|null>(null);
   const [target,setTarget]=useState<Enrollment|null>(null),[message,setMessage]=useState<PatientMessage|null>(null),[busy,setBusy]=useState(false),[actionError,setActionError]=useState(""),[notice,setNotice]=useState("");
   async function refresh(){
     setLoading(true);setError("");
@@ -51,7 +69,7 @@ export default function ReactivationCampaign({initial,initialError,canManage,can
     </>:<section className={s.panel}><div className={s.toolbar}><div><h3>{tab==="messages"?"Message log":"Patient enrollments"}</h3><p className={s.muted}>{rows.length} matching records · newest first</p></div></div>
       <div className={s.filters}><label className={s.search}><Search size={16}/><input aria-label="Search campaign records" className={s.input} placeholder={tab==="messages"?"Search patient, step or message…":"Search patient, contact or step…"} value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/></label><label className={s.label}>Status<select className={s.input} value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}>{["All",...new Set((tab==="messages"?data.messages:data.enrollments).map(r=>r.status))].map(v=><option key={v}>{v}</option>)}</select></label>{tab==="messages"&&<label className={s.label}>Channel<select className={s.input} value={channel} onChange={e=>{setChannel(e.target.value);setPage(1);}}>{["All",...new Set(data.messages.map(m=>m.channel))].map(v=><option key={v}>{v}</option>)}</select></label>}</div>
       {!rows.length?<div className={s.empty}><Search size={24}/><h3>No {tab==="messages"?"messages":"enrollments"} match</h3><p className={s.muted}>Try another search or filter. No records are fabricated when activity is empty.</p></div>:<div className={s.tableWrap}><table className={s.table}><thead><tr>{(tab==="messages"?["Patient","Channel / step","Sent at","Delivery status","Message"]:["Patient","Status","Current step","Enrolled","Next send","Last sent","Stop reason","Actions"]).map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>
-      {tab==="messages"?logs.slice((current-1)*SIZE,current*SIZE).map(msg=><tr key={msg.id}><td>{name(msg.patientIds)}</td><td>{msg.channel}<br/><small>{msg.step||"Not recorded"}</small></td><td>{date(msg.sentAt)}</td><td><span className={s.badge+" "+s.neutral}>{msg.status}</span></td><td><button className={s.messagePreview} onClick={()=>setMessage(msg)}>{msg.body||"View message details"}</button></td></tr>):enrollments.slice((current-1)*SIZE,current*SIZE).map(e=><tr key={e.id}><td><strong>{name(e.patientIds)}</strong><br/><small>{e.patientIds.map(id=>patients.get(id)?.email||patients.get(id)?.phone).filter(Boolean).join(", ")}</small></td><td><span className={s.badge+" "+(e.status==="Active"?"":s.neutral)}>{e.status}</span></td><td>{e.currentStep||"Not recorded"}</td><td>{date(e.createdAt)}</td><td>{date(e.nextSendAt)}</td><td>{date(e.lastSentAt)}</td><td>{e.stopReason||"—"}</td><td><div className="flex gap-2">{canManage&&["Active","Paused"].includes(e.status)&&<button className={s.button} onClick={()=>{setTarget(e);setActionError("");}}>Remove from campaign</button>}{canDelete&&e.patientIds.length===1&&patients.has(e.patientIds[0])&&<DeletePatientButton id={e.patientIds[0]} name={name(e.patientIds)} onDeleted={refresh}/>}</div></td></tr>)}
+      {tab==="messages"?logs.slice((current-1)*SIZE,current*SIZE).map(msg=><tr key={msg.id} onClick={()=>msg.patientIds[0]&&patients.has(msg.patientIds[0])&&setPatientId(msg.patientIds[0])}><td>{msg.patientIds[0]&&patients.has(msg.patientIds[0])?<button className={s.rowLink} onClick={e=>{e.stopPropagation();setPatientId(msg.patientIds[0]);}}>{name(msg.patientIds)}</button>:name(msg.patientIds)}</td><td>{msg.channel}<br/><small>{msg.step||"Not recorded"}</small></td><td>{date(msg.sentAt)}</td><td><span className={s.badge+" "+s.neutral}>{msg.status}</span></td><td><button className={s.messagePreview} onClick={e=>{e.stopPropagation();setMessage(msg);}}>{msg.body||"View message details"}</button></td></tr>):enrollments.slice((current-1)*SIZE,current*SIZE).map(e=>{const pid=e.patientIds.length===1&&patients.has(e.patientIds[0])?e.patientIds[0]:null;const removable=canManage&&["Active","Paused"].includes(e.status);return <tr key={e.id} onClick={()=>pid&&setPatientId(pid)}><td>{pid?<button className={s.rowLink} onClick={ev=>{ev.stopPropagation();setPatientId(pid);}}><strong>{name(e.patientIds)}</strong></button>:<strong>{name(e.patientIds)}</strong>}<br/><small>{e.patientIds.map(id=>patients.get(id)?.email||patients.get(id)?.phone).filter(Boolean).join(", ")}</small></td><td><span className={s.badge+" "+(e.status==="Active"?"":s.neutral)}>{e.status}</span></td><td>{e.currentStep||"Not recorded"}</td><td>{date(e.createdAt)}</td><td>{date(e.nextSendAt)}</td><td>{date(e.lastSentAt)}</td><td>{e.stopReason||"—"}</td><td onClick={ev=>ev.stopPropagation()}>{(removable||(canDelete&&pid))?<RowMenu label={"Actions for "+name(e.patientIds)}>{close=><>{removable&&<button role="menuitem" onClick={()=>{close();setTarget(e);setActionError("");}}><UserMinus size={15}/>Remove from campaign</button>}{canDelete&&pid&&<button role="menuitem" className={s.menuDanger} onClick={()=>{close();setDeleting({id:pid,name:name(e.patientIds)});}}><Trash2 size={15}/>Delete patient</button>}</>}</RowMenu>:<span className={s.muted}>—</span>}</td></tr>;})}
       </tbody></table></div>}
       <footer className={s.footer}><span>Page {current} of {pages} · {SIZE} per page</span><div className="flex gap-2"><button className={s.button} disabled={current===1} onClick={()=>setPage(current-1)}>Previous</button><button className={s.button} disabled={current===pages} onClick={()=>setPage(current+1)}>Next</button></div></footer>
     </section>}
@@ -59,5 +77,7 @@ export default function ReactivationCampaign({initial,initialError,canManage,can
       <p>{target?name(target.patientIds):""} will be marked Stopped with reason Manual. The next scheduled send will be cleared.</p><p className={s.muted}>The patient, enrollment and message history remain. Messages already sent to the delivery provider cannot be recalled.</p>{actionError&&<p role="alert" className={s.notice+" "+s.warning}>{actionError}</p>}
     </PatientDialog>
     <PatientDialog open={Boolean(message)} onClose={()=>setMessage(null)} title="Message details" eyebrow="Delivery history">{message&&<><dl className={s.detailGrid}>{[["Patient",name(message.patientIds)],["Channel",message.channel],["Sequence step",message.step||"Not recorded"],["Delivery status",message.status],["Sent at",date(message.sentAt)]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className={s.messageBody}>{message.body||"Message body not recorded."}</div></>}</PatientDialog>
+    <PatientDrawer patientId={patientId} onClose={()=>setPatientId(null)} canManage={canManage} canDelete={canDelete} onChanged={async(msg)=>{setNotice(msg);await refresh();}}/>
+    {deleting&&<DeletePatientDialog id={deleting.id} name={deleting.name} open onClose={()=>setDeleting(null)} onDeleted={async()=>{setDeleting(null);setNotice("Patient permanently deleted. History retained.");await refresh();}}/>}
   </div>;
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import s from "./unsubscribe.module.css";
+import { verifyUnsubscribe } from "@/lib/reactivation/unsubscribe";
 
 export const metadata: Metadata = { title: "Email preferences · Harmony Med Spa", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ type Search = { p?: string; t?: string; status?: string };
 // so the change happens only when the patient presses the button.
 export default async function UnsubscribePage({ searchParams }: { searchParams: Promise<Search> }) {
   const { p, t, status } = await searchParams;
-  const valid = typeof p === "string" && typeof t === "string" && /^rec[a-zA-Z0-9]{14}$/.test(p) && /^[a-f0-9]{64}$/i.test(t);
+  const valid = verifyUnsubscribe(p, t);
 
   let title = "Unsubscribe from Harmony Med Spa emails";
   let body = "You'll stop receiving follow-up and promotional emails from us. Appointment confirmations from our booking system are not affected.";
