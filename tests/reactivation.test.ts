@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DateTime } from "luxon";
-import { deliveryState, staggeredSendAt, activeEnrollment, exclusionReasons, nextClinicSend, clinicSendISO, enrollSchema, summarizeReactivation, DEFAULT_CAMPAIGN, type Patient, type Enrollment, type PatientMessage } from "../src/lib/reactivation/model";
+import { deliveryState, staggeredSendAt, activeEnrollment, currentEnrollment, exclusionReasons, nextClinicSend, clinicSendISO, enrollSchema, summarizeReactivation, DEFAULT_CAMPAIGN, type Patient, type Enrollment, type PatientMessage } from "../src/lib/reactivation/model";
 const enrollment:Enrollment={id:"rec00000000000001",patientIds:["rec00000000000002"],campaign:DEFAULT_CAMPAIGN,status:"Active",currentStep:"Step 1 Email",nextSendAt:"",lastSentAt:"",stopReason:"",createdAt:"2026-09-01T10:00:00Z",messagesSent:0};
 const patient:Patient={id:"rec00000000000002",name:"Test Patient",phone:"",email:"patient@example.test",lastVisit:"2026-01-01",days:100,lastTreatment:"",status:"New",smsConsent:false,emailConsent:false,optedOut:false,doNotContact:false,futureBooking:false,replied:false,enrollments:[]};
 test("every exclusion is explicit and active enrollment is campaign-specific",()=>{
@@ -33,13 +33,13 @@ test("campaign metrics exclude unrelated messages and count distinct patients",(
   const msg:PatientMessage={id:"msg",patientIds:[patient.id],enrollmentIds:[enrollment.id],channel:"SMS",step:"Step 1 Email",sentAt:"",status:"sent",body:""};
   const stopped={...enrollment,id:"rec00000000000004",status:"Stopped",stopReason:"Manual"};
   const metrics=summarizeReactivation([{...patient,replied:true,status:"Booked"}],[enrollment,stopped],[msg,{...msg,id:"other",enrollmentIds:["unrelated"]},{...msg,id:"failure",status:"rejected"},{...msg,id:"waiting",status:"Pending"},{...msg,id:"queued",status:"queued"},{...msg,id:"email",channel:"Email",status:"delivered"}],DEFAULT_CAMPAIGN);
-  assert.deepEqual(metrics,{total:2,active:1,completed:0,stopped:1,sms:2,email:1,failures:1,pending:1,replies:1,bookings:1,stopReasons:{Manual:1}});
+  assert.deepEqual(metrics,{total:2,active:1,completed:0,stopped:1,sms:1,email:1,failures:1,pending:2,replies:1,bookings:1,stopReasons:{Manual:1}});
 });
 
 test("Mandrill statuses map to sent, failed or pending",()=>{
- for(const v of ["sent","queued","scheduled","delivered","opened"])assert.equal(deliveryState(v),"sent");
+ for(const v of ["sent","delivered","opened"])assert.equal(deliveryState(v),"sent");
  for(const v of ["rejected","invalid","hard_bounce","spam"])assert.equal(deliveryState(v),"failed");
- for(const v of ["Pending","deferred",""])assert.equal(deliveryState(v),"pending");
+ for(const v of ["Pending","queued","scheduled","deferred",""])assert.equal(deliveryState(v),"pending");
 });
 test("staggered sends keep 10am New York and move one day per group",()=>{
  const first="2026-09-16T14:00:00.000Z";
@@ -54,4 +54,13 @@ test("patients active in 14-Day Nurture are excluded and perDay is validated",()
  assert.equal(enrollSchema.parse({...base,perDay:150}).perDay,150);
  assert.equal(enrollSchema.parse(base).perDay,null);
  for(const perDay of [0,1.5,"150",1501])assert.throws(()=>enrollSchema.parse({...base,perDay}));
+});
+
+test("paused enrollments prevent duplicate enrollment and remain current",()=>{
+  const paused={...enrollment,status:"Paused"};
+  const p={...patient,enrollments:[paused]};
+  assert.equal(currentEnrollment(p)?.id,paused.id);
+  assert.deepEqual(exclusionReasons(p,DEFAULT_CAMPAIGN),["Already paused in this campaign"]);
+  assert.deepEqual(exclusionReasons(p,"Other"),[]);
+  assert.equal(currentEnrollment({...patient,enrollments:[{...paused,status:"Stopped"}]}),undefined);
 });

@@ -8,7 +8,7 @@ export const FIRST_STEP = EMAIL_STEPS[0];
 export const MAX_ENROLL = 1500;
 export function stepNumber(step: string) { return Number(/^Step (\d)/.exec(step)?.[1] ?? 0); }
 // Mandrill returns sent/queued/scheduled/rejected/invalid; webhooks add bounce and engagement events.
-const SENT_STATUSES = new Set(["sent", "delivered", "queued", "scheduled", "opened", "open", "clicked", "click", "unsubscribed", "unsub"]);
+const SENT_STATUSES = new Set(["sent", "delivered", "opened", "open", "clicked", "click", "unsubscribed", "unsub"]);
 const FAILED_STATUSES = new Set(["rejected", "invalid", "failed", "error", "bounced", "hard_bounce", "soft_bounce", "spam", "undelivered"]);
 export function deliveryState(status: string): "sent" | "failed" | "pending" {
   const value = status.trim().toLowerCase();
@@ -27,8 +27,12 @@ export type ReactivationMetrics = { paused?: number; total: number; active: numb
 export function activeEnrollment(patient: Patient) {
   return patient.enrollments.filter(e => e.status === "Active").sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
 }
+// Paused enrollments still reserve a place in the campaign.
+export function currentEnrollment(patient: Patient) {
+  return patient.enrollments.filter(e => ["Active", "Paused"].includes(e.status)).sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+}
 export function exclusionReasons(patient: Patient, campaign: string): string[] {
-  return [!hasValidEmail(patient.email) && "No valid email address", patient.optedOut && "Opted out", (patient.doNotContact || patient.status === "Do Not Contact") && "Do not contact", patient.futureBooking && "Future booking", patient.activeNurture && "Active in 14-Day Nurture", patient.enrollments.some(e => e.status === "Active" && e.campaign === campaign) && "Already active in this campaign"].filter((v): v is string => Boolean(v));
+  return [!hasValidEmail(patient.email) && "No valid email address", patient.optedOut && "Opted out", (patient.doNotContact || patient.status === "Do Not Contact") && "Do not contact", patient.futureBooking && "Future booking", patient.activeNurture && "Active in 14-Day Nurture", patient.enrollments.some(e => e.status === "Active" && e.campaign === campaign) && "Already active in this campaign", patient.enrollments.some(e => e.status === "Paused" && e.campaign === campaign) && "Already paused in this campaign"].filter((v): v is string => Boolean(v));
 }
 export function nextClinicSend(now = DateTime.now()) {
   return now.setZone(CLINIC_ZONE).plus({ days: 1 }).startOf("day").set({ hour: 10 }).toFormat("yyyy-MM-dd'T'HH:mm");

@@ -4,8 +4,14 @@ import { verifyUnsubscribe } from "@/lib/reactivation/unsubscribe";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// Public endpoint: the signed token is the authorization. Handles the confirmation
-// form on /unsubscribe and RFC 8058 one-click requests from mail clients.
+// Public endpoint: the signed token is the authorization. GET only reports whether a
+// link is valid, for the Harmony website unsubscribe page; it never changes data.
+export function GET(request: Request) {
+  const url = new URL(request.url);
+  return Response.json({ valid: verifyUnsubscribe(url.searchParams.get("p"), url.searchParams.get("t")) }, { headers: { "Cache-Control": "no-store" } });
+}
+
+// POST opts the patient out: the website confirmation, a legacy form, or a one-click request.
 export async function POST(request: Request) {
   const url = new URL(request.url);
   let patientId: unknown = url.searchParams.get("p");

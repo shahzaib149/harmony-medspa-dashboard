@@ -24,8 +24,8 @@ export function DeletePatientDialog({ id, name, open, onClose, onDeleted }: { id
   </PatientDialog>;
 }
 
-export default function DeletePatientButton({ id, name, onDeleted }: { id: string; name: string; onDeleted: () => void | Promise<void> }) {
+export default function DeletePatientButton({ id, name, onDeleted, disabled = false }: { id: string; name: string; onDeleted: () => void | Promise<void>; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
-  return <><button className={s.button + " " + s.dangerButton} onClick={() => setOpen(true)}><Trash2 size={14} />Delete patient</button>
+  return <><button disabled={disabled} className={s.button + " " + s.dangerButton} onClick={() => setOpen(true)}><Trash2 size={14} />Delete patient</button>
     <DeletePatientDialog id={id} name={name} open={open} onClose={() => setOpen(false)} onDeleted={onDeleted} /></>;
 }

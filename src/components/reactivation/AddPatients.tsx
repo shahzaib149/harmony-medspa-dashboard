@@ -1,9 +1,9 @@
 "use client";
 
 import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
-import { Download, FileSpreadsheet, UserPlus, Users, ArrowUpRight, Search, CheckCircle2, UploadCloud, RefreshCw, AlertTriangle, Loader2 } from "lucide-react";
+import { ChevronDown, Download, FileSpreadsheet, UserPlus, Users, Search, CheckCircle2, UploadCloud, RefreshCw, AlertTriangle, Loader2 } from "lucide-react";
 import PatientDialog from "./PatientDialog";
 import { csvPatient, emptyPatient, MAX_IMPORT_BYTES, MAX_IMPORT_ROWS, PATIENT_STATUSES, patientContactKeys, validatePatient, type PatientInput, type PatientImportResult, type LeadCandidate } from "@/lib/reactivation/patient-input";
 import s from "./reactivation.module.css";
@@ -30,7 +30,16 @@ export default function AddPatients({onAdded}:{onAdded:()=>void|Promise<void>}){
   const [progress,setProgress]=useState({done:0,total:0});
   const fileInput=useRef<HTMLInputElement>(null);
   const [result,setResult]=useState<PatientImportResult|null>(null);
-  const inFlight=useRef(false);const loadId=useRef(0);
+  const inFlight=useRef(false);
+  const [menuOpen,setMenuOpen]=useState(false);
+  const menuRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!menuOpen)return;
+    const onPointer=(e:MouseEvent)=>{if(!menuRef.current?.contains(e.target as Node))setMenuOpen(false);};
+    const onKey=(e:KeyboardEvent)=>{if(e.key==="Escape")setMenuOpen(false);};
+    document.addEventListener("mousedown",onPointer);document.addEventListener("keydown",onKey);
+    return()=>{document.removeEventListener("mousedown",onPointer);document.removeEventListener("keydown",onKey);};
+  },[menuOpen]);const loadId=useRef(0);
   async function fetchLeads(){
     const id=++loadId.current;setLoading(true);setError("");
     try{const b=await request<{leads:LeadCandidate[]}>("/api/reactivation/patients/leads");if(loadId.current===id)setLeads(b.leads);}
@@ -103,11 +112,11 @@ export default function AddPatients({onAdded}:{onAdded:()=>void|Promise<void>}){
     }catch(e){setError(e instanceof Error?e.message:"Could not save patients.");}
     finally{inFlight.current=false;setBusy(false);}
   }
-  const actions:[Mode,typeof Users,string,string][]=[["leads",Users,"From existing leads","Select leads to copy into Patients. Original lead records stay unchanged."],["manual",UserPlus,"Add manually","Create one patient with contact details and an optional last visit."],["csv",FileSpreadsheet,"Import a CSV","Upload a patient list. Review validation and duplicates before saving."]];
+  const actions:[Mode,typeof Users,string,string][]=[["leads",Users,"From existing leads","Copy CRM leads into Patients"],["manual",UserPlus,"Add manually","Create one patient record"],["csv",FileSpreadsheet,"Import a CSV","Upload a patient list"]];
   const count=mode==="leads"?leadIds.size:mode==="csv"?validCount:1;
-  return <section className={s.panel}>
-    <div className={s.addHeader}><div><span className={s.eyebrow}>Patient management</span><h3>Bring your patient directory together.</h3><p className={s.muted}>Create a patient record, choose existing CRM contacts, or upload a patient list.</p></div><span className={s.addHint}>01 · Add patients<br/>02 · Review and enroll</span></div>
-    <div className={s.addGrid}>{actions.map(([key,Icon,title,description])=><button key={key} className={s.addCard} onClick={()=>open(key)}><span className={s.avatar}><Icon size={21}/></span><span><strong>{title}</strong><small>{description}</small></span><span className={s.addAction}>Get started <ArrowUpRight size={14}/></span></button>)}</div>
+  return <div className={s.addMenuWrap} ref={menuRef}>
+    <button className={s.button} aria-haspopup="menu" aria-expanded={menuOpen} onClick={()=>setMenuOpen(v=>!v)}><UserPlus size={15}/>Add patients<ChevronDown size={14}/></button>
+    {menuOpen&&<div role="menu" className={s.addMenu}>{actions.map(([key,Icon,title,description])=><button key={key} role="menuitem" onClick={()=>{setMenuOpen(false);open(key);}}><span className={s.avatar}><Icon size={17}/></span><span><strong>{title}</strong><small>{description}</small></span></button>)}</div>}
     <PatientDialog open={mode!==null} onClose={close} title={mode?titles[mode]:"Add patients"} eyebrow="Patient directory" busy={busy||loading} footer={result?<button className={s.button+" "+s.primary} onClick={close}>Done</button>:<><button className={s.button} disabled={busy||loading} onClick={close}>Cancel</button><button className={s.button+" "+s.primary} disabled={busy||loading||!count||(mode==="leads"&&(count>200||Boolean(error)))} onClick={save}>{busy?<><Loader2 size={15} className="animate-spin"/>Saving patients…</>:"Add "+formatCount(count)+" patient"+(count===1?"":"s")}</button></>}>
       {result?<><div className={s.notice} role="status"><CheckCircle2 size={20}/><strong className="block mt-2">{result.created} added · {result.skipped.length} skipped · {result.failed.length} not confirmed</strong><p className={s.muted}>Patient records are saved separately from campaign enrollment. No messages were sent.</p></div>{[...result.skipped,...result.failed].length>0&&<ul className={s.exclusions}>{[...result.skipped,...result.failed].sort((a,b)=>a.row-b.row).map(r=><li key={r.row}><strong>Row {r.row} · {r.name}</strong><br/>{r.reason}</li>)}</ul>}{!result.created&&<button className={s.button} onClick={()=>{setResult(null);setError("");}}>Back to edit</button>}</>:<>
       {mode==="manual"&&<form id="new-patient-form" onSubmit={e=>{e.preventDefault();void save();}} className="space-y-4">
@@ -139,5 +148,5 @@ export default function AddPatients({onAdded}:{onAdded:()=>void|Promise<void>}){
       </>}
       {error&&<div className={s.notice+" "+s.warning} role="alert">{error}{mode==="leads"&&!busy&&<button className={s.button+" mt-2"} onClick={fetchLeads}>Retry loading leads</button>}</div>}
     </PatientDialog>
-  </section>;
+  </div>;
 }

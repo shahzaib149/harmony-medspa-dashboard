@@ -19,7 +19,8 @@ export function unsubscribeToken(patientId: string) {
 
 // Full link stored on the enrollment so the sender never has to compute the signature.
 export function unsubscribeUrl(patientId: string) {
-  const origin = (process.env.NEXT_PUBLIC_APP_URL || "https://crm.harmonymedspafl.com").replace(/\/$/, "");
+  // Patients land on the public Harmony website, which confirms through this CRM.
+  const origin = (process.env.REACTIVATION_UNSUBSCRIBE_BASE_URL || "https://www.harmonymedspafl.com").replace(/\/$/, "");
   return `${origin}/unsubscribe?p=${patientId}&t=${unsubscribeToken(patientId)}`;
 }
 
