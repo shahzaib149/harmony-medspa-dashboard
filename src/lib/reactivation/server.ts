@@ -9,10 +9,8 @@ import { CLINIC_ZONE, DEFAULT_CAMPAIGN, exclusionReasons, summarizeReactivation,
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
 const VIEW = "Dormant — Eligible to Enroll";
 function tables() {
-  const patients = process.env.AIRTABLE_PATIENTS_TABLE_ID;
-  const enrollments = process.env.AIRTABLE_REACTIVATION_ENROLLMENTS_TABLE_ID;
-  if (!patients || !enrollments || !/^tbl\w{14}$/.test(patients) || !/^tbl\w{14}$/.test(enrollments)) throw new ReactivationError("Patient reactivation needs the Patients and Reactivation Enrollments table IDs configured.");
-  return { patients, enrollments };
+  // Airtable accepts table names directly; use the CRM's existing base and token.
+  return { patients: "Patients", enrollments: "Reactivation Enrollments" };
 }
 // Share the CRM's authenticated Airtable transport. Space all reactivation requests;
 // no parallel batch writes and no blind retry of a potentially committed create.
@@ -48,9 +46,9 @@ type TableSchema = { id: string; name: string; fields: { name: string; type: str
 async function schema() {
   const ids = tables();
   const body = await (await request("tables", undefined, "schema")).json() as { tables: TableSchema[] };
-  const patients = body.tables.find(t => t.id === ids.patients);
-  const enrollment = body.tables.find(t => t.id === ids.enrollments);
-  if (!patients || !enrollment) throw new ReactivationError("The configured patient tables were not found in the CRM base.");
+  const patients = body.tables.find(t => t.name === ids.patients);
+  const enrollment = body.tables.find(t => t.name === ids.enrollments);
+  if (!patients || !enrollment) throw new ReactivationError("Patients and Reactivation Enrollments must exist in the connected CRM base.");
   const campaigns = enrollment.fields.find(f => f.name === "Campaign" && f.type === "singleSelect")?.options?.choices?.map(c => c.name) ?? [];
   if (!campaigns.length) throw new ReactivationError("Add campaign choices to Reactivation Enrollments → Campaign.");
   return { campaigns, hasView: patients.views.some(v => v.name === VIEW) };
