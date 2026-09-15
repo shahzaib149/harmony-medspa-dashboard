@@ -7,7 +7,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
 import { patientContactKeys } from "./patient-input";
 import { isUnsubscribeConfigured, unsubscribeUrl } from "./unsubscribe";
-import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, exclusionReasons, staggeredSendAt, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
+import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, MAX_ENROLL, exclusionReasons, staggeredSendAt, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
 
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
 const VIEW = "Dormant — Eligible to Enroll";
@@ -181,13 +181,21 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
     return result;
   });
 }
-export async function stopEnrollment(id: string) {
-  if (!/^rec\w{14}$/.test(id)) throw new ReactivationError("Invalid enrollment ID.",400);
+// Removing a patient from the campaign deletes their enrollment records. Message Log
+// rows stay linked to the patient, so their history remains visible.
+export async function removeEnrollments(ids: string[]) {
+  const unique = [...new Set(ids)];
+  if (!unique.length || unique.length > MAX_ENROLL || !unique.every(id => /^rec[a-zA-Z0-9]{14}$/.test(id))) throw new ReactivationError(`Select between 1 and ${MAX_ENROLL} valid enrollments.`, 400);
   return withEnrollmentLock(async () => {
-    const path = `${tables().enrollments}/${id}`;
-    const enrollment = await (await request(path)).json() as AirtableRecord;
-    if (!["Active","Paused"].includes(String(enrollment.fields.Status))) throw new ReactivationError("This enrollment is no longer active or paused. Refresh its history.",409);
-    await request(path,{ method: "PATCH", body: JSON.stringify({ fields: { Status: "Stopped", "Stop Reason": "Manual", "Next Send At": null } }) });
+    const table = tables().enrollments;
+    const wanted = new Set(unique);
+    const existing = (await records(table)).filter(e => wanted.has(e.id));
+    let removed = 0;
+    for (const batch of chunkAirtableRecords(existing)) {
+      await request(encodeURIComponent(table) + "?" + batch.map(e => "records[]=" + e.id).join("&"), { method: "DELETE" });
+      removed += batch.length;
+    }
+    return { removed, missing: unique.length - existing.length };
   });
 }
 export type PatientAction = "replied" | "booked" | "opted-out";

@@ -254,3 +254,13 @@
   .addMenu { left:0; right:auto; }
   .kpi strong { font-size:24px; margin:6px 0; }
 }
+
+/* Bulk removal and mobile row menu */
+.bulkBar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; padding:0 22px 14px; }
+.bulkBar .button { margin-left:auto; }
+.pickCell { display:flex; align-items:flex-start; gap:10px; min-width:0; }
+.pickCell>input { margin-top:3px; flex-shrink:0; }
+.sheetBackdrop { position:fixed; inset:0; z-index:59; background:rgba(13,20,18,.45); }
+.rowMenuSheet { min-width:0; padding:10px; border-radius:16px; }
+.rowMenuSheet button { min-height:48px; font-size:14px; }
+@media(max-width:640px) { .bulkBar { padding:0 16px 12px; } .bulkBar .button { margin-left:0; width:100%; } }
