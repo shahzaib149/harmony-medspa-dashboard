@@ -1,6 +1,7 @@
 "use client";
 
 
+import styles from "./CallLeadsPanel.module.css";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   BadgeCheck,
@@ -126,6 +127,7 @@ export default function CallLeadsPanel({
   const { can } = useAuth();
   const canAddLead = can("update:leads");
   const [sourceId, setSourceId] = useState<CallSourceId>("website");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<CallRecord | null>(null);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(true);
@@ -173,7 +175,12 @@ export default function CallLeadsPanel({
   }, [saving, selected]);
 
   const source = CALL_SOURCES.find((item) => item.id === sourceId) ?? CALL_SOURCES[0];
-  const calls = source.calls;
+  const calls = useMemo(() => [...source.calls].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)), [source]);
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(calls.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const visibleCalls = calls.slice(pageStart, pageStart + pageSize);
   const summary = useMemo(() => {
     const answered = calls.filter((call) => !call.missed);
     return {
@@ -242,13 +249,13 @@ export default function CallLeadsPanel({
   }
 
   return (
-    <section className="mt-4 overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-[var(--shadow-soft)]">
+    <section className={styles.panel + " mt-4 min-w-0 max-w-full overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-[var(--shadow-soft)]"}>
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border-subtle)] px-4 py-4 sm:px-5">
         <div className="flex min-w-0 items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--brand-primary-soft)] text-[var(--brand-primary)]" aria-hidden="true">
             <PhoneCall size={19} />
           </span>
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="overview-display text-lg font-semibold text-[var(--text-primary)]">Call Leads</h2>
               <div role="tablist" aria-label="Call source" className="inline-flex rounded-full border border-[var(--border-subtle)] bg-[var(--surface-2)] p-0.5">
@@ -260,7 +267,7 @@ export default function CallLeadsPanel({
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => setSourceId(item.id)}
+                      onClick={() => { setSourceId(item.id); setPage(1); }}
                       className={"rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.1em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " + (active ? "bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]")}
                     >
                       {item.label} <span className="tabular-nums opacity-70">{item.calls.length}</span>
@@ -286,8 +293,8 @@ export default function CallLeadsPanel({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[780px] border-collapse text-left">
+      <div className={styles.tableWrap}>
+        <table className={styles.table} role="table" aria-label={source.label + " calls, newest first"}>
           <thead>
             <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-2)] text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">
               <th className="px-5 py-3">Date & time</th>
@@ -297,25 +304,25 @@ export default function CallLeadsPanel({
               <th className="px-5 py-3 text-right">Lead record</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[var(--border-subtle)]">
-            {calls.map((call) => {
+          <tbody role="rowgroup" className="divide-y divide-[var(--border-subtle)]">
+            {visibleCalls.map((call) => {
               const added = addedIds.has(call.id);
               return (
-                <tr key={call.id} className="transition-colors hover:bg-[var(--surface-hover)]">
-                  <td className="px-5 py-3">
+                <tr key={call.id} role="row" className="transition-colors hover:bg-[var(--surface-hover)]">
+                  <td role="cell" data-label="Date & time" className="px-5 py-3">
                     <p className="text-sm font-bold text-[var(--text-primary)]">{call.date}</p>
                     <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{call.time} ET</p>
                   </td>
-                  <td className="px-4 py-3">
+                  <td role="cell" data-label="Caller region" className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]"><MapPin size={13} />{call.areaCode}</span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td role="cell" data-label="Duration" className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 text-xs tabular-nums text-[var(--text-secondary)]"><Clock3 size={13} />{formatDuration(call)}</span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td role="cell" data-label="Call assessment" className="px-4 py-3">
                     <span className={"inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold " + assessmentStyle(call.kind)}>{call.assessment}</span>
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td role="cell" data-label="Lead record" className="px-5 py-3 text-right">
                     {checking ? (
                       <span className="inline-flex min-h-9 items-center justify-end"><Skeleton className="h-9 w-28 rounded-lg" /><span className="sr-only">Checking lead status</span></span>
                     ) : added ? (
@@ -332,6 +339,17 @@ export default function CallLeadsPanel({
           </tbody>
         </table>
       </div>
+
+      <nav aria-label="Call list pagination" className={styles.pagination}>
+        <p role="status" aria-live="polite" className="text-xs text-[var(--text-muted)]">
+          {calls.length ? pageStart + 1 : 0}&ndash;{Math.min(pageStart + pageSize, calls.length)} of {calls.length} calls &middot; Newest first
+        </p>
+        <div className={styles.pageControls}>
+          <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} aria-label="Previous page of calls">Previous</button>
+          <span className="text-xs tabular-nums text-[var(--text-secondary)]">Page {currentPage} of {totalPages}</span>
+          <button type="button" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)} aria-label="Next page of calls">Next</button>
+        </div>
+      </nav>
 
       {selected && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="call-lead-title">
