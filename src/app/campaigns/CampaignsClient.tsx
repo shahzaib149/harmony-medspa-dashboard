@@ -91,7 +91,7 @@ export default function CampaignsClient() {
     { label: "Campaign Leads", value: totalLeads, icon: <Users size={18} /> },
     {
       label: "Messages Sent",
-      value: messages + (reactivation ? reactivation.sms + reactivation.email : 0),
+      value: messages + (reactivation ? reactivation.email : 0),
       icon: <MessageSquare size={18} />,
     },
   ];

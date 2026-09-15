@@ -15,6 +15,11 @@ test("CSV headers and booleans normalize while unrecognized consent values are r
  assert.ok(validatePatient(csvPatient({"Name":"Example","Email":"person@example.test","SMS Consent":"maybe"})).errors.length);
  assert.equal(validatePatient(csvPatient({"Name":"Example","Email":"person@example.test","SMS Consent":""})).patient?.smsConsent,false);
 });
+test("CSV Source, First Name and Notes are kept; unknown sources are rejected",()=>{
+ const row=validatePatient(csvPatient({"Name":"Example Patient","First Name":"Example","Email":"p@example.test","Status":"New","Source":"PatientNow Import","Notes":"No sales 60+ days"}));
+ assert.deepEqual(row.errors,[]);assert.equal(row.patient?.source,"PatientNow Import");assert.equal(row.patient?.firstName,"Example");assert.equal(row.patient?.notes,"No sales 60+ days");
+ assert.ok(validatePatient(csvPatient({"Name":"Example","Email":"p@example.test","Source":"Somewhere"})).errors.length);
+});
 test("consent cannot be granted without a recorded source",()=>{
  assert.ok(validatePatient({...emptyPatient,name:"Patient",email:"person@example.test",smsConsent:true}).errors.includes("Record the consent source when marking consent as granted"));
 });

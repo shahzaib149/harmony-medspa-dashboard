@@ -2,7 +2,7 @@ import "server-only";
 import { request, records, withEnrollmentLock, ReactivationError } from "./server";
 import { textField, type AirtableRecord } from "@/lib/airtable/leads-base";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
-import { patientContactKeys, validatePatient, type PatientInput, type PatientImportResult, type LeadCandidate } from "./patient-input";
+import { MAX_IMPORT_ROWS, patientContactKeys, validatePatient, type PatientInput, type PatientImportResult, type LeadCandidate } from "./patient-input";
 function identity(record:AirtableRecord){return {phone:textField(record.fields,"Phone"),email:textField(record.fields,"Email")};}
 export async function leadCandidates():Promise<LeadCandidate[]> {
   const patients=await records("Patients");const keys=new Set(patients.flatMap(p=>patientContactKeys(identity(p))));
@@ -17,7 +17,7 @@ export function parseAddPatients(value:unknown):AddPatientsRequest {
     if(!Array.isArray(v.leadIds)||!v.leadIds.length||v.leadIds.length>200||!v.leadIds.every(id=>typeof id==="string"&&/^rec\w{14}$/.test(id)))throw new ReactivationError("Select 1–200 valid leads.",400);
     return {mode:"leads",leadIds:[...new Set(v.leadIds)] as string[]};
   }
-  if((v.mode!=="manual"&&v.mode!=="csv")||!Array.isArray(v.patients)||!v.patients.length||v.patients.length>(v.mode==="manual"?1:200))throw new ReactivationError("Provide up to 200 CSV rows, or one manual patient.",400);
+  if((v.mode!=="manual"&&v.mode!=="csv")||!Array.isArray(v.patients)||!v.patients.length||v.patients.length>(v.mode==="manual"?1:MAX_IMPORT_ROWS))throw new ReactivationError(`Provide up to ${MAX_IMPORT_ROWS.toLocaleString("en-US")} CSV rows, or one manual patient.`,400);
   return {mode:v.mode,patients:v.patients};
 }
 export async function addPatients(input:AddPatientsRequest):Promise<PatientImportResult> {
@@ -44,9 +44,9 @@ export async function addPatients(input:AddPatientsRequest):Promise<PatientImpor
     for(let b=0;b<batches.length;b++){
       const batch=batches[b];
       try{
-        if(Date.now()-started>180_000)throw new Error("Import time limit");
+        if(Date.now()-started>250_000)throw new Error("Import time limit");
         const response=await request("Patients",{method:"POST",body:JSON.stringify({records:batch.map(({patient:p,leadId})=>({fields:{
-          Name:p.name,Phone:p.phone,Email:p.email,"Last Visit Date":p.lastVisit||null,"Last Treatment":p.lastTreatment,Status:p.status,"SMS Consent":p.smsConsent,"Email Consent":p.emailConsent,"Consent Source":p.consentSource,"Opted Out":p.optedOut,"Do Not Contact":p.doNotContact,"Future Booking":p.futureBooking,Source:leadId?"Converted Lead":"Manual",Notes:leadId?"CRM lead: "+leadId:input.mode==="csv"?"Added via CRM CSV import.":"Added manually in CRM."
+          Name:p.name,"First Name":p.firstName||p.name.split(/\s+/)[0],Phone:p.phone,Email:p.email,"Last Visit Date":p.lastVisit||null,"Last Treatment":p.lastTreatment,Status:p.status,"SMS Consent":p.smsConsent,"Email Consent":p.emailConsent,"Consent Source":p.consentSource,"Opted Out":p.optedOut,"Do Not Contact":p.doNotContact,"Future Booking":p.futureBooking,Source:leadId?"Converted Lead":p.source||"Manual",Notes:leadId?"CRM lead: "+leadId:p.notes||(input.mode==="csv"?"Added via CRM CSV import.":"Added manually in CRM.")
         }}))})});
         const created=await response.json() as {records:AirtableRecord[]};result.created+=created.records.length;
       }catch{

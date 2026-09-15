@@ -5,7 +5,7 @@ import { DateTime } from "luxon";
 import { airtableFetch, linkedIds, textField, type AirtableRecord } from "@/lib/airtable/leads-base";
 import { createServiceClient } from "@/lib/supabase/server";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
-import { CLINIC_ZONE, DEFAULT_CAMPAIGN, exclusionReasons, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
+import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, exclusionReasons, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
 
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
 const VIEW = "Dormant — Eligible to Enroll";
@@ -63,7 +63,7 @@ function mapPatient(record: AirtableRecord, enrollments: Enrollment[]): Patient 
   const lastVisit = textField(f,"Last Visit Date");
   const date = DateTime.fromISO(lastVisit, { zone: CLINIC_ZONE });
   const days = date.isValid ? Math.floor(DateTime.now().setZone(CLINIC_ZONE).startOf("day").diff(date.startOf("day"), "days").days) : null;
-  return { id: record.id, name: textField(f,"Name") || "Unnamed patient", phone: textField(f,"Phone"), email: textField(f,"Email"), lastVisit, days, lastTreatment: textField(f,"Last Treatment"), status: textField(f,"Status") || "Not set", smsConsent: f["SMS Consent"] === true, optedOut: f["Opted Out"] === true, doNotContact: f["Do Not Contact"] === true, futureBooking: f["Future Booking"] === true, replied: f.Replied === true, enrollments: enrollments.filter(e => e.patientIds.includes(record.id)).sort((a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt)) };
+  return { id: record.id, name: textField(f,"Name") || "Unnamed patient", phone: textField(f,"Phone"), email: textField(f,"Email"), lastVisit, days, lastTreatment: textField(f,"Last Treatment"), status: textField(f,"Status") || "Not set", smsConsent: f["SMS Consent"] === true, emailConsent: f["Email Consent"] === true, optedOut: f["Opted Out"] === true, doNotContact: f["Do Not Contact"] === true, futureBooking: f["Future Booking"] === true, replied: f.Replied === true, enrollments: enrollments.filter(e => e.patientIds.includes(record.id)).sort((a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt)) };
 }
 function mapMessage(record: AirtableRecord): PatientMessage {
   const f = record.fields;
@@ -71,7 +71,7 @@ function mapMessage(record: AirtableRecord): PatientMessage {
 }
 export async function workspace(all = false): Promise<Workspace> {
   const ids = tables(); const meta = await schema();
-  const query = all ? new URLSearchParams() : meta.hasView ? new URLSearchParams({ view: VIEW }) : new URLSearchParams({ filterByFormula: "AND({Days Since Last Visit}>=90,{SMS Consent}=1,NOT({Opted Out}),NOT({Do Not Contact}),NOT({Future Booking}),{Status}!='Do Not Contact')" });
+  const query = all ? new URLSearchParams() : meta.hasView ? new URLSearchParams({ view: VIEW }) : new URLSearchParams({ filterByFormula: "AND(OR({Last Visit Date}=BLANK(),{Days Since Last Visit}>=90),{Email}!='',NOT({Opted Out}),NOT({Do Not Contact}),NOT({Future Booking}),{Status}!='Do Not Contact')" });
   const patients = await records(ids.patients, query);
   const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
   return { patients: patients.map(p => mapPatient(p,enrollments)), campaigns: meta.campaigns, source: !all && meta.hasView ? VIEW : all ? "Patients table · custom filters" : "Eligible patients · 90+ days away" };
@@ -99,14 +99,27 @@ export async function campaignWorkspace() {
   const messages=(await records("Message Log")).map(mapMessage);
   return buildCampaign(patients,enrollments,messages);
 }
+// Serializes reactivation writes inside this server instance. Used alone when the
+// Supabase claim table has not been migrated yet (supabase/migrations/003).
+let localLock: Promise<unknown> = Promise.resolve();
+function withLocalLock<T>(operation: () => Promise<T>): Promise<T> {
+  const run = localLock.then(operation);
+  localLock = run.catch(() => undefined);
+  return run;
+}
+let warnedMissingClaims = false;
 // Reuse the CRM's server-only claim table for a cross-instance enrollment lock.
 // A fixed key prevents two staff requests from passing the same active check.
 export async function withEnrollmentLock<T>(operation: () => Promise<T>): Promise<T> {
   const service = createServiceClient(); const requestId = randomUUID(); const key = "reactivation-enrollment-lock";
   const { error: cleanup } = await service.from("campaign_enrollment_claims").delete().eq("idempotency_key", key).lt("expires_at",new Date().toISOString());
-  if (cleanup) throw new ReactivationError("Enrollment coordination is unavailable. Please retry.");
+  if (cleanup && (cleanup.code === "PGRST205" || cleanup.code === "42P01")) {
+    if (!warnedMissingClaims) { warnedMissingClaims = true; console.warn("[reactivation] campaign_enrollment_claims is missing; apply supabase/migrations/003. Using an in-process lock."); }
+    return withLocalLock(operation);
+  }
+  if (cleanup) throw new ReactivationError("Patient updates are temporarily unavailable. Please retry in a moment.");
   const { error } = await service.from("campaign_enrollment_claims").insert({ idempotency_key: key, campaign_slug: "dormant-patient-reactivation", identity_hash: key, scheduled_at: new Date().toISOString(), request_id: requestId, expires_at: new Date(Date.now()+15*60_000).toISOString() });
-  if (error) throw new ReactivationError(error.code === "23505" ? "Another enrollment update is in progress. Wait a moment and retry." : "Enrollment coordination is unavailable.",409);
+  if (error) throw new ReactivationError(error.code === "23505" ? "Another patient update is in progress. Wait a moment and retry." : "Patient updates are temporarily unavailable. Please retry in a moment.",409);
   try { return await operation(); }
   finally { await service.from("campaign_enrollment_claims").delete().eq("idempotency_key",key).eq("request_id",requestId); }
 }
@@ -115,44 +128,43 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
     const ids = tables(); const meta = await schema();
     if (!meta.campaigns.includes(input.campaign)) throw new ReactivationError("Campaign is no longer available. Refresh and select again.",400);
     const result: EnrollmentResult = { created: 0, skipped: [] };
-    const requested = await records(ids.patients, new URLSearchParams({ filterByFormula: `OR(${input.patientIds.map(id => `RECORD_ID()='${id}'`).join(",")})` }));
-    const names = new Map(requested.map(p => [p.id, textField(p.fields, "Name") || "Unnamed patient"]));
-    const started = Date.now();
-    const accounted = new Set<string>();
-    try {
-    for (const batch of chunkAirtableRecords(input.patientIds)) {
-      if (Date.now() - started > 180_000) throw new ReactivationError("The batch time limit was reached.");
-      if (Date.parse(input.firstSendAt) <= Date.now()) throw new ReactivationError("The scheduled time has passed.");
-      const query = new URLSearchParams({ filterByFormula: `OR(${batch.map(id => `RECORD_ID()='${id}'`).join(",")})` });
-      const patients = await records(ids.patients,query);
-      const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
-      const eligible: Patient[] = [];
-      for (const id of batch) {
-        const record = patients.find(p => p.id === id);
-        if (!record) { result.skipped.push({ id, name: names.get(id) || "Unavailable patient", reason: "Patient no longer exists or is inaccessible" }); accounted.add(id); continue; }
-        const patient = mapPatient(record,enrollments); const reasons = exclusionReasons(patient,input.campaign);
-        if (reasons.length) { result.skipped.push({ id, name: patient.name, reason: reasons.join("; ") }); accounted.add(id); } else eligible.push(patient);
+    // One fresh read under the lock re-checks every patient without a per-batch table scan.
+    const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
+    const requested = new Set(input.patientIds);
+    const patients = new Map((await records(ids.patients)).filter(p => requested.has(p.id)).map(p => [p.id, mapPatient(p, enrollments)]));
+    const eligible: Patient[] = [];
+    for (const id of input.patientIds) {
+      const patient = patients.get(id);
+      if (!patient) { result.skipped.push({ id, name: "Unavailable patient", reason: "Patient no longer exists or is inaccessible" }); continue; }
+      const reasons = exclusionReasons(patient, input.campaign);
+      if (reasons.length) result.skipped.push({ id, name: patient.name, reason: reasons.join("; ") }); else eligible.push(patient);
+    }
+    const batches = chunkAirtableRecords(eligible); const started = Date.now();
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      let preflight = "";
+      if (Date.now() - started > 240_000) preflight = "The batch time limit was reached. Retry the remaining patients.";
+      else if (Date.parse(input.firstSendAt) <= Date.now()) preflight = "The scheduled send time has passed. Choose a new time and retry.";
+      if (preflight) {
+        for (const p of batches.slice(b).flat()) result.skipped.push({ id: p.id, name: p.name, reason: preflight });
+        break;
       }
-      if (!eligible.length) continue;
       try {
-        const response = await request(ids.enrollments,{ method: "POST", body: JSON.stringify({ records: eligible.map(p => ({ fields: { Patient: [p.id], Campaign: input.campaign, Status: "Active", "Current Step": "Step 1 SMS", "Next Send At": input.firstSendAt, "Messages Sent": 0 } })) }) });
+        // typecast lets Airtable add the email step choice if the base still lists SMS steps.
+        const response = await request(encodeURIComponent(ids.enrollments),{ method: "POST", body: JSON.stringify({ typecast: true, records: batch.map(p => ({ fields: { Patient: [p.id], Campaign: input.campaign, Status: "Active", "Current Step": FIRST_STEP, "Next Send At": input.firstSendAt, "Messages Sent": 0 } })) }) });
         const body = await response.json() as { records: AirtableRecord[] };
         result.created += body.records.length;
-        eligible.forEach(p => accounted.add(p.id));
       } catch {
         // A timeout may happen after Airtable commits: reconcile without retrying POST.
         let verified: Enrollment[] | null = null;
         try { verified = (await records(ids.enrollments)).map(mapEnrollment); } catch { /* show uncertain outcomes explicitly */ }
-        for (const p of eligible) {
+        for (const p of batch) {
           if (verified?.some(e => e.patientIds.includes(p.id) && e.campaign === input.campaign && e.status === "Active")) result.created++;
           else result.skipped.push({ id: p.id, name: p.name, reason: verified ? "Could not create enrollment; retry this patient" : "Outcome could not be confirmed. Refresh enrollment history before retrying" });
         }
-        eligible.forEach(p => accounted.add(p.id));
-        throw new ReactivationError("Enrollment processing was interrupted.");
+        for (const p of batches.slice(b + 1).flat()) result.skipped.push({ id: p.id, name: p.name, reason: "Not processed after a service error. Refresh and retry." });
+        break;
       }
-    }
-    } catch {
-      for (const id of input.patientIds.filter(id => !accounted.has(id))) result.skipped.push({ id, name: names.get(id) || "Unavailable patient", reason: "Not processed after a service or scheduling error. Refresh, check the send time, and retry." });
     }
     return result;
   });
