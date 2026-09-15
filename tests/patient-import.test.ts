@@ -10,7 +10,7 @@ test("manual patients require name and usable contact without inventing visits o
  assert.ok(validatePatient({name:"Patient",phone:"not a number"}).errors.length);
 });
 test("CSV headers and booleans normalize while unrecognized consent values are rejected",()=>{
- const valid=csvPatient({"Name":"Example","Phone Number":"(941) 555-0100","SMS Consent":"YES","Consent Source":"Signed form","Last Visit Date":"2025-01-02"});
+ const valid=csvPatient({"Name":"Example","Phone Number":"(941) 555-0100","SMS Consent":"YES","Last Visit Date":"2025-01-02"});
  assert.equal(validatePatient(valid).patient?.smsConsent,true);
  assert.ok(validatePatient(csvPatient({"Name":"Example","Email":"person@example.test","SMS Consent":"maybe"})).errors.length);
  assert.equal(validatePatient(csvPatient({"Name":"Example","Email":"person@example.test","SMS Consent":""})).patient?.smsConsent,false);
@@ -20,8 +20,8 @@ test("CSV Source, First Name and Notes are kept; unknown sources are rejected",(
  assert.deepEqual(row.errors,[]);assert.equal(row.patient?.source,"PatientNow Import");assert.equal(row.patient?.firstName,"Example");assert.equal(row.patient?.notes,"No sales 60+ days");
  assert.ok(validatePatient(csvPatient({"Name":"Example","Email":"p@example.test","Source":"Somewhere"})).errors.length);
 });
-test("consent cannot be granted without a recorded source",()=>{
- assert.ok(validatePatient({...emptyPatient,name:"Patient",email:"person@example.test",smsConsent:true}).errors.includes("Record the consent source when marking consent as granted"));
+test("consent can be marked without a consent source",()=>{
+ assert.deepEqual(validatePatient({...emptyPatient,name:"Patient",email:"person@example.test",emailConsent:true}).errors,[]);
 });
 test("phone and email identity catches case and formatting differences",()=>{
  assert.deepEqual(patientContactKeys({phone:"(941) 555-0100",email:"Person@Example.test"}),patientContactKeys({phone:"+1 941 555 0100",email:"person@example.test"}));

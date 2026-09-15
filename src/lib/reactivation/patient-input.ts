@@ -27,7 +27,6 @@ export function validatePatient(value:unknown):{patient:PatientInput|null;errors
   if(!PATIENT_STATUSES.some(s=>s===p.status))errors.push("Unknown patient status");
   if(p.source&&!PATIENT_SOURCES.some(s=>s===p.source))errors.push("Source must be PatientNow Import, Manual, or Converted Lead");
   if(p.lastVisit){const d=DateTime.fromISO(p.lastVisit,{zone:CLINIC_ZONE});if(!/^\d{4}-\d{2}-\d{2}$/.test(p.lastVisit)||!d.isValid||d.toISODate()!==p.lastVisit||d> DateTime.now().setZone(CLINIC_ZONE).endOf("day"))errors.push("Last visit must be a real date in YYYY-MM-DD format, not in the future");}
-  if((p.smsConsent||p.emailConsent)&&!p.consentSource)errors.push("Record the consent source when marking consent as granted");
   return {patient:errors.length?null:p,errors};
 }
 export function csvPatient(row:Record<string,string>):Record<string,unknown> {
