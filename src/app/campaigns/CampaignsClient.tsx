@@ -20,6 +20,8 @@ const TEXT = "var(--text-primary)";
 const MUTED = "var(--text-muted)";
 const PANEL = "var(--surface-1)";
 
+const REACTIVATION_CAMPAIGNS = 1;
+
 function fmt(value: string | null) {
   return formatCampaignDate(value, "No activity yet");
 }
@@ -80,7 +82,8 @@ export default function CampaignsClient() {
   const summaryCards = [
     {
       label: "Total Campaigns",
-      value: items.length + 1,
+      // Lead campaigns come from the registry; patient reactivation is a separate workspace.
+      value: items.length + REACTIVATION_CAMPAIGNS,
       icon: <Megaphone size={18} />,
     },
     {
@@ -88,7 +91,7 @@ export default function CampaignsClient() {
       value: items.filter((campaign) => campaign.status === "Active").length + (reactivation && reactivation.active > 0 ? 1 : 0),
       icon: <Zap size={18} />,
     },
-    { label: "Campaign Leads", value: totalLeads, icon: <Users size={18} /> },
+    { label: "Campaign Contacts", value: totalLeads + (reactivation?.total ?? 0), icon: <Users size={18} /> },
     {
       label: "Messages Sent",
       value: messages + (reactivation ? reactivation.email : 0),
@@ -162,7 +165,7 @@ export default function CampaignsClient() {
         </select>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2"><ReactivationCampaignCard query={query} status={status} type={type} onMetrics={setReactivation}/>
+      <div className="grid gap-4 md:grid-cols-2">
       {loading ? (
         <div className="contents">
           {[1, 2].map((item) => (
@@ -279,6 +282,7 @@ export default function CampaignsClient() {
           ))}
         </div>
       )}
+      <ReactivationCampaignCard query={query} status={status} type={type} onMetrics={setReactivation}/>
       </div>
     </div>
   );

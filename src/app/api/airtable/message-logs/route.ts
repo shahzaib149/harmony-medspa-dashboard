@@ -7,6 +7,7 @@ import { withCache, bustCache } from "@/lib/server-cache";
 
 const MESSAGE_LOG_TABLE = "Message Log";
 const LEADS_TABLE = "Leads";
+const PATIENTS_TABLE = "Patients";
 const BASE_ID = AIRTABLE_LEADS_BASE_ID;
 const MESSAGE_LOGS_TTL = 45;
 
@@ -118,7 +119,8 @@ async function fetchAirtableRecords(tableName: string, params: URLSearchParams):
   return records;
 }
 
-async function fetchLeadSummaries(leadIds: string[]) {
+// Reactivation emails link to Patients instead of Recipient Lead.
+async function fetchLeadSummaries(leadIds: string[], table = LEADS_TABLE) {
   const leadMap = new Map<string, LeadSummary>();
   const uniqueIds = Array.from(new Set(leadIds)).filter(Boolean);
 
@@ -129,7 +131,7 @@ async function fetchLeadSummaries(leadIds: string[]) {
     });
 
     try {
-      const records = await fetchAirtableRecords(LEADS_TABLE, params);
+      const records = await fetchAirtableRecords(table, params);
       for (const record of records) {
         leadMap.set(record.id, {
           name: strAny(record.fields, "Name", "Full Name", "Patient Name", "Lead Name") || null,
@@ -200,22 +202,25 @@ export async function GET(request: Request) {
         "sort[0][field]": "Sent At",
         "sort[0][direction]": "desc",
       });
-      ["Mandrill Message ID", "Recipient Lead", "Message Body", "Channel", "Delivery Status", "Sent At", "Error Reason", "Sequence", "Sequence Step"]
+      ["Mandrill Message ID", "Recipient Lead", "Patients", "Message Body", "Channel", "Delivery Status", "Sent At", "Error Reason", "Sequence", "Sequence Step"]
         .forEach((field) => params.append("fields[]", field));
       const records = await fetchAirtableRecords(MESSAGE_LOG_TABLE, params);
       const leadIds = records.map((record) => linkedLeadId(record.fields["Recipient Lead"])).filter((id): id is string => Boolean(id));
       const leadMap = await fetchLeadSummaries(leadIds);
+      const patientIds = records.filter((record) => !linkedLeadId(record.fields["Recipient Lead"])).map((record) => linkedLeadId(record.fields.Patients)).filter((id): id is string => Boolean(id));
+      const patientMap = await fetchLeadSummaries(patientIds, PATIENTS_TABLE);
 
       return records.map<MessageLog>((record) => {
         const recipientLeadId = linkedLeadId(record.fields["Recipient Lead"]);
-        const lead = recipientLeadId ? leadMap.get(recipientLeadId) : null;
-        const isOrphaned = !recipientLeadId || !lead;
+        const patientId = recipientLeadId ? null : linkedLeadId(record.fields.Patients);
+        const lead = recipientLeadId ? leadMap.get(recipientLeadId) : patientId ? patientMap.get(patientId) : null;
+        const isOrphaned = !lead;
         const rawDeliveryStatus = strAny(record.fields, "Delivery Status", "Status", "Mandrill Status");
 
         return {
           id: record.id,
           recipientLeadId,
-          recipientLeadName: isOrphaned ? "Deleted lead" : lead?.name || "Unnamed lead",
+          recipientLeadName: isOrphaned ? (patientId ? "Deleted patient" : "Deleted lead") : lead?.name || (patientId ? "Unnamed patient" : "Unnamed lead"),
           recipientLeadEmail: isOrphaned ? null : lead?.email ?? null,
           recipientLeadPhone: isOrphaned ? null : lead?.phone ?? null,
           recipientLeadStatus: isOrphaned ? null : lead?.status ?? null,

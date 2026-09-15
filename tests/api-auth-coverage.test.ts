@@ -18,6 +18,8 @@ const AUTH_CALL_RE = /require(?:Role|AuthenticatedUser|Admin|Editor)\s*\(/;
 const EXEMPT: Record<string, string> = {
   "auth/login/route.ts":
     "public credential exchange endpoint; validates origin, credentials, and active profile before setting a session",
+  "reactivation/unsubscribe/route.ts":
+    "public patient opt-out from email links; authorized by an HMAC-signed token bound to the patient record and can only set Opted Out",
   // Thin delegates that forward the (unchanged) Request to an already-protected
   // handler which performs the auth check.
   "airtable/message-log/route.ts":

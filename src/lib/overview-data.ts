@@ -75,6 +75,7 @@ type Enrollment = {
 type Message = {
   id: string;
   leadId: string | null;
+  patientId: string | null;
   channel: "SMS" | "Email" | "Unknown";
   sequence: string | null;
   sequenceStep: string | null;
@@ -215,6 +216,7 @@ function mapMessage(record: AirtableRecord): Message {
   return {
     id: record.id,
     leadId: linkedIds(record.fields["Recipient Lead"])[0] ?? null,
+    patientId: linkedIds(record.fields.Patients)[0] ?? null,
     channel: normalizeChannel(
       textField(record.fields, "Channel", "Message Channel", "Type"),
     ),
@@ -863,11 +865,11 @@ function systemActivity(
   const messageItems: RecentActivityItem[] = messages.slice(0, 8).map((message) => ({
     id: `message-${message.id}`,
     category: "message",
-    title: `${message.sequenceStep || message.channel} ${message.status === "failed" ? "failed for" : "sent to"} ${message.leadId ? leadMap.get(message.leadId)?.name ?? "a lead" : "a disconnected lead"}`,
+    title: `${message.sequenceStep || message.channel} ${message.status === "failed" ? "failed for" : "sent to"} ${message.leadId ? leadMap.get(message.leadId)?.name ?? "a lead" : message.patientId ? "a reactivation patient" : "a disconnected lead"}`,
     actor: message.sequence || "Messaging automation",
     resource: message.channel,
     occurredAt: message.sentAt,
-    href: "/message-logs",
+    href: message.patientId && !message.leadId ? "/campaigns/patient-reactivation" : "/message-logs",
   }));
   const metricItems: RecentActivityItem[] = metrics.slice(-4).map((item) => ({
     id: `clinic-${item.id}`,

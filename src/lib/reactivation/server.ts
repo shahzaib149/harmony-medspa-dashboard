@@ -5,7 +5,8 @@ import { DateTime } from "luxon";
 import { airtableFetch, linkedIds, textField, type AirtableRecord } from "@/lib/airtable/leads-base";
 import { createServiceClient } from "@/lib/supabase/server";
 import { chunkAirtableRecords } from "@/lib/airtable/batch";
-import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, exclusionReasons, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
+import { patientContactKeys } from "./patient-input";
+import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, exclusionReasons, staggeredSendAt, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
 
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
 const VIEW = "Dormant — Eligible to Enroll";
@@ -58,12 +59,18 @@ function mapEnrollment(record: AirtableRecord): Enrollment {
   const f = record.fields;
   return { id: record.id, patientIds: linkedIds(f.Patient), campaign: textField(f,"Campaign"), status: textField(f,"Status"), currentStep: textField(f,"Current Step"), nextSendAt: textField(f,"Next Send At"), lastSentAt: textField(f,"Last Sent At"), stopReason: textField(f,"Stop Reason"), createdAt: textField(f,"Enrolled At") || record.createdTime, messagesSent: Number(f["Messages Sent"] || 0) };
 }
-function mapPatient(record: AirtableRecord, enrollments: Enrollment[]): Patient {
+// Contact keys (email/phone) of leads currently in the 14-Day Nurture sequence.
+async function activeNurtureContacts() {
+  const [leads, nurture] = await Promise.all([records("Leads"), records("Nurture Enrollments")]);
+  const active = new Set(nurture.filter(e => ["Active", "Paused"].includes(textField(e.fields, "Status") || "Active")).flatMap(e => linkedIds(e.fields.Lead)));
+  return new Set(leads.filter(l => active.has(l.id)).flatMap(l => patientContactKeys({ email: textField(l.fields, "Email"), phone: textField(l.fields, "Phone") })));
+}
+function mapPatient(record: AirtableRecord, enrollments: Enrollment[], nurture?: Set<string>): Patient {
   const f = record.fields;
   const lastVisit = textField(f,"Last Visit Date");
   const date = DateTime.fromISO(lastVisit, { zone: CLINIC_ZONE });
   const days = date.isValid ? Math.floor(DateTime.now().setZone(CLINIC_ZONE).startOf("day").diff(date.startOf("day"), "days").days) : null;
-  return { id: record.id, name: textField(f,"Name") || "Unnamed patient", phone: textField(f,"Phone"), email: textField(f,"Email"), lastVisit, days, lastTreatment: textField(f,"Last Treatment"), status: textField(f,"Status") || "Not set", smsConsent: f["SMS Consent"] === true, emailConsent: f["Email Consent"] === true, optedOut: f["Opted Out"] === true, doNotContact: f["Do Not Contact"] === true, futureBooking: f["Future Booking"] === true, replied: f.Replied === true, enrollments: enrollments.filter(e => e.patientIds.includes(record.id)).sort((a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt)) };
+  return { id: record.id, name: textField(f,"Name") || "Unnamed patient", phone: textField(f,"Phone"), email: textField(f,"Email"), lastVisit, days, lastTreatment: textField(f,"Last Treatment"), status: textField(f,"Status") || "Not set", smsConsent: f["SMS Consent"] === true, emailConsent: f["Email Consent"] === true, optedOut: f["Opted Out"] === true, doNotContact: f["Do Not Contact"] === true, futureBooking: f["Future Booking"] === true, replied: f.Replied === true, activeNurture: nurture ? patientContactKeys({ email: textField(f,"Email"), phone: textField(f,"Phone") }).some(k => nurture.has(k)) : false, enrollments: enrollments.filter(e => e.patientIds.includes(record.id)).sort((a,b) => Date.parse(b.createdAt)-Date.parse(a.createdAt)) };
 }
 function mapMessage(record: AirtableRecord): PatientMessage {
   const f = record.fields;
@@ -74,7 +81,8 @@ export async function workspace(all = false): Promise<Workspace> {
   const query = all ? new URLSearchParams() : meta.hasView ? new URLSearchParams({ view: VIEW }) : new URLSearchParams({ filterByFormula: "AND(OR({Last Visit Date}=BLANK(),{Days Since Last Visit}>=90),{Email}!='',NOT({Opted Out}),NOT({Do Not Contact}),NOT({Future Booking}),{Status}!='Do Not Contact')" });
   const patients = await records(ids.patients, query);
   const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
-  return { patients: patients.map(p => mapPatient(p,enrollments)), campaigns: meta.campaigns, source: !all && meta.hasView ? VIEW : all ? "Patients table · custom filters" : "Eligible patients · 90+ days away" };
+  const nurture = await activeNurtureContacts();
+  return { patients: patients.map(p => mapPatient(p,enrollments,nurture)), campaigns: meta.campaigns, source: !all && meta.hasView ? VIEW : all ? "Patients table · custom filters" : "Eligible patients · 90+ days away" };
 }
 export async function patientDetail(id: string) {
   if (!/^rec\w{14}$/.test(id)) throw new ReactivationError("Invalid patient ID.",400);
@@ -123,7 +131,7 @@ export async function withEnrollmentLock<T>(operation: () => Promise<T>): Promis
   try { return await operation(); }
   finally { await service.from("campaign_enrollment_claims").delete().eq("idempotency_key",key).eq("request_id",requestId); }
 }
-export async function enrollPatients(input: { patientIds: string[]; campaign: string; firstSendAt: string }): Promise<EnrollmentResult> {
+export async function enrollPatients(input: { patientIds: string[]; campaign: string; firstSendAt: string; perDay?: number | null }): Promise<EnrollmentResult> {
   return withEnrollmentLock(async () => {
     const ids = tables(); const meta = await schema();
     if (!meta.campaigns.includes(input.campaign)) throw new ReactivationError("Campaign is no longer available. Refresh and select again.",400);
@@ -131,7 +139,8 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
     // One fresh read under the lock re-checks every patient without a per-batch table scan.
     const enrollments = (await records(ids.enrollments)).map(mapEnrollment);
     const requested = new Set(input.patientIds);
-    const patients = new Map((await records(ids.patients)).filter(p => requested.has(p.id)).map(p => [p.id, mapPatient(p, enrollments)]));
+    const nurture = await activeNurtureContacts();
+    const patients = new Map((await records(ids.patients)).filter(p => requested.has(p.id)).map(p => [p.id, mapPatient(p, enrollments, nurture)]));
     const eligible: Patient[] = [];
     for (const id of input.patientIds) {
       const patient = patients.get(id);
@@ -139,6 +148,7 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
       const reasons = exclusionReasons(patient, input.campaign);
       if (reasons.length) result.skipped.push({ id, name: patient.name, reason: reasons.join("; ") }); else eligible.push(patient);
     }
+    const sendAt = new Map(eligible.map((p, index) => [p.id, staggeredSendAt(input.firstSendAt, index, input.perDay ?? null)]));
     const batches = chunkAirtableRecords(eligible); const started = Date.now();
     for (let b = 0; b < batches.length; b++) {
       const batch = batches[b];
@@ -151,7 +161,7 @@ export async function enrollPatients(input: { patientIds: string[]; campaign: st
       }
       try {
         // typecast lets Airtable add the email step choice if the base still lists SMS steps.
-        const response = await request(encodeURIComponent(ids.enrollments),{ method: "POST", body: JSON.stringify({ typecast: true, records: batch.map(p => ({ fields: { Patient: [p.id], Campaign: input.campaign, Status: "Active", "Current Step": FIRST_STEP, "Next Send At": input.firstSendAt, "Messages Sent": 0 } })) }) });
+        const response = await request(encodeURIComponent(ids.enrollments),{ method: "POST", body: JSON.stringify({ typecast: true, records: batch.map(p => ({ fields: { Patient: [p.id], Campaign: input.campaign, Status: "Active", "Current Step": FIRST_STEP, "Next Send At": sendAt.get(p.id), "Messages Sent": 0 } })) }) });
         const body = await response.json() as { records: AirtableRecord[] };
         result.created += body.records.length;
       } catch {
@@ -176,6 +186,27 @@ export async function stopEnrollment(id: string) {
     const enrollment = await (await request(path)).json() as AirtableRecord;
     if (!["Active","Paused"].includes(String(enrollment.fields.Status))) throw new ReactivationError("This enrollment is no longer active or paused. Refresh its history.",409);
     await request(path,{ method: "PATCH", body: JSON.stringify({ fields: { Status: "Stopped", "Stop Reason": "Manual", "Next Send At": null } }) });
+  });
+}
+export type PatientAction = "replied" | "booked" | "opted-out";
+const ACTIONS: Record<PatientAction, { fields: Record<string, unknown>; reason: string }> = {
+  replied: { fields: { Replied: true, Status: "Replied" }, reason: "Replied" },
+  booked: { fields: { Status: "Booked" }, reason: "Booked" },
+  "opted-out": { fields: { "Opted Out": true }, reason: "Opted Out" },
+};
+// Updates the patient and stops every Active or Paused reactivation enrollment in one locked step.
+export async function applyPatientAction(id: string, action: PatientAction) {
+  if (!/^rec[a-zA-Z0-9]{14}$/.test(id)) throw new ReactivationError("Invalid patient ID.", 400);
+  const config = ACTIONS[action];
+  if (!config) throw new ReactivationError("Unknown patient action.", 400);
+  return withEnrollmentLock(async () => {
+    const ids = tables();
+    await request(`${encodeURIComponent(ids.patients)}/${id}`, { method: "PATCH", body: JSON.stringify({ typecast: true, fields: config.fields }) });
+    const pending = (await records(ids.enrollments)).filter(e => linkedIds(e.fields.Patient).includes(id) && ["Active", "Paused"].includes(textField(e.fields, "Status")));
+    for (const batch of chunkAirtableRecords(pending)) {
+      await request(encodeURIComponent(ids.enrollments), { method: "PATCH", body: JSON.stringify({ typecast: true, records: batch.map(e => ({ id: e.id, fields: { Status: "Stopped", "Stop Reason": config.reason, "Next Send At": null } })) }) });
+    }
+    return { stopped: pending.length };
   });
 }
 export function errorResponse(error: unknown) {

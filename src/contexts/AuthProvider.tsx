@@ -12,7 +12,7 @@ import { clearDashboardDataCache } from "@/lib/dashboard-data-cache";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const shouldLoadAuth = pathname !== "/login" && pathname !== "/lead" && !pathname.startsWith("/lead/");
+  const shouldLoadAuth = pathname !== "/login" && pathname !== "/lead" && !pathname.startsWith("/lead/") && pathname !== "/unsubscribe";
   const authConfigured = isSupabaseConfigured();
   const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(null);
