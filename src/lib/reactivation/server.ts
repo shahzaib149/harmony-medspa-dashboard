@@ -92,12 +92,7 @@ export async function patientDetail(id: string) {
   const enrollments = (await records(ids.enrollments)).map(mapEnrollment).filter(e => e.patientIds.includes(id));
   const enrollmentIds = new Set(enrollments.map(e => e.id));
   const messages = (await records("Message Log")).map(mapMessage).filter(m => m.patientIds.includes(id) || m.enrollmentIds.some(e => enrollmentIds.has(e))).sort((a,b) => Date.parse(b.sentAt)-Date.parse(a.sentAt));
-  // The same person as a CRM lead: converted from it, or sharing an email or phone.
-  const keys = new Set(patientContactKeys({ email: textField(record.fields,"Email"), phone: textField(record.fields,"Phone") }));
-  const converted = /CRM lead: (rec[a-zA-Z0-9]{14})/.exec(textField(record.fields,"Notes"))?.[1];
-  const leads = await records("Leads");
-  const lead = leads.find(l => l.id === converted) ?? leads.find(l => patientContactKeys({ email: textField(l.fields,"Email"), phone: textField(l.fields,"Phone") }).some(k => keys.has(k)));
-  return { patient: mapPatient(record,enrollments), messages, leadId: lead?.id ?? null };
+  return { patient: mapPatient(record,enrollments), messages };
 }
 export async function campaignMetrics() {
   const data = await workspace(true);

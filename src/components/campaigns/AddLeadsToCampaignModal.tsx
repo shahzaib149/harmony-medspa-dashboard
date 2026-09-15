@@ -81,15 +81,11 @@ export default function AddLeadsToCampaignModal({
   onClose,
   onComplete,
   initialLeadId,
-  initialSearch,
-  initialNewLead,
 }: {
   open: boolean;
   onClose: () => void;
   onComplete: () => void;
   initialLeadId?: string;
-  initialSearch?: string;
-  initialNewLead?: Partial<NewLead>;
 }) {
   const [tab, setTab] = useState<"existing" | "new" | "csv">("existing"),
     [leads, setLeads] = useState<Lead[]>([]),
@@ -118,9 +114,8 @@ export default function AddLeadsToCampaignModal({
     inFlight = useRef(false);
   useEffect(() => {
     if (!open) return;
-    setTab(initialNewLead && !initialLeadId ? "new" : "existing");
-    if (initialNewLead && !initialLeadId) setNewLead({ ...blank, ...initialNewLead });
-    setQuery(initialSearch ?? "");
+    setTab("existing");
+    setQuery("");
     setStatus("All");
     setSelected(initialLeadId ? new Set([initialLeadId]) : new Set());
     setCsvSelected(new Set());
@@ -129,7 +124,6 @@ export default function AddLeadsToCampaignModal({
     setError("");
     setRetryable(false);
     setLastRequestId("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the modal opens for a new target
   }, [initialLeadId, open]);
   useEffect(() => {
     setLeadPage(0);

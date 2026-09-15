@@ -3,7 +3,6 @@
 import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
 import { DateTime } from "luxon";
 import { ArrowDownUp, ArrowUpRight, CalendarCheck, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Download, HeartHandshake, Plus, MailX, MessageCircleReply, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { Toast } from "@/components/ui/Toast";
@@ -12,7 +11,6 @@ import PatientDialog from "./PatientDialog";
 import AddPatients from "./AddPatients";
 import DeletePatientButton from "./DeletePatientButton";
 import s from "./reactivation.module.css";
-const AddLeadsToCampaignModal = dynamic(() => import("@/components/campaigns/AddLeadsToCampaignModal"));
 
 function date(value:string,withTime=false) {
   if(!value)return "Not recorded";
@@ -58,8 +56,7 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
   const [result,setResult]=useState<EnrollmentResult|null>(null);
   const [toast,setToast]=useState<{message:string;variant:"success"|"danger"|"warning"}|null>(null);
   const [patientId,setPatientId]=useState<string|null>(null);
-  const [detail,setDetail]=useState<{patient:Patient;messages:PatientMessage[];leadId?:string|null}|null>(null);
-  const [nurtureOpen,setNurtureOpen]=useState(false);
+  const [detail,setDetail]=useState<{patient:Patient;messages:PatientMessage[]}|null>(null);
   const [detailError,setDetailError]=useState("");
   const [detailLoading,setDetailLoading]=useState(false);
   const [stopId,setStopId]=useState<string|null>(null);
@@ -104,6 +101,8 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
   const sendDays=perDayValue&&validPerDay&&eligibleCount?Math.ceil(eligibleCount/perDayValue):1;
   const lastStart=sendISO&&perDayValue&&validPerDay&&eligibleCount?staggeredSendAt(sendISO,eligibleCount-1,perDayValue):sendISO;
   function toggle(id:string){setSelected(old=>{const next=new Set(old);if(next.has(id))next.delete(id);else next.add(id);return next;});}
+  // Enroll a single patient from the drawer through the same review step.
+  function enrollOne(id:string){setSelected(new Set([id]));setPatientId(null);void openReview();}
   async function openReview(){
     setReviewError("");setNow(currentTime());setSend(nextClinicSend());setModal(true);setBusy(true);
     try{
@@ -181,11 +180,10 @@ export default function DormantPatients({initial,initialError,canManage,canDelet
     <PatientDialog open={Boolean(patientId)} onClose={()=>{if(!busy)setPatientId(null);}} title={detail?.patient.name||"Patient details"} eyebrow="Patient profile" drawer busy={busy}>
       {detailLoading?<LoadingRegion label="Loading patient history" className="grid gap-5"><div className={s.detailGrid}>{[0,1,2,3,4,5].map(i=><div key={i}><Skeleton className="h-2.5 w-16 rounded-full"/><Skeleton className="mt-2.5 h-3.5 w-3/4 rounded-full"/></div>)}</div><div className="flex flex-wrap gap-2">{[0,1,2,3].map(i=><Skeleton key={i} className="h-6 w-28 rounded-full"/>)}</div><Skeleton className="h-3.5 w-40 rounded-full"/>{[0,1].map(i=><div key={i} className={s.history}><Skeleton className="h-3.5 w-1/2 rounded-full"/><Skeleton className="mt-3 h-3 w-1/3 rounded-full"/><Skeleton className="mt-3 h-14 w-full rounded-lg"/></div>)}</LoadingRegion>:detailError?<div className={s.notice+" "+s.warning} role="alert">{detailError}<button className={s.button+" mt-3"} onClick={async()=>{setDetailLoading(true);try{setDetail(await json("/api/reactivation/patients/"+patientId));setDetailError("");}catch(e){setDetailError(e instanceof Error?e.message:"Could not load history.");}finally{setDetailLoading(false);}}}>Retry history</button></div>:null}
       {detail&&!detailLoading&&<><dl className={s.detailGrid}>{[["Phone",detail.patient.phone],["Email",detail.patient.email],["Last visit",date(detail.patient.lastVisit)],["Days since last visit",detail.patient.days===null?"Unknown":String(detail.patient.days)],["Last treatment",detail.patient.lastTreatment],["Status",detail.patient.status]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value||"Not recorded"}</dd></div>)}</dl><div className="flex flex-wrap gap-2">{[["Email consent",detail.patient.emailConsent],["Opted out",detail.patient.optedOut],["Do not contact",detail.patient.doNotContact],["Future booking",detail.patient.futureBooking]].map(([label,value])=><span key={String(label)} className={s.badge+" "+s.neutral}>{label}: {value?"Yes":"No"}</span>)}</div>
-      {canDelete&&<button className={s.button+" "+s.primary} onClick={()=>{setPatientId(null);setNurtureOpen(true);}}><Plus size={15}/>Add to campaign</button>}
+      {canManage&&(()=>{const current=activeEnrollment(detail.patient);const reasons=exclusionReasons(detail.patient,campaign||DEFAULT_CAMPAIGN).filter(r=>r!=="Already active in this campaign");return current?<p className={s.notice}>Enrolled in {current.campaign} · {current.currentStep}</p>:<><button className={s.button+" "+s.primary} disabled={reasons.length>0||busy} onClick={()=>enrollOne(detail.patient.id)}><Plus size={15}/>Enroll in {campaign||DEFAULT_CAMPAIGN}</button>{reasons.length>0&&<p className={s.muted}>Can’t enroll: {reasons.join("; ")}.</p>}</>;})()}
       {canManage&&<div className={s.actionRow}>{([["replied","Mark replied",MessageCircleReply],["booked","Mark booked",CalendarCheck],["opted-out","Unsubscribe",MailX]] as const).map(([action,label,Icon])=><button key={action} className={s.button} disabled={Boolean(actionBusy)||busy} onClick={()=>void patientAction(action)}>{actionBusy===action?<RefreshCw size={14} className="animate-spin"/>:<Icon size={14}/>}{label}</button>)}</div>}
       {canDelete&&<DeletePatientButton id={detail.patient.id} name={detail.patient.name} onDeleted={async()=>{setPatientId(null);setDetail(null);await load();router.refresh();setToast({message:"Patient permanently deleted. History retained.",variant:"success"});}}/>}<section><h3 className={s.sectionTitle}>Enrollment history · {detail.patient.enrollments.length}</h3>{!detail.patient.enrollments.length?<p className={s.muted}>This patient hasn’t been enrolled in reactivation.</p>:<div className={s.timeline}>{detail.patient.enrollments.map(e=><article key={e.id} className={s.history}><div className="flex justify-between gap-2"><h4>{e.campaign}</h4><span className={s.badge+" "+(e.status==="Active"?"":s.neutral)}>{e.status}</span></div><p>{e.currentStep}</p><p className={s.muted}>Enrolled: {date(e.createdAt,true)}<br/>Next send: {date(e.nextSendAt,true)}<br/>Last sent: {date(e.lastSentAt,true)}<br/>Stop reason: {e.stopReason||"—"}</p>{["Active","Paused"].includes(e.status)&&canManage&&(stopId===e.id?<div className={s.notice}><p>Remove this patient from the campaign? Scheduled sends will be cleared; enrollment and message history will remain.</p><div className="flex gap-2 mt-3"><button className={s.button} disabled={busy} onClick={()=>setStopId(null)}>Cancel</button><button className={s.button} disabled={busy} onClick={stop}>{busy?"Stopping…":"Remove from campaign"}</button></div></div>:<button className={s.button+" mt-3"} disabled={busy} onClick={()=>setStopId(e.id)}>Remove from campaign</button>)}</article>)}</div>}</section>
       <section><h3 className={s.sectionTitle}>Message history · {detail.messages.length}</h3>{!detail.messages.length?<p className={s.muted}>No messages have been logged for this patient yet.</p>:<div className={s.timeline}>{detail.messages.map(m=><article key={m.id} className={s.history}><div className="flex justify-between gap-2"><h4>{m.channel} · {m.step||"Step not recorded"}</h4><span className={s.badge+" "+s.neutral}>{m.status}</span></div><span className={s.muted}>{date(m.sentAt,true)}</span><p>{m.body||"Message body not recorded."}</p></article>)}</div>}</section></>}
     </PatientDialog>
-    {canDelete&&<AddLeadsToCampaignModal open={nurtureOpen} initialLeadId={detail?.leadId??undefined} initialSearch={detail?.leadId?detail.patient.email||detail.patient.phone:undefined} initialNewLead={detail&&!detail.leadId?{name:detail.patient.name,email:detail.patient.email,phone:detail.patient.phone,notes:"Added from Dormant Patients: "+detail.patient.id}:undefined} onClose={()=>setNurtureOpen(false)} onComplete={()=>{setNurtureOpen(false);setToast({message:"Added to 14-Day Nurture",variant:"success"});void load();}}/>}
   </div>;
 }
