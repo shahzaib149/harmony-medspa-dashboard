@@ -766,7 +766,7 @@ export default function SettingsClient() {
   return (
     <div className="w-full space-y-6 px-0">
       <SettingsCard className="p-4 sm:p-5">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(360px,480px)] md:items-center">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,480px)] xl:items-center">
           <div>
             <p
               className="text-sm font-bold"
@@ -784,7 +784,7 @@ export default function SettingsClient() {
           <ThemeSelector />
         </div>
       </SettingsCard>
-      <div className="grid items-start gap-5 md:gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 md:gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
         {/* ══════════ LEFT — My Profile ══════════ */}
         <div className="w-full space-y-4">
           {/* Avatar card */}

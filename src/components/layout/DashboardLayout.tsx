@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Menu } from "lucide-react";
+import { BellRing, Menu, X } from "lucide-react";
 import Sidebar from "./Sidebar";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -19,8 +21,21 @@ export default function DashboardLayout({
   actions,
 }: DashboardLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showCallPrompt, setShowCallPrompt] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+    const seenKey = `harmony-call-details-prompt-seen:${user.id}`;
+    const pendingKey = "harmony-call-details-prompt-pending";
+    const pending = sessionStorage.getItem(pendingKey) === "1";
+    if (!pending && sessionStorage.getItem(seenKey) === "1") return;
+    sessionStorage.removeItem(pendingKey);
+    sessionStorage.setItem(seenKey, "1");
+    setShowCallPrompt(true);
+  }, [isLoading, user]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -62,6 +77,34 @@ export default function DashboardLayout({
         className="min-h-dvh w-full min-w-0 max-w-full flex-1 overflow-x-hidden md:ml-[240px]"
         style={{ backgroundColor: "var(--background)" }}
       >
+        {showCallPrompt && (
+          <aside
+            role="status"
+            aria-label="Call details reminder"
+            className="fixed inset-x-3 top-3 z-[120] mx-auto flex max-w-xl items-start gap-3 rounded-2xl border border-[var(--warning-border)] bg-[var(--warning-bg)] px-4 py-3 text-[var(--warning-text)] shadow-[var(--shadow-modal)] sm:inset-x-auto sm:right-5 sm:top-5 sm:mx-0"
+          >
+            <BellRing size={19} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-extrabold">New calls need details</p>
+              <p className="mt-0.5 text-xs leading-5">Review Call Leads in Overview and add caller details for follow-up.</p>
+              <Link
+                href="/dashboard#call-leads"
+                onClick={() => setShowCallPrompt(false)}
+                className="mt-2 inline-flex min-h-10 items-center rounded-xl border border-current px-3 text-xs font-extrabold"
+              >
+                Review call leads
+              </Link>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCallPrompt(false)}
+              className="grid size-10 shrink-0 place-items-center rounded-xl"
+              aria-label="Dismiss call details reminder"
+            >
+              <X size={16} />
+            </button>
+          </aside>
+        )}
         {/* Top header */}
         <header
           className="mobile-safe-top sticky top-0 z-30 flex min-h-16 items-center gap-3 px-4 py-3 md:min-h-0 md:px-8 md:py-4"

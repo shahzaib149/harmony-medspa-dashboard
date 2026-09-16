@@ -57,6 +57,7 @@ export default function LoginPage() {
         return;
       }
 
+      sessionStorage.setItem("harmony-call-details-prompt-pending", "1");
       router.replace(data?.redirectTo || "/dashboard");
       router.refresh();
       void fetch("/api/auth/audit-session", { method: "POST", keepalive: true }).catch(() => undefined);

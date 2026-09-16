@@ -92,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!authConfigured) return;
+    if (user?.id) sessionStorage.removeItem(`harmony-call-details-prompt-seen:${user.id}`);
     await fetch("/api/auth/audit-session", { method: "DELETE", keepalive: true }).catch(() => undefined);
     await supabase.auth.signOut();
     clearDashboardDataCache();
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     router.replace("/login");
     router.refresh();
-  }, [authConfigured, router, supabase]);
+  }, [authConfigured, router, supabase, user]);
 
   const role: Role | null = isRole(profile?.role) ? profile.role : null;
 

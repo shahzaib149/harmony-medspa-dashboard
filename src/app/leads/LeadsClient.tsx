@@ -2903,7 +2903,7 @@ export default function LeadsClient() {
             </div>
           </div>
 
-          <div className="grid gap-3 md:hidden">
+          <div className="grid min-w-0 grid-cols-1 gap-3 md:hidden">
             {filtered.map((lead) => {
               const duplicate = isDuplicateLead(lead);
               return (
@@ -2915,7 +2915,7 @@ export default function LeadsClient() {
                   }}
                   role="button"
                   tabIndex={0}
-                  className="rounded-2xl border p-4 text-left"
+                  className="min-w-0 rounded-2xl border p-4 text-left"
                   style={{
                     backgroundColor: CARD,
                     borderColor: duplicate ? "rgba(161,161,170,0.28)" : BORDER,
@@ -3013,7 +3013,7 @@ export default function LeadsClient() {
                       Replied: {lead.replied ? "Yes" : "No"}
                     </button>
                   </div>
-                  <div className="mt-4 flex items-center gap-2 border-t pt-3" style={{ borderColor: BORDER_SOFT }}>
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3" style={{ borderColor: BORDER_SOFT }}>
                     <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedLead(lead); }} className="min-h-10 flex-1 rounded-xl border px-3 text-xs font-bold" style={{ borderColor: BORDER, backgroundColor: PANEL, color: TEXT }}>
                       View details
                     </button>
