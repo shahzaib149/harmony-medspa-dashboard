@@ -278,7 +278,7 @@ export async function PATCH(request: Request) {
 
   if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
-  const { id, status, replied, name, email, phone, message, source, notes } = await request.json() as Record<string, unknown>;
+  const { id, status, replied, name, email, phone, treatment, message, source, notes } = await request.json() as Record<string, unknown>;
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const fields: Record<string, unknown> = {};
   if (typeof status === "string" && status.trim()) fields.Status = status.trim();
@@ -286,6 +286,7 @@ export async function PATCH(request: Request) {
   if (typeof name === "string") { if (!name.trim()) return Response.json({ error: "Name is required" }, { status: 400 }); fields.Name = name.trim(); }
   if (typeof email === "string") { if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return Response.json({ error: "Enter a valid email address" }, { status: 400 }); fields.Email = email.trim() || null; }
   if (typeof phone === "string") { const normalized = phone.trim() ? normalizeUsPhone(phone) : null; if (phone.trim() && !normalized) return Response.json({ error: "Enter a valid US phone number" }, { status: 400 }); fields.Phone = normalized; }
+  if (typeof treatment === "string") fields["Treatment Interest"] = treatment.trim();
   if (typeof message === "string") fields.Message = message.trim();
   if (typeof source === "string") fields.Source = source.trim();
   if (typeof notes === "string") fields.Notes = notes.trim();
@@ -310,7 +311,7 @@ export async function PATCH(request: Request) {
   }
   invalidateLeadsBaseCache();
   bustCachePrefix("leads:");
-  const fieldNames: Record<string, string> = { Status: "status", Replied: "replied", Name: "name", Email: "email", Phone: "phone", Message: "message", Source: "source", Notes: "notes" };
+  const fieldNames: Record<string, string> = { Status: "status", Replied: "replied", Name: "name", Email: "email", Phone: "phone", "Treatment Interest": "treatment", Message: "message", Source: "source", Notes: "notes" };
   const before = Object.fromEntries(Object.keys(fields).map((field) => [fieldNames[field] || field, beforeFields[field] ?? null]));
   const after = Object.fromEntries(Object.entries(fields).map(([field, value]) => [fieldNames[field] || field, value]));
   const action = "Status" in fields && Object.keys(fields).length === 1 ? "lead_status_changed" : "Replied" in fields && Object.keys(fields).length === 1 ? "lead_replied_changed" : "lead_updated";

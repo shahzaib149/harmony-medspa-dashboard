@@ -607,6 +607,7 @@ function LeadDetailsModal({
     name: "",
     email: "",
     phone: "",
+    treatment: "",
     message: "",
     source: "",
     notes: "",
@@ -618,6 +619,7 @@ function LeadDetailsModal({
         name: lead.name,
         email: lead.email,
         phone: lead.phone,
+        treatment: lead.treatment,
         message: lead.message,
         source: lead.source,
         notes: lead.notes,
@@ -961,6 +963,7 @@ function LeadDetailsModal({
                       ["Name", "name"],
                       ["Email", "email"],
                       ["Phone", "phone"],
+                      ["Treatment Interest", "treatment"],
                       ["Source", "source"],
                       ["Message", "message"],
                       ["Notes", "notes"],
@@ -1152,7 +1155,7 @@ function LeadDetailsModal({
   );
 }
 
-type LeadForm = { name: string; phone: string; email: string; message: string };
+type LeadForm = { name: string; phone: string; email: string; treatment: string; message: string };
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -1199,6 +1202,7 @@ function AddLeadModal({
   const [form, setForm] = useState<LeadForm>({
     name: "",
     phone: "",
+    treatment: "",
     email: "",
     message: "",
   });
@@ -1222,7 +1226,7 @@ function AddLeadModal({
 
   useEffect(() => {
     if (open) {
-      setForm({ name: "", phone: "", email: "", message: "" });
+      setForm({ name: "", phone: "", email: "", treatment: "", message: "" });
       setErrors({});
     }
   }, [open]);
@@ -1331,11 +1335,17 @@ function AddLeadModal({
                   type: "email",
                   placeholder: "olivia@example.com",
                 },
+                {
+                  key: "treatment",
+                  label: "Treatment Interest",
+                  type: "text",
+                  placeholder: "e.g. Female Weight Loss Consult",
+                },
               ] as const
             ).map((item) => (
               <label
                 key={item.key}
-                className={item.key === "email" ? "sm:col-span-2" : ""}
+                className={item.key === "email" || item.key === "treatment" ? "sm:col-span-2" : ""}
               >
                 <span
                   className="mb-1.5 block text-xs font-bold"
@@ -1380,7 +1390,7 @@ function AddLeadModal({
               value={form.message}
               onChange={(e) => setForm({ ...form, message: e.target.value })}
               rows={4}
-              placeholder="Add context, treatment interest, or follow-up notes..."
+              placeholder="Add context or follow-up notes..."
               className="w-full resize-none rounded-xl border px-3 py-3 text-sm outline-none transition placeholder:text-[var(--text-muted)] focus-visible:border-[var(--focus)] focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
               style={fieldStyle}
             />
