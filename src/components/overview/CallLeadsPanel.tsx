@@ -60,6 +60,7 @@ const CS2_CALLS: CallRecord[] = [
   { id: "cs2-2026-09-11-1559", date: "Sep 11", time: "3:59 PM", occurredAt: "2026-09-11T15:59:00-04:00", areaCode: "941", duration: 203, assessment: "Long conversation", kind: "conversation" },
   { id: "cs2-2026-09-14-1211", date: "Sep 14", time: "12:11 PM", occurredAt: "2026-09-14T12:11:00-04:00", areaCode: "Unknown", duration: 0, assessment: "Missed call", kind: "hangup", missed: true },
   { id: "cs2-2026-09-15-1401", date: "Sep 15", time: "2:01 PM", occurredAt: "2026-09-15T14:01:00-04:00", areaCode: "252 · North Carolina", duration: 61, assessment: "Out of state", kind: "out-of-state" },
+  { id: "cs2-2026-09-18-0953", date: "Sep 18", time: "9:53 AM", occurredAt: "2026-09-18T09:53:00-04:00", areaCode: "941", duration: 38, assessment: "Short but real", kind: "conversation" },
 ];
 
 // Website tracking line. Calls from other Florida area codes count as in-state.
@@ -92,7 +93,7 @@ const WEBSITE_CALLS: CallRecord[] = [
 
 const CALL_SOURCES: CallSource[] = [
   { id: "website", label: "Website", line: "Website new", range: "Aug 3–Sep 8, 2026", calls: WEBSITE_CALLS },
-  { id: "cs2", label: "CS2", line: "CS2", range: "Aug 31–Sep 15, 2026", calls: CS2_CALLS },
+  { id: "cs2", label: "CS2", line: "CS2", range: "Aug 31–Sep 18, 2026", calls: CS2_CALLS },
 ];
 
 const ALL_CALLS = CALL_SOURCES.flatMap((source) => source.calls);
