@@ -4,14 +4,21 @@ import { LoadingRegion, Skeleton, SkeletonRows } from "@/components/ui/Skeleton"
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
+  Activity,
   ArrowLeft,
+  ArrowUpRight,
+  CalendarClock,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
   Mail,
   MessageSquare,
   MoreHorizontal,
   Plus,
   Search,
   Trash2,
+  Users,
+  Zap,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -57,17 +64,40 @@ type SpeedLead = {
   smsSentStatus: string;
   replied: boolean;
 };
-type Data = {
+export type CampaignDetailData = {
   campaign: CampaignSummary;
   leads: Array<NurtureEnrollment | SpeedLead>;
   messages: MessageLog[];
 };
 const MUTED = "var(--text-muted)",
-  PANEL = "var(--surface-1)",
   GOLD = "var(--brand-primary)";
 const REFERENCE_NOW = Date.now();
 
-export default function CampaignDetailClient({ slug }: { slug: string }) {
+function CampaignMetricCard({ label, value, accent }: { label: string; value: string | number; accent: string }) {
+  const Icon = /failed|attention/i.test(label)
+    ? CircleAlert
+    : /active|due|activity/i.test(label)
+      ? Activity
+      : /complete|booked|sent/i.test(label)
+        ? CheckCircle2
+        : /lead|enrolled|processed/i.test(label)
+          ? Users
+          : CalendarClock;
+  return (
+    <article className="group relative overflow-hidden rounded-2xl border p-4 sm:p-5" style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }}>
+      <span className="absolute inset-x-0 top-0 h-0.5 opacity-70" style={{ background: accent }} />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-2xl font-extrabold tabular-nums tracking-tight text-[var(--text-primary)]">{String(value ?? 0)}</p>
+          <p className="mt-1 text-xs font-medium text-[var(--text-muted)]">{label}</p>
+        </div>
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ color: accent, background: "var(--surface-2)" }}><Icon size={16} /></span>
+      </div>
+    </article>
+  );
+}
+
+export default function CampaignDetailClient({ slug, initial, initialError = "" }: { slug: string; initial: CampaignDetailData | null; initialError?: string }) {
   const { role } = useAuth();
   const router = useRouter(),
     searchParams = useSearchParams(),
@@ -80,9 +110,9 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
           rawTab === "messages"
         ? "conversations"
         : "overview";
-  const [data, setData] = useState<Data | null>(null),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(""),
+  const [data, setData] = useState<CampaignDetailData | null>(initial),
+    [loading, setLoading] = useState(!initial),
+    [error, setError] = useState(initialError),
     [addOpen, setAddOpen] = useState(false),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("All"),
@@ -119,8 +149,8 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
     }
   }, [slug]);
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!initial) void load();
+  }, [initial, load]);
   useEffect(() => {
     if (rawTab === "message-history" || rawTab === "messages")
       router.replace(`/campaigns/${slug}?tab=conversations`, { scroll: false });
@@ -349,24 +379,47 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
         <ArrowLeft size={15} />
         Back to Campaigns
       </Link>
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="min-w-0 font-serif text-2xl leading-tight text-[#F0ECE4] sm:text-3xl">
-            {c.name}
-          </h1>
-          <CampaignStatusBadge status={c.status} />
-          <span className="rounded-full bg-white/5 px-2 py-1 text-[10px] text-[#B8B8C2]">
-            {c.type}
-          </span>
+      <header
+        className="relative overflow-hidden rounded-3xl border p-5 sm:p-7"
+        style={{
+          borderColor: "color-mix(in srgb, var(--brand-primary) 20%, var(--border-subtle))",
+          background: "linear-gradient(135deg, var(--surface-1) 0%, color-mix(in srgb, var(--brand-primary-soft) 45%, var(--surface-1)) 100%)",
+        }}
+      >
+        <div className="pointer-events-none absolute -right-16 -top-20 size-56 rounded-full bg-[var(--brand-primary-soft)] opacity-60 blur-3xl" />
+        <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--surface-1)] shadow-sm" style={{ color: c.accent }}>
+              {nurture ? <Zap size={21} /> : <Activity size={21} />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[var(--brand-primary)]">{c.type} · Campaign workspace</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2.5">
+                <h1 className="min-w-0 text-2xl font-bold leading-tight tracking-tight text-[var(--text-primary)] sm:text-3xl">{c.name}</h1>
+                <CampaignStatusBadge status={c.status} />
+              </div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">{c.description}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {c.channels.map((channel) => (
+                  <span key={channel} className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-secondary)]">{channel}</span>
+                ))}
+                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] text-[var(--text-muted)]">Updated {formatCampaignDate(c.lastActivity)}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {nurture && role === "admin" && (
+              <button onClick={() => setAddOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand-primary)] px-4 text-sm font-extrabold text-[var(--primary-foreground)] shadow-sm transition hover:brightness-95">
+                <Plus size={16} />Add leads
+              </button>
+            )}
+            <button onClick={() => router.replace("/campaigns/" + slug + "?tab=leads", { scroll: false })} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-1)] px-4 text-sm font-bold text-[var(--text-primary)]">
+              View contacts <ArrowUpRight size={15} />
+            </button>
+          </div>
         </div>
-        <p className="mt-2 text-sm text-[#9292A0]">{c.description}</p>
-        <p className="mt-2 text-xs text-[#9292A0]">
-          Channels: {c.channels.join(" + ")} · Last activity:{" "}
-          {formatCampaignDate(c.lastActivity)}
-        </p>
-      </header>
-      <nav
-        className="sticky top-[64px] z-20 -mx-1 flex overflow-x-auto border-b border-white/10 px-1 md:static md:bg-transparent"
+      </header>      <nav
+        className="sticky top-[64px] z-20 -mx-1 flex overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--background)] px-1 md:static md:bg-transparent"
         style={{
           backgroundColor:
             "color-mix(in srgb, var(--background) 96%, transparent)",
@@ -395,24 +448,11 @@ export default function CampaignDetailClient({ slug }: { slug: string }) {
       </nav>
       {tab === "overview" && (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <section aria-label="Campaign performance" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {metrics.map(([label, value]) => (
-              <div
-                key={String(label)}
-                className="rounded-xl border p-4"
-                style={{
-                  background: PANEL,
-                  borderColor: "rgba(201,168,76,.14)",
-                }}
-              >
-                <p className="text-xl font-bold text-[#F0ECE4]">
-                  {String(value ?? 0)}
-                </p>
-                <p className="text-xs text-[#9292A0]">{label}</p>
-              </div>
+              <CampaignMetricCard key={String(label)} label={String(label)} value={value ?? 0} accent={c.accent ?? GOLD} />
             ))}
-          </div>
-          {nurture && (
+          </section>          {nurture && (
             <PatientJourneyRail
               enrollments={data.leads.filter(
                 (item): item is NurtureEnrollment => "airtableRecordId" in item,

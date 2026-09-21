@@ -1,16 +1,9 @@
 /**
  * Server-side in-memory response cache.
  *
- * Because Next.js API routes run in the same Node.js process (in dev and in
- * the production server), a module-level Map persists across requests for the
- * lifetime of the process.  We use this to avoid hammering Airtable on every
- * page navigation — the first request fetches fresh data and subsequent ones
- * within the TTL window are served from RAM in <1 ms.
- *
- * TTLs by data class:
- *   overview   — 60 s  (refreshes automatically; manual refresh button busts it)
- *   leads      — 30 s  (paginated + mutable; shorter to stay close to live)
- *   airtable   — 60 s  (Google Ads / campaign tables; infrequently mutated)
+ * Cached responses keep routine dashboard navigation off Airtable. Identical
+ * requests that arrive while a value is loading share the same promise, so a
+ * page render and an API preload cannot start duplicate upstream work.
  */
 import "server-only";
 
@@ -21,8 +14,10 @@ interface CacheEntry<T> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const store = new Map<string, CacheEntry<any>>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const inFlight = new Map<string, Promise<any>>();
+const revisions = new Map<string, number>();
 
-/** Return cached data if still fresh, or null if missing / expired. */
 export function getCache<T>(key: string): T | null {
   const entry = store.get(key);
   if (!entry) return null;
@@ -33,29 +28,27 @@ export function getCache<T>(key: string): T | null {
   return entry.data as T;
 }
 
-/** Store data in the cache with a TTL in seconds. */
 export function setCache<T>(key: string, data: T, ttlSeconds: number): void {
   store.set(key, { data, expiresAt: Date.now() + ttlSeconds * 1000 });
 }
 
-/** Invalidate one or more cache keys (e.g. after a mutation). */
+function invalidateKey(key: string) {
+  store.delete(key);
+  inFlight.delete(key);
+  revisions.set(key, (revisions.get(key) ?? 0) + 1);
+}
+
 export function bustCache(...keys: string[]): void {
-  for (const key of keys) store.delete(key);
+  keys.forEach(invalidateKey);
 }
 
-/** Invalidate all keys whose string starts with a prefix. */
 export function bustCachePrefix(prefix: string): void {
-  for (const key of store.keys()) {
-    if (key.startsWith(prefix)) store.delete(key);
-  }
+  const matches = new Set(
+    [...store.keys(), ...inFlight.keys()].filter((key) => key.startsWith(prefix)),
+  );
+  matches.forEach(invalidateKey);
 }
 
-/**
- * Convenience helper: return cached result or run `fn`, cache it, return it.
- *
- * @example
- *   const data = await withCache("overview:30d", 60, () => getOverviewData(req, "30d"));
- */
 export async function withCache<T>(
   key: string,
   ttlSeconds: number,
@@ -63,7 +56,22 @@ export async function withCache<T>(
 ): Promise<T> {
   const cached = getCache<T>(key);
   if (cached !== null) return cached;
-  const fresh = await fn();
-  setCache(key, fresh, ttlSeconds);
-  return fresh;
+
+  const pending = inFlight.get(key) as Promise<T> | undefined;
+  if (pending) return pending;
+
+  const revision = revisions.get(key) ?? 0;
+  const request: Promise<T> = fn()
+    .then((fresh) => {
+      if ((revisions.get(key) ?? 0) === revision) {
+        setCache(key, fresh, ttlSeconds);
+      }
+      return fresh;
+    })
+    .finally(() => {
+      if (inFlight.get(key) === request) inFlight.delete(key);
+    });
+
+  inFlight.set(key, request);
+  return request;
 }

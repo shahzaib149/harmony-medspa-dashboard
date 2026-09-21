@@ -36,7 +36,7 @@ export default function ReactivationCampaign({initial,initialError,canManage,can
   const [target,setTarget]=useState<Enrollment|null>(null),[message,setMessage]=useState<PatientMessage|null>(null),[busy,setBusy]=useState(false),[actionError,setActionError]=useState(""),[notice,setNotice]=useState("");
   async function refresh(){
     setLoading(true);setError("");
-    try{const r=await fetch("/api/reactivation/campaign",{cache:"no-store"});const b=await r.json();if(!r.ok)throw new Error(b.error);setData(b);}
+    try{const r=await fetch("/api/reactivation/campaign?refresh=1",{cache:"no-store"});const b=await r.json();if(!r.ok)throw new Error(b.error);setData(b);}
     catch(e){setError(e instanceof Error?e.message:"Could not refresh campaign.");}finally{setLoading(false);}
   }
   async function remove(){
@@ -58,12 +58,36 @@ export default function ReactivationCampaign({initial,initialError,canManage,can
   const m=data.metrics;
   function changeTab(next:string){setPicked(new Set());setTab(next);setOpenLog(null);setConversation(null);setQuery("");setStatus(next==="enrollments"?"Current":"All");setChannel("All");setPage(1);}
   const cardStatus=m.active?"Active":data.paused?"Paused":"Idle";
+  const attempted=m.email+m.failures;
+  const deliveryRate=attempted?Math.round(m.email/attempted*100):0;
+  const completionRate=m.total?Math.round(m.completed/m.total*100):0;
+  const outcomeRate=m.total?Math.round((m.bookings+m.replies)/m.total*100):0;
   return <div className={s.workspace}>
     <div className={s.campaignTop}><Link href="/campaigns" className={s.backLink}><ArrowLeft size={15}/>All campaigns</Link><div className="flex flex-wrap gap-2"><button className={s.button} disabled={loading} onClick={refresh}><RefreshCw size={14}/>{loading?"Refreshing…":"Refresh"}</button>{canManage&&<Link className={s.button+" "+s.primary} href="/dashboard/dormant-patients"><UserPlus size={15}/>Enroll patients</Link>}</div></div>
-    <header className={s.campaignHero}><span className={s.avatar}><HeartHandshake size={23}/></span><div><span className={s.eyebrow}>Patient retention · Manual enrollment</span><h2>{data.campaign}</h2><p className={s.muted}>Bring patients back with a three-step email follow-up. Review who is enrolled, what is scheduled, and what was delivered.</p><p className={s.muted}>Last activity: {date(data.lastActivity)} · Updated {date(data.generatedAt)}</p></div><span className={s.badge+" "+(cardStatus==="Active"?"":s.neutral)}>{cardStatus}</span></header>
+    <header className={s.campaignHero}>
+      <span className={s.avatar}><HeartHandshake size={23}/></span>
+      <div className={s.campaignHeroCopy}>
+        <span className={s.eyebrow}>Patient retention · Manual enrollment</span>
+        <h2>{data.campaign}</h2>
+        <p className={s.muted}>Bring patients back with a three-step email follow-up. Review enrollment health, upcoming sends, conversations, and recorded outcomes from one workspace.</p>
+        <p className={s.muted}>Last activity: {date(data.lastActivity)} · Updated {date(data.generatedAt)}</p>
+      </div>
+      <aside className={s.campaignMeta} aria-label="Campaign health">
+        <span className={s.badge+" "+(cardStatus==="Active"?"":s.neutral)}>{cardStatus}</span>
+        <dl>
+          <div><dt>Delivery</dt><dd>{deliveryRate}%</dd></div>
+          <div><dt>Completion</dt><dd>{completionRate}%</dd></div>
+        </dl>
+      </aside>
+    </header>
     {error&&<p className={s.notice+" "+s.warning} role="alert">{error} Showing the last loaded data.</p>}
     {notice&&<div className={s.notice} role="status">{notice}<button className="ml-4 underline" onClick={()=>setNotice("")}>Dismiss</button></div>}
     <div className={s.kpis}>{[["Enrolled",m.total,"Enrollment records"],["Active",m.active,data.paused+" paused"],["Emails sent",m.email,m.failures+" failed · "+m.pending+" pending"],["Booked patients",m.bookings,m.replies+" patients replied"]].map(([label,value,detail])=><article key={label} className={s.kpi}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>
+    <div className={s.healthStrip} aria-label="Campaign performance summary">
+      <div><span>Delivery health</span><strong>{deliveryRate}%</strong><small>{m.email} sent · {m.failures} failed</small></div>
+      <div><span>Sequence completion</span><strong>{completionRate}%</strong><small>{m.completed} of {m.total} enrollments</small></div>
+      <div><span>Patient outcomes</span><strong>{outcomeRate}%</strong><small>{m.bookings} booked · {m.replies} replied</small></div>
+    </div>
     <nav className={s.tabs} aria-label="Campaign sections">{[["overview","Overview"],["enrollments","Enrollments · "+data.enrollments.length],["messages","Conversations"]].map(([key,label])=><button key={key} aria-current={tab===key?"page":undefined} onClick={()=>changeTab(key)}>{label}</button>)}</nav>
     {tab==="overview"?<>
       <div className={s.campaignGrid}><section className={s.panel}><div className={s.toolbar}><div><h3>Follow-up sequence</h3><p className={s.muted}>Current positions, based on active enrollments.</p></div></div><div className={s.sequence}>{EMAIL_STEPS.map((step,i)=>{const count=data.enrollments.filter(e=>e.status==="Active"&&stepNumber(e.currentStep)===i+1).length;return <article key={step}><span className={s.avatar}><Mail size={17}/></span><div><small>STEP {i+1}</small><h4>{step}</h4><p>{count} active {count===1?"patient":"patients"}</p></div></article>;})}</div><p className={s.footer}>Send timing and message content are controlled by the connected automation. This page reports saved schedules; it does not run the sender.</p>{EMAIL_STEPS.some(step=>data.messages.some(msg=>msg.step===step&&msg.body))&&<div className={s.emailPreviews}><h4>Emails as sent</h4>{EMAIL_STEPS.map(step=>{const sample=data.messages.find(msg=>msg.step===step&&msg.body);return sample?<button key={step} onClick={()=>setMessage(sample)}><strong>{step}</strong><span>{sample.body.split("\n").find(line=>line.trim()&&!/^hi/i.test(line.trim()))||sample.body}</span></button>:null;})}</div>}</section>

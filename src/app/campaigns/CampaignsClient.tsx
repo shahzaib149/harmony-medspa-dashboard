@@ -3,7 +3,7 @@
 
 import { Skeleton } from "@/components/ui/Skeleton";
 import Link from "next/link";
-import ReactivationCampaignCard from "@/components/reactivation/ReactivationCampaignCard";
+import ReactivationCampaignCard, { type ReactivationCampaignSummary } from "@/components/reactivation/ReactivationCampaignCard";
 import { DEFAULT_CAMPAIGN, type ReactivationMetrics } from "@/lib/reactivation/model";
 import {
   GitBranch,
@@ -13,10 +13,11 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CampaignStatusBadge } from "@/components/campaigns/CampaignBadges";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import type { CampaignSummary } from "@/lib/types/campaigns";
+import { DATA_CACHE_KEYS, setCachedData, useDashboardCachedData } from "@/lib/dashboard-data-cache";
 
 const TEXT = "var(--text-primary)";
 const MUTED = "var(--text-muted)";
@@ -24,41 +25,55 @@ const PANEL = "var(--surface-1)";
 
 const REACTIVATION_CAMPAIGNS = 1;
 
+type CampaignsResponse = {
+  campaigns: CampaignSummary[];
+  reactivation: ReactivationCampaignSummary | null;
+};
+
 function fmt(value: string | null) {
   return formatCampaignDate(value, "No activity yet");
 }
 
 export default function CampaignsClient() {
-  const [items, setItems] = useState<CampaignSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = useDashboardCachedData<CampaignsResponse>(DATA_CACHE_KEYS.campaignsSummary);
+  const hadCachedOnMount = useRef(Boolean(cached));
+  const [items, setItems] = useState<CampaignSummary[]>(() => cached?.campaigns ?? []);
+  const [loading, setLoading] = useState(() => !cached);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
   const [type, setType] = useState("All");
-  const [reactivation, setReactivation] = useState<ReactivationMetrics | null>(null);
+  const [reactivationData, setReactivationData] = useState<ReactivationCampaignSummary | null>(() => cached?.reactivation ?? null);
+  const reactivation: ReactivationMetrics | null = reactivationData
+    ? { ...reactivationData.metrics, paused: reactivationData.paused }
+    : null;
   const showReactivation = DEFAULT_CAMPAIGN.toLowerCase().includes(query.toLowerCase()) && (type === "All" || type === "Manual Enrollment") && (status === "All" || (reactivation && status === (reactivation.active ? "Active" : reactivation.paused ? "Paused" : "Idle")));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const response = await fetch("/api/airtable/campaigns", {
         cache: "no-store",
       });
-      const body = await response.json();
+      const body = await response.json() as CampaignsResponse & { error?: string };
       if (!response.ok) throw new Error(body.error);
       setItems(body.campaigns);
+      setReactivationData(body.reactivation);
+      setCachedData(DATA_CACHE_KEYS.campaignsSummary, body);
     } catch (event) {
-      setError(
-        event instanceof Error ? event.message : "Could not load campaigns",
-      );
+      if (showLoading) {
+        setError(event instanceof Error ? event.message : "Could not load campaigns");
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
+    void load(!hadCachedOnMount.current);
   }, [load]);
 
   const visible = useMemo(
@@ -139,16 +154,16 @@ export default function CampaignsClient() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search campaigns"
-            className="h-11 w-full rounded-xl border bg-transparent pl-10 pr-3 text-sm text-white"
-            style={{ borderColor: "#292932" }}
+            className="h-11 w-full rounded-xl border bg-[var(--input-bg)] pl-10 pr-3 text-sm text-[var(--text-primary)]"
+            style={{ borderColor: "var(--border-subtle)" }}
           />
         </label>
         <select
           aria-label="Campaign status"
           value={status}
           onChange={(event) => setStatus(event.target.value)}
-          className="h-11 w-full rounded-xl border bg-[#101016] px-3 text-sm text-white"
-          style={{ borderColor: "#292932" }}
+          className="h-11 w-full rounded-xl border bg-[var(--input-bg)] px-3 text-sm text-[var(--text-primary)]"
+          style={{ borderColor: "var(--border-subtle)" }}
         >
           {["All", "Active", "Paused", "Idle", "Coming Soon"].map((option) => (
             <option key={option}>{option}</option>
@@ -158,8 +173,8 @@ export default function CampaignsClient() {
           aria-label="Campaign type"
           value={type}
           onChange={(event) => setType(event.target.value)}
-          className="h-11 w-full rounded-xl border bg-[#101016] px-3 text-sm text-white"
-          style={{ borderColor: "#292932" }}
+          className="h-11 w-full rounded-xl border bg-[var(--input-bg)] px-3 text-sm text-[var(--text-primary)]"
+          style={{ borderColor: "var(--border-subtle)" }}
         >
           {["All", "Automatic", "Manual Enrollment"].map((option) => (
             <option key={option}>{option}</option>
@@ -170,7 +185,7 @@ export default function CampaignsClient() {
       <div className="grid gap-4 md:grid-cols-2">
       {loading ? (
         <div className="contents" role="status" aria-label="Loading campaigns">
-          {[1, 2].map((item) => (
+          {[1, 2, 3].map((item) => (
             <div
               key={item}
               className="grid gap-4 rounded-2xl border p-5"
@@ -186,7 +201,7 @@ export default function CampaignsClient() {
         <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-6 text-center text-red-300">
           <p>{error}</p>
           <button
-            onClick={load}
+            onClick={() => void load()}
             className="mt-3 min-h-11 rounded-lg border px-4 py-2"
           >
             Retry
@@ -205,7 +220,7 @@ export default function CampaignsClient() {
             <Link
               key={campaign.slug}
               href={`/campaigns/${campaign.slug}`}
-              className="block rounded-2xl border p-4 transition-colors hover:bg-white/[.02] sm:p-5"
+              className="block rounded-2xl border p-4 transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] sm:p-5"
               style={{ background: PANEL, borderColor: `${campaign.accent ?? "#C9A84C"}33` }}
             >
               <article>
@@ -289,7 +304,7 @@ export default function CampaignsClient() {
           ))}
         </div>
       )}
-      <ReactivationCampaignCard query={query} status={status} type={type} onMetrics={setReactivation}/>
+      <ReactivationCampaignCard query={query} status={status} type={type} data={reactivationData}/>
       </div>
     </div>
   );

@@ -83,14 +83,25 @@
 .dangerButton { color:var(--danger); border-color:var(--danger); background:var(--danger-soft); }
 .campaignTop { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .backLink { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--brand-primary); font-weight:650; }
-.campaignHero { display:flex; align-items:flex-start; gap:18px; padding:28px; border:1px solid var(--border-subtle); border-radius:18px; background:var(--surface-1); }
-.campaignHero>div { flex:1; min-width:0; }
-.campaignHero h2 { font-size:clamp(23px,3vw,31px); font-weight:650; letter-spacing:-.035em; margin:8px 0; }
+.campaignHero { position:relative; display:flex; align-items:center; gap:18px; padding:30px; overflow:hidden; border:1px solid color-mix(in srgb,var(--brand-primary) 20%,var(--border-subtle)); border-radius:22px; background:linear-gradient(135deg,var(--surface-1),color-mix(in srgb,var(--brand-primary-soft) 42%,var(--surface-1))); }
+.campaignHero::after { content:""; position:absolute; right:-70px; top:-90px; width:240px; height:240px; border-radius:50%; background:var(--brand-primary-soft); opacity:.55; filter:blur(24px); pointer-events:none; }
+.campaignHeroCopy { position:relative; z-index:1; flex:1; min-width:0; }
+.campaignHero h2 { font-size:clamp(24px,3vw,34px); font-weight:700; letter-spacing:-.035em; margin:8px 0; }
 .campaignHero p { max-width:760px; margin-top:8px; }
+.campaignMeta { position:relative; z-index:1; display:grid; justify-items:end; gap:14px; min-width:210px; padding:16px; border:1px solid var(--border-subtle); border-radius:16px; background:color-mix(in srgb,var(--surface-1) 90%,transparent); }
+.campaignMeta dl { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.campaignMeta dl div { padding:10px; border-radius:11px; background:var(--background-subtle); }
+.campaignMeta dt { font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); }
+.campaignMeta dd { margin-top:4px; font-size:18px; font-weight:750; font-variant-numeric:tabular-nums; }
 .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
 .kpi { background:var(--surface-1); border:1px solid var(--border-subtle); border-radius:15px; padding:21px; }
 .kpi span,.kpi small { display:block; font-size:11px; color:var(--text-muted); }
 .kpi strong { display:block; font-size:30px; font-weight:650; margin:9px 0; }
+.healthStrip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; overflow:hidden; border:1px solid var(--border-subtle); border-radius:16px; background:var(--border-subtle); }
+.healthStrip>div { display:grid; grid-template-columns:1fr auto; gap:4px 12px; align-items:center; padding:16px 18px; background:var(--surface-1); }
+.healthStrip span { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); }
+.healthStrip strong { font-size:20px; font-weight:750; font-variant-numeric:tabular-nums; color:var(--brand-primary-strong); }
+.healthStrip small { grid-column:1/-1; font-size:11px; color:var(--text-muted); }
 .tabs { display:flex; gap:6px; border-bottom:1px solid var(--border-subtle); overflow:auto; }
 .tabs button { padding:13px 18px; font-size:12px; font-weight:650; white-space:nowrap; border-bottom:2px solid transparent; }
 .tabs button[aria-current] { color:var(--brand-primary); border-color:var(--brand-primary); }
@@ -111,8 +122,8 @@
 .miniList>p { padding:20px 0; }
 .messagePreview { display:block; max-width:320px; overflow:hidden; text-overflow:ellipsis; text-decoration:underline; text-underline-offset:3px; }
 .messageBody { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.8; padding:20px; background:var(--background-subtle); border-radius:12px; }
-@media(max-width:850px) { .campaignGrid { grid-template-columns:1fr; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .addHint { display:none; } }
-@media(max-width:540px) { .campaignHero { padding:19px; flex-wrap:wrap; } .campaignHero>.avatar { display:none; } .kpi { padding:16px; } .addHeader { padding:20px 18px 6px; } }
+@media(max-width:850px) { .campaignGrid { grid-template-columns:1fr; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .campaignHero { align-items:flex-start; flex-wrap:wrap; } .campaignMeta { width:100%; justify-items:start; } .healthStrip { grid-template-columns:1fr; } .addHint { display:none; } }
+@media(max-width:540px) { .campaignHero { padding:20px; } .campaignHero>.avatar { display:none; } .campaignMeta { min-width:0; padding:12px; } .kpi { padding:16px; } .healthStrip>div { padding:14px 16px; } .addHeader { padding:20px 18px 6px; } }
 .addCard>span:nth-child(2) { flex:1; min-width:0; }
 .addCard strong { display:block; font-size:13px; }
 .addCard small { display:block; font-size:11px; color:var(--text-muted); margin-top:5px; line-height:1.5; }

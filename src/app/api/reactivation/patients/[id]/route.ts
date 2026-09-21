@@ -1,5 +1,5 @@
 import { requireRole, authErrorResponse } from "@/lib/auth/requireRole";
-import { patientDetail, errorResponse } from "@/lib/reactivation/server";
+import { patientDetail, errorResponse, invalidateReactivationCampaignCache } from "@/lib/reactivation/server";
 import { deletePatient } from "@/lib/reactivation/delete-patient";
 import { revalidatePath } from "next/cache";
 export const maxDuration=300;
@@ -16,6 +16,7 @@ export async function DELETE(request:Request,context:{params:Promise<{id:string}
   const confirmation=body&&typeof body==="object"&&"confirmation" in body?body.confirmation:null;
   try{
     const result=await deletePatient((await context.params).id,confirmation);
+    invalidateReactivationCampaignCache();
     revalidatePath("/dashboard/dormant-patients");revalidatePath("/campaigns");
     revalidatePath("/campaigns/patient-reactivation");
     return Response.json(result);

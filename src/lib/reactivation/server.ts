@@ -8,6 +8,7 @@ import { chunkAirtableRecords } from "@/lib/airtable/batch";
 import { patientContactKeys } from "./patient-input";
 import { isUnsubscribeConfigured, unsubscribeUrl } from "./unsubscribe";
 import { CLINIC_ZONE, DEFAULT_CAMPAIGN, FIRST_STEP, MAX_ENROLL, exclusionReasons, staggeredSendAt, summarizeReactivation, type Enrollment, type Patient, type PatientMessage, type EnrollmentResult, type Workspace } from "./model";
+import { bustCache, withCache } from "@/lib/server-cache";
 
 export class ReactivationError extends Error { constructor(message: string, public status = 503) { super(message); } }
 const VIEW = "Dormant — Eligible to Enroll";
@@ -15,24 +16,29 @@ function tables() {
   // Airtable accepts table names directly; use the CRM's existing base and token.
   return { patients: "Patients", enrollments: "Reactivation Enrollments" };
 }
-// Share the CRM's authenticated Airtable transport. Space all reactivation requests;
-// no parallel batch writes and no blind retry of a potentially committed create.
-let queue: Promise<unknown> = Promise.resolve();
-let lastRequest = 0;
-export async function request(path: string, init?: RequestInit, api: "data" | "schema" = "data"): Promise<Response> {
-  const run = queue.then(async () => {
-    await new Promise(resolve => setTimeout(resolve, Math.max(0, 250 - (Date.now() - lastRequest))));
-    lastRequest = Date.now();
-    let response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
-    if (response.status === 429) {
-      await new Promise(resolve => setTimeout(resolve, 30_000));
-      response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
-    }
-    if (!response.ok) throw new ReactivationError(response.status === 403 ? "Airtable access is missing. Check record and schema read permissions." : `Patient data request failed (${response.status}). Please retry.`, response.status === 404 ? 404 : 503);
-    return response;
+// Space request starts to respect Airtable's rate limit, while allowing independent
+// reads to overlap. Previously every request waited for the full previous network
+// response, multiplying latency across the campaign workspace.
+let requestStartQueue: Promise<void> = Promise.resolve();
+let lastRequestStartedAt = 0;
+async function waitForRequestSlot() {
+  const slot = requestStartQueue.then(async () => {
+    await new Promise(resolve => setTimeout(resolve, Math.max(0, 225 - (Date.now() - lastRequestStartedAt))));
+    lastRequestStartedAt = Date.now();
   });
-  queue = run.catch(() => undefined);
-  return run;
+  requestStartQueue = slot.catch(() => undefined);
+  await slot;
+}
+export async function request(path: string, init?: RequestInit, api: "data" | "schema" = "data"): Promise<Response> {
+  await waitForRequestSlot();
+  let response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
+  if (response.status === 429) {
+    await new Promise(resolve => setTimeout(resolve, 30_000));
+    await waitForRequestSlot();
+    response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
+  }
+  if (!response.ok) throw new ReactivationError(response.status === 403 ? "Airtable access is missing. Check record and schema read permissions." : `Patient data request failed (${response.status}). Please retry.`, response.status === 404 ? 404 : 503);
+  return response;
 }
 export async function records(table: string, query = new URLSearchParams()) {
   const result: AirtableRecord[] = [];
@@ -102,11 +108,64 @@ export async function campaignMetrics() {
   const messages = (await records("Message Log")).map(mapMessage);
   return summarizeReactivation(data.patients, all.length ? all : enrollments, messages, DEFAULT_CAMPAIGN);
 }
+const REACTIVATION_CAMPAIGN_CACHE_KEY = "reactivation:campaign:workspace";
+const REACTIVATION_SUMMARY_CACHE_KEY = "reactivation:campaign:summary";
+const REACTIVATION_CACHE_TTL = 90;
+
 export async function campaignWorkspace() {
-  const enrollments=(await records(tables().enrollments)).map(mapEnrollment);
-  const patients=(await records(tables().patients)).map(p=>mapPatient(p,enrollments));
-  const messages=(await records("Message Log")).map(mapMessage);
-  return buildCampaign(patients,enrollments,messages);
+  const ids = tables();
+  const [enrollmentRecords, patientRecords, messageRecords] = await Promise.all([
+    records(ids.enrollments),
+    records(ids.patients),
+    records("Message Log"),
+  ]);
+  const enrollments = enrollmentRecords.map(mapEnrollment);
+  const patients = patientRecords.map(record => mapPatient(record, enrollments));
+  const messages = messageRecords.map(mapMessage);
+  return buildCampaign(patients, enrollments, messages);
+}
+
+export async function campaignSummary() {
+  const ids = tables();
+  const enrollmentQuery = new URLSearchParams({
+    filterByFormula: "{Campaign}='" + DEFAULT_CAMPAIGN.replaceAll("'", "\\'") + "'",
+  });
+  ["Patient", "Campaign", "Status", "Current Step", "Next Send At", "Last Sent At", "Stop Reason", "Enrolled At", "Messages Sent"].forEach(field => enrollmentQuery.append("fields[]", field));
+  const patientQuery = new URLSearchParams();
+  ["Name", "Status", "Replied"].forEach(field => patientQuery.append("fields[]", field));
+  const messageQuery = new URLSearchParams();
+  ["Patients", "Reactivation Enrollment", "Channel", "Sequence Step", "Sent At", "Delivery Status"].forEach(field => messageQuery.append("fields[]", field));
+
+  const [enrollmentRecords, patientRecords, messageRecords] = await Promise.all([
+    records(ids.enrollments, enrollmentQuery),
+    records(ids.patients, patientQuery),
+    records("Message Log", messageQuery),
+  ]);
+  const enrollments = enrollmentRecords.map(mapEnrollment);
+  const patientIds = new Set(enrollments.flatMap(item => item.patientIds));
+  const patients = patientRecords.filter(record => patientIds.has(record.id)).map(record => mapPatient(record, enrollments));
+  const data = buildCampaign(patients, enrollments, messageRecords.map(mapMessage));
+  return {
+    campaign: data.campaign,
+    metrics: data.metrics,
+    paused: data.paused,
+    lastActivity: data.lastActivity,
+    generatedAt: data.generatedAt,
+  };
+}
+
+export function cachedCampaignWorkspace(forceRefresh = false) {
+  if (forceRefresh) bustCache(REACTIVATION_CAMPAIGN_CACHE_KEY);
+  return withCache(REACTIVATION_CAMPAIGN_CACHE_KEY, REACTIVATION_CACHE_TTL, campaignWorkspace);
+}
+
+export function cachedCampaignSummary(forceRefresh = false) {
+  if (forceRefresh) bustCache(REACTIVATION_SUMMARY_CACHE_KEY);
+  return withCache(REACTIVATION_SUMMARY_CACHE_KEY, REACTIVATION_CACHE_TTL, campaignSummary);
+}
+
+export function invalidateReactivationCampaignCache() {
+  bustCache(REACTIVATION_CAMPAIGN_CACHE_KEY, REACTIVATION_SUMMARY_CACHE_KEY);
 }
 // Serializes reactivation writes inside this server instance. Used alone when the
 // Supabase claim table has not been migrated yet (supabase/migrations/003).
