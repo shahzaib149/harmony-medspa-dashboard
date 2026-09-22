@@ -185,6 +185,8 @@ export type OverviewResponse = {
     booked: OverviewMetric;
     bookingRate: OverviewMetric;
     averageSpeedSeconds: OverviewMetric;
+    /** Submissions classified as not a lead; excluded from every other lead metric. */
+    notALead: OverviewMetric;
   };
   leadFunnel: LeadFunnelStage[];
   leadTrend: LeadTrendPoint[];

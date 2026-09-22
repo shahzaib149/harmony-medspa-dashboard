@@ -20,6 +20,9 @@ function record(
     email: `${id}@example.com`,
     phone: `555000${id.padStart(4, "0")}`,
     duplicate: false,
+    leadType: "",
+    isRealLead: false,
+    aiTags: [],
     ...overrides,
   };
 }
@@ -40,7 +43,7 @@ test("Lead summary aggregates beyond the visible 20-row page", () => {
   assert.equal(summary.total, 28);
   assert.equal(summary.newToday, 28);
   assert.equal(summary.contacted, 9);
-  assert.deepEqual(viewCounts, { all: 28, replied: 0, booked: 0 });
+  assert.deepEqual(viewCounts, { leads: 28, review: 0, "not-lead": 0, replied: 0, booked: 0, all: 28 });
 });
 
 test("summary tab counts overlap for replied and booked Leads", () => {
@@ -52,7 +55,7 @@ test("summary tab counts overlap for replied and booked Leads", () => {
   ];
 
   const aggregate = aggregateLeadSummary(records, "booked");
-  assert.deepEqual(aggregate.viewCounts, { all: 4, replied: 2, booked: 2 });
+  assert.deepEqual(aggregate.viewCounts, { leads: 4, review: 0, "not-lead": 0, replied: 2, booked: 2, all: 4 });
   assert.equal(aggregate.summary.total, 2);
   assert.equal(aggregate.summary.booked, 2);
   assert.equal(aggregate.summary.replied, 1);
@@ -98,4 +101,31 @@ test("table and summary formulas share filters while summary can omit the active
   assert.match(summaryFormula, /\{Nurture Current Step\}="Day 3 Email"/);
   assert.match(summaryFormula, /\{SMS Sent Status\}/);
   assert.match(summaryFormula, /FIND\("jane"/);
+});
+
+test("Real leads exclude non-leads while counting them separately", () => {
+  const records = [
+    record("legacy"),
+    record("real", { leadType: "Real Lead", isRealLead: true, status: "Contacted" }),
+    record("unclear", { leadType: "Unclear", isRealLead: true, aiTags: ["Needs Review"] }),
+    record("seo", { leadType: "Solicitor", status: "Not a Lead", aiTags: ["Solicitor", "SEO/Marketing Pitch"] }),
+    record("move", { leadType: "Appointment Change", status: "Not a Lead" }),
+    record("patient", { leadType: "Existing Patient", status: "Not a Lead" }),
+  ];
+
+  const { summary, viewCounts } = aggregateLeadSummary(records, "leads");
+  assert.equal(summary.total, 3);
+  assert.equal(summary.notALead, 3);
+  assert.equal(summary.needsReview, 1);
+  assert.deepEqual(summary.byLeadType, { Solicitor: 1, "Appointment Change": 1, "Existing Patient": 1 });
+  assert.equal(viewCounts["not-lead"], 3);
+  assert.equal(viewCounts.all, 6);
+});
+
+test("tag and lead type filters build Airtable formulas from the whitelist only", () => {
+  const formula = buildLeadFormula(new URLSearchParams({ view: "all", tags: "Solicitor,Spam,Invented", leadType: "Solicitor" }));
+  assert.ok(formula.includes('FIND("Solicitor",{AI Tags}&"")>0'));
+  assert.ok(formula.includes('FIND("Spam",{AI Tags}&"")>0'));
+  assert.ok(!formula.includes("Invented"));
+  assert.ok(formula.includes('{Lead Type}="Solicitor"'));
 });

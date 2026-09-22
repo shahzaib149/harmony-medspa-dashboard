@@ -1,3 +1,4 @@
+import { isAiTag } from "@/lib/leads/classification";
 import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
 
 function formulaString(value: string) {
@@ -45,6 +46,17 @@ export function buildLeadFormula(
   }
 
   exact(["source"], "Source");
+  exact(["leadType"], "Lead Type");
+
+  // Multi-select tag filter: ?tags=Solicitor,Spam matches records carrying any of them.
+  const tags = (searchParams.get("tags") ?? "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(isAiTag);
+  if (tags.length) {
+    const clauses = tags.map((tag) => `FIND("${formulaString(tag)}",{AI Tags}&"")>0`);
+    filters.push(clauses.length > 1 ? `OR(${clauses.join(",")})` : clauses[0]);
+  }
 
   const delivery = (param: string, field: string) => {
     const value = searchParams.get(param);

@@ -24,6 +24,9 @@ const SUMMARY_FIELDS = [
   "Lead Created At",
   "Replied",
   "Duplicate Flag",
+  "Lead Type",
+  "Is Real Lead",
+  "AI Tags",
 ];
 
 export const dynamic = "force-dynamic";
@@ -47,6 +50,9 @@ function mapSummaryRecord(record: AirtableRecord): LeadSummaryRecord {
     createdAt: textField(record.fields, "Lead Created At") || record.createdTime,
     duplicate:
       record.fields["Duplicate Flag"] === true || status.toLowerCase() === "duplicate",
+    leadType: textField(record.fields, "Lead Type"),
+    isRealLead: record.fields["Is Real Lead"] === true,
+    aiTags: Array.isArray(record.fields["AI Tags"]) ? (record.fields["AI Tags"] as unknown[]).map(String) : [],
   };
 }
 

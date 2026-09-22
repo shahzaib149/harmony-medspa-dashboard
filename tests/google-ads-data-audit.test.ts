@@ -62,7 +62,7 @@ test("campaign UI omits bidding and incomplete ads do not render fake previews",
   assert.match(detail, />Ad preview unavailable<\/p>/);
 });
 test("lead source display includes campaign and ad-group attribution", () => {
-  const api = read("src/app/api/airtable/leads/route.ts");
+  const api = read("src/lib/leads/map-lead.ts");
   const client = read("src/app/leads/LeadsClient.tsx");
   assert.match(api, /utmAdGroup: str\(r\.fields, "UTM Ad Group"/);
   assert.match(client, /Campaign: \{lead\.utmCampaign\}/);

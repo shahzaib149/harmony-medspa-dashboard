@@ -35,8 +35,8 @@ export async function GET(request: Request) {
       if (leads.length >= 10_000) cursor = null;
     } while (cursor);
 
-    const headers = ["Name", "Phone", "Email", "Message", "Source", "Status", "Replied", "Lead Created At"];
-    const rows = leads.map((lead) => [lead.name, lead.phone, lead.email, lead.message, lead.source, lead.status, lead.replied ? "Yes" : "No", lead.createdAt]);
+    const headers = ["Name", "Phone", "Email", "Message", "Source", "Status", "Replied", "Lead Created At", "Lead Type", "Is Real Lead", "AI Tags", "Classification Method", "Treatment Interest", "GCLID", "UTM Term"];
+    const rows = leads.map((lead) => [lead.name, lead.phone, lead.email, lead.message, lead.source, lead.status, lead.replied ? "Yes" : "No", lead.createdAt, lead.leadType, lead.isRealLead ? "Yes" : "No", lead.aiTags.join("; "), lead.classificationMethod, lead.treatment, lead.gclid, lead.utmTerm]);
     const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
     await logAuditEvent({ actor, action: "leads_exported", category: "exports", resource: { type: "lead_export", label: "Leads CSV" }, summary: `Exported ${leads.length} leads to CSV`, metadata: { exported_rows: leads.length, filters_applied: Array.from(baseParams.keys()).filter((key) => key !== "pageSize") }, request });
     return new Response(`\uFEFF${csv}`, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="harmony-leads-${new Date().toISOString().slice(0, 10)}.csv"`, "Cache-Control": "no-store" } });

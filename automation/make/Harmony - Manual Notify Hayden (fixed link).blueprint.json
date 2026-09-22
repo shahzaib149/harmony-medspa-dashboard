@@ -1,0 +1,246 @@
+{
+    "name": "Integration Webhooks, Gmail (manual Notify Hayden)",
+    "flow": [
+        {
+            "id": 1,
+            "module": "gateway:CustomWebHook",
+            "version": 1,
+            "parameters": {
+                "hook": 2523979,
+                "maxResults": 1
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 0
+                },
+                "restore": {
+                    "parameters": {
+                        "hook": {
+                            "data": {
+                                "editable": "true"
+                            },
+                            "label": "My gateway-webhook webhook"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "hook",
+                        "type": "hook:gateway-webhook",
+                        "label": "Webhook",
+                        "required": true
+                    },
+                    {
+                        "name": "maxResults",
+                        "type": "number",
+                        "label": "Maximum number of results"
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "module": "google-email:sendAnEmail",
+            "version": 4,
+            "parameters": {
+                "__IMTCONN__": 11027469
+            },
+            "mapper": {
+                "to": [
+                    "haydenalamo@harmonymedspafl.com",
+                    "management@harmonymedspafl.com"
+                ],
+                "content": "<!doctype html>\r\n<html lang=\"en\">\r\n  <head>\r\n    <meta charset=\"utf-8\" />\r\n    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />\r\n    <title>Harmony lead notification</title>\r\n  </head>\r\n  <body\r\n    style=\"\r\n      margin: 0;\r\n      padding: 0;\r\n      background: #fffdf9;\r\n      color: #182126;\r\n      font-family:\r\n        Segoe UI,\r\n        Arial,\r\n        sans-serif;\r\n    \"\r\n  >\r\n    <div style=\"display: none; max-height: 0; overflow: hidden\">\r\n      {{1.lead_name}} is ready for follow-up.\r\n    </div>\r\n    <table\r\n      role=\"presentation\"\r\n      width=\"100%\"\r\n      cellpadding=\"0\"\r\n      cellspacing=\"0\"\r\n      border=\"0\"\r\n      style=\"background: #fffdf9\"\r\n    >\r\n      <tr>\r\n        <td align=\"center\" style=\"padding: 24px 12px\">\r\n          <table\r\n            role=\"presentation\"\r\n            width=\"900\"\r\n            cellpadding=\"0\"\r\n            cellspacing=\"0\"\r\n            border=\"0\"\r\n            style=\"\r\n              width: 100%;\r\n              max-width: 900px;\r\n              background: #fff;\r\n              border: 1px solid #e5dece;\r\n              border-radius: 16px;\r\n              overflow: hidden;\r\n              box-shadow: 0 12px 36px rgba(113, 83, 23, 0.1);\r\n            \"\r\n          >\r\n            <tr>\r\n              <td style=\"height: 4px; background: #a97813; font-size: 0\">\r\n                &nbsp;\r\n              </td>\r\n            </tr>\r\n            <tr>\r\n              <td style=\"padding: 21px 28px; border-bottom: 1px solid #eee8dc\">\r\n                <table\r\n                  role=\"presentation\"\r\n                  width=\"100%\"\r\n                  cellpadding=\"0\"\r\n                  cellspacing=\"0\"\r\n                >\r\n                  <tr>\r\n                    <td width=\"220\" valign=\"middle\">\r\n                      <a\r\n                        href=\"https://harmonymedspafl.com\"\r\n                        target=\"_blank\"\r\n                        style=\"\r\n                          display: inline-block;\r\n                          color: #a57412;\r\n                          text-decoration: none;\r\n                        \"\r\n                        ><span\r\n                          style=\"\r\n                            display: block;\r\n                            font-family:\r\n                              Georgia, &quot;Times New Roman&quot;, serif;\r\n                            font-size: 31px;\r\n                            line-height: 31px;\r\n                            font-style: italic;\r\n                            letter-spacing: -1px;\r\n                            color: #a57412;\r\n                          \"\r\n                          >Harmony</span\r\n                        ><span\r\n                          style=\"\r\n                            display: block;\r\n                            margin-top: 4px;\r\n                            padding-left: 37px;\r\n                            font-family: Arial, sans-serif;\r\n                            font-size: 8px;\r\n                            line-height: 10px;\r\n                            font-weight: 700;\r\n                            letter-spacing: 4px;\r\n                            color: #a57412;\r\n                          \"\r\n                          >MED SPA</span\r\n                        ></a\r\n                      >\r\n                    </td>\r\n                    <td\r\n                      valign=\"middle\"\r\n                      style=\"padding-left: 24px; border-left: 1px solid #e8dfcc\"\r\n                    >\r\n                      <p\r\n                        style=\"\r\n                          margin: 0 0 5px;\r\n                          color: #9b6b0b;\r\n                          font-size: 10px;\r\n                          font-weight: 700;\r\n                          letter-spacing: 2px;\r\n                        \"\r\n                      >\r\n                        LEAD NOTIFICATION\r\n                      </p>\r\n                      <h1\r\n                        style=\"\r\n                          margin: 0;\r\n                          color: #172027;\r\n                          font-family: Georgia, serif;\r\n                          font-size: 28px;\r\n                          line-height: 34px;\r\n                          font-weight: 400;\r\n                        \"\r\n                      >\r\n                        A lead needs your attention\r\n                      </h1>\r\n                      <p\r\n                        style=\"margin: 5px 0 0; color: #738089; font-size: 12px\"\r\n                      >\r\n                        Shared by {{1.notified_by}}\r\n                      </p>\r\n                    </td>\r\n                  </tr>\r\n                </table>\r\n              </td>\r\n            </tr>\r\n            <tr>\r\n              <td\r\n                style=\"\r\n                  padding: 17px 28px;\r\n                  background: #faf8f2;\r\n                  color: #4f5c64;\r\n                  font-size: 14px;\r\n                  line-height: 22px;\r\n                \"\r\n              >\r\n                Hi Hayden — please follow up with\r\n                <strong style=\"color: #172027\">{{1.lead_name}}</strong>. The\r\n                details and original message are below.\r\n              </td>\r\n            </tr>\r\n            <tr>\r\n              <td style=\"padding: 21px 28px 23px\">\r\n                <table\r\n                  role=\"presentation\"\r\n                  width=\"100%\"\r\n                  cellpadding=\"0\"\r\n                  cellspacing=\"0\"\r\n                >\r\n                  <tr>\r\n                    <td width=\"60%\" valign=\"top\" style=\"padding-right: 12px\">\r\n                      <table\r\n                        role=\"presentation\"\r\n                        width=\"100%\"\r\n                        cellpadding=\"0\"\r\n                        cellspacing=\"0\"\r\n                        style=\"\r\n                          background: #fcfbf8;\r\n                          border: 1px solid #e7e1d5;\r\n                          border-radius: 11px;\r\n                        \"\r\n                      >\r\n                        <tr>\r\n                          <td\r\n                            colspan=\"4\"\r\n                            style=\"\r\n                              padding: 14px 16px 7px;\r\n                              color: #9b6b0b;\r\n                              font-size: 10px;\r\n                              font-weight: 700;\r\n                              letter-spacing: 1.7px;\r\n                            \"\r\n                          >\r\n                            LEAD DETAILS\r\n                          </td>\r\n                        </tr>\r\n                        <tr>\r\n                          <td\r\n                            width=\"18%\"\r\n                            style=\"\r\n                              padding: 7px 7px 7px 16px;\r\n                              color: #78848b;\r\n                              font-size: 12px;\r\n                            \"\r\n                          >\r\n                            Name\r\n                          </td>\r\n                          <td\r\n                            width=\"32%\"\r\n                            style=\"\r\n                              padding: 7px 10px 7px 0;\r\n                              font-size: 13px;\r\n                              font-weight: 700;\r\n                            \"\r\n                          >\r\n                            {{1.lead_name}}\r\n                          </td>\r\n                          <td\r\n                            width=\"17%\"\r\n                            style=\"\r\n                              padding: 7px;\r\n                              color: #78848b;\r\n                              font-size: 12px;\r\n                            \"\r\n                          >\r\n                            Status\r\n                          </td>\r\n                          <td style=\"padding: 7px 16px 7px 0\">\r\n                            <span\r\n                              style=\"\r\n                                padding: 4px 8px;\r\n                                border: 1px solid #e3bb5f;\r\n                                border-radius: 20px;\r\n                                background: #fff8e6;\r\n                                color: #835900;\r\n                                font-size: 11px;\r\n                                font-weight: 700;\r\n                              \"\r\n                              >{{1.lead_status}}</span\r\n                            >\r\n                          </td>\r\n                        </tr>\r\n                        <tr>\r\n                          <td\r\n                            style=\"\r\n                              padding: 7px 7px 7px 16px;\r\n                              color: #78848b;\r\n                              font-size: 12px;\r\n                            \"\r\n                          >\r\n                            Phone\r\n                          </td>\r\n                          <td style=\"padding: 7px 10px 7px 0; font-size: 13px\">\r\n                            <a\r\n                              href=\"tel:{{1.lead_phone}}\"\r\n                              style=\"color: #9b6b0b; text-decoration: none\"\r\n                              >{{1.lead_phone}}</a\r\n                            >\r\n                          </td>\r\n                          <td\r\n                            style=\"\r\n                              padding: 7px;\r\n                              color: #78848b;\r\n                              font-size: 12px;\r\n                            \"\r\n                          >\r\n                            Source\r\n                          </td>\r\n                          <td style=\"padding: 7px 16px 7px 0; font-size: 13px\">\r\n                            {{1.lead_source}}\r\n                          </td>\r\n                        </tr>\r\n                        <tr>\r\n                          <td\r\n                            style=\"\r\n                              padding: 7px 7px 7px 16px;\r\n                              color: #78848b;\r\n                              font-size: 12px;\r\n                            \"\r\n                          >\r\n                            Email\r\n                          </td>\r\n                          <td\r\n                            colspan=\"3\"\r\n                            style=\"\r\n                              padding: 7px 16px 7px 0;\r\n                              font-size: 13px;\r\n                              word-break: break-word;\r\n                            \"\r\n                          >\r\n                            <a\r\n                              href=\"mailto:{{1.lead_email}}\"\r\n                              style=\"color: #9b6b0b; text-decoration: none\"\r\n                              >{{1.lead_email}}</a\r\n                            >\r\n                          </td>\r\n                        </tr>\r\n                        <tr>\r\n                          <td\r\n                            style=\"\r\n                              padding: 7px 7px 14px 16px;\r\n                              color: #78848b;\r\n                              font-size: 12px;\r\n                            \"\r\n                          >\r\n                            Received\r\n                          </td>\r\n                          <td\r\n                            colspan=\"3\"\r\n                            style=\"padding: 7px 16px 14px 0; font-size: 12px\"\r\n                          >\r\n                            {{1.lead_created_at}}\r\n                          </td>\r\n                        </tr>\r\n                      </table>\r\n                    </td>\r\n                    <td width=\"40%\" valign=\"top\" style=\"padding-left: 12px\">\r\n                      <p\r\n                        style=\"\r\n                          margin: 0 0 8px;\r\n                          color: #9b6b0b;\r\n                          font-size: 10px;\r\n                          font-weight: 700;\r\n                          letter-spacing: 1.7px;\r\n                        \"\r\n                      >\r\n                        ORIGINAL MESSAGE\r\n                      </p>\r\n                      <div\r\n                        style=\"\r\n                          min-height: 70px;\r\n                          padding: 14px 15px;\r\n                          background: #fff9ed;\r\n                          border-left: 3px solid #b8861b;\r\n                          color: #46525a;\r\n                          font-size: 13px;\r\n                          line-height: 20px;\r\n                          white-space: pre-wrap;\r\n                        \"\r\n                      >\r\n                        {{1.lead_message}}\r\n                      </div>\r\n                      <table\r\n                        role=\"presentation\"\r\n                        cellpadding=\"0\"\r\n                        cellspacing=\"0\"\r\n                        style=\"margin-top: 14px\"\r\n                      >\r\n                        <tr>\r\n                          <td bgcolor=\"#a57412\" style=\"border-radius: 8px\">\r\n                            <a\r\n                              href=\"{{1.lead_profile_url}}\"\r\n                              target=\"_blank\"\r\n                              style=\"\r\n                                display: inline-block;\r\n                                padding: 12px 20px;\r\n                                color: #fff;\r\n                                font-size: 12px;\r\n                                font-weight: 700;\r\n                                text-decoration: none;\r\n                              \"\r\n                              >View lead in dashboard &nbsp;&rarr;</a\r\n                            >\r\n                          </td>\r\n                        </tr>\r\n                      </table>\r\n                    </td>\r\n                  </tr>\r\n                </table>\r\n              </td>\r\n            </tr>\r\n            <tr>\r\n              <td\r\n                style=\"\r\n                  padding: 15px 28px;\r\n                  background: #faf8f2;\r\n                  border-top: 1px solid #d8c28f;\r\n                \"\r\n              >\r\n                <table\r\n                  role=\"presentation\"\r\n                  width=\"100%\"\r\n                  cellpadding=\"0\"\r\n                  cellspacing=\"0\"\r\n                >\r\n                  <tr>\r\n                    <td style=\"color: #737d82; font-size: 10px\">\r\n                      Harmony Med Spa · Lead Management\r\n                    </td>\r\n                    <td align=\"right\" style=\"color:#858b8e;font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;\">MANAGED BY&nbsp;&nbsp; <a href=\"https://codesquad.ai\" target=\"_blank\" style=\"color:#a57412;font-size:15px;font-weight:700;letter-spacing:0;text-decoration:none;\">CodeSquad</a> <span style=\"color:#667078;font-size:9px;letter-spacing:1px;\">&nbsp;AI SOLUTIONS</span></td>\r\n                  </tr>\r\n                </table>\r\n              </td>\r\n            </tr>\r\n          </table>\r\n        </td>\r\n      </tr>\r\n    </table>\r\n  </body>\r\n</html>",
+                "subject": "Lead follow-up: {{1.lead_name}}",
+                "bodyType": "rawHtml"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 0
+                },
+                "restore": {
+                    "expect": {
+                        "cc": {
+                            "mode": "chose"
+                        },
+                        "to": {
+                            "mode": "chose",
+                            "items": [
+                                null,
+                                null
+                            ]
+                        },
+                        "bcc": {
+                            "mode": "chose"
+                        },
+                        "from": {
+                            "mode": "chose",
+                            "label": "Empty"
+                        },
+                        "bodyType": {
+                            "label": "Raw HTML"
+                        },
+                        "attachments": {
+                            "mode": "chose"
+                        },
+                        "emailHeaders": {
+                            "mode": "chose"
+                        }
+                    },
+                    "parameters": {
+                        "__IMTCONN__": {
+                            "data": {
+                                "scoped": "true",
+                                "connection": "google-email"
+                            },
+                            "label": "Gmail connection (shahzaibhamid02@gmail.com)"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTCONN__",
+                        "type": "account:google-email",
+                        "label": "Connection",
+                        "required": true
+                    }
+                ],
+                "expect": [
+                    {
+                        "name": "to",
+                        "spec": {
+                            "name": "value",
+                            "type": "email",
+                            "label": "Recipient email address",
+                            "required": true,
+                            "validate": true
+                        },
+                        "type": "array",
+                        "label": "To",
+                        "required": true
+                    },
+                    {
+                        "name": "subject",
+                        "type": "text",
+                        "label": "Subject"
+                    },
+                    {
+                        "name": "bodyType",
+                        "type": "select",
+                        "label": "Body type",
+                        "required": true,
+                        "validate": {
+                            "enum": [
+                                "rawHtml",
+                                "collection"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "attachments",
+                        "spec": {
+                            "name": "value",
+                            "spec": [
+                                {
+                                    "name": "filename",
+                                    "type": "filename",
+                                    "label": "File name",
+                                    "required": true,
+                                    "semantic": "file:name"
+                                },
+                                {
+                                    "name": "data",
+                                    "type": "buffer",
+                                    "label": "Data",
+                                    "required": true,
+                                    "semantic": "file:data"
+                                }
+                            ],
+                            "type": "collection",
+                            "label": "Attachment"
+                        },
+                        "type": "array",
+                        "label": "Attachments"
+                    },
+                    {
+                        "name": "from",
+                        "type": "select",
+                        "label": "From"
+                    },
+                    {
+                        "name": "cc",
+                        "spec": {
+                            "name": "value",
+                            "type": "email",
+                            "label": "Recipient email address"
+                        },
+                        "type": "array",
+                        "label": "CC recipients"
+                    },
+                    {
+                        "name": "bcc",
+                        "spec": {
+                            "name": "value",
+                            "type": "email",
+                            "label": "Recipient email address"
+                        },
+                        "type": "array",
+                        "label": "BCC recipients"
+                    },
+                    {
+                        "name": "emailHeaders",
+                        "spec": {
+                            "name": "value",
+                            "spec": [
+                                {
+                                    "name": "key",
+                                    "type": "text",
+                                    "label": "Key",
+                                    "required": true
+                                },
+                                {
+                                    "name": "value",
+                                    "type": "text",
+                                    "label": "Value"
+                                }
+                            ],
+                            "type": "collection",
+                            "label": "Email header"
+                        },
+                        "type": "array",
+                        "label": "Additional email headers"
+                    },
+                    {
+                        "name": "content",
+                        "type": "text",
+                        "label": "Content"
+                    }
+                ]
+            }
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "us2.make.com",
+        "notes": []
+    }
+}

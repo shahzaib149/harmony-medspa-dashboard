@@ -7,6 +7,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
+import { countsAsRealLead } from "@/lib/leads/classification";
 import { requireRole } from "@/lib/auth/requireRole";
 import { createServiceClient } from "@/lib/supabase/server";
 import type {
@@ -60,6 +61,8 @@ type Lead = {
   lastContactedAt: string | null;
   emailSentStatus: string;
   smsSentStatus: string;
+  leadType: string;
+  isRealLead: boolean;
 };
 
 type Enrollment = {
@@ -115,6 +118,8 @@ const OVERVIEW_FIELDS = {
     "Last Contacted At",
     "Email Sent Status",
     "SMS Sent Status",
+    "Lead Type",
+    "Is Real Lead",
   ],
   enrollments: ["Lead", "Status", "Current Step", "Next Send At", "Last Sent At", "Created At"],
   // Message Log is fetched without a field projection (see getOverviewData) so the
@@ -176,6 +181,8 @@ function mapLead(record: AirtableRecord): Lead {
     lastContactedAt: textField(fields, "Last Contacted At") || null,
     emailSentStatus: textField(fields, "Email Sent Status"),
     smsSentStatus: textField(fields, "SMS Sent Status"),
+    leadType: textField(fields, "Lead Type"),
+    isRealLead: fields["Is Real Lead"] === true,
   };
 }
 
@@ -980,9 +987,16 @@ export async function getOverviewData(
           .filter((item): item is ClinicMetric => Boolean(item))
           .sort((a, b) => a.month.localeCompare(b.month))
       : [];
-  const periodLeads = leads.filter((lead) => inWindow(lead.createdAt, period.from, period.to));
+  // Headline KPIs, funnel and conversion rates count prospective patients only;
+  // solicitors, spam and other non-leads would otherwise drag the funnel down.
+  const allPeriodSubmissions = leads.filter((lead) => inWindow(lead.createdAt, period.from, period.to));
+  const periodLeads = allPeriodSubmissions.filter(countsAsRealLead);
+  const notALeadCount = allPeriodSubmissions.length - periodLeads.length;
+  const previousNotALead = leads.filter(
+    (lead) => inWindow(lead.createdAt, period.previousFrom, period.previousTo) && !countsAsRealLead(lead),
+  ).length;
   const previousLeads = leads.filter((lead) =>
-    inWindow(lead.createdAt, period.previousFrom, period.previousTo),
+    inWindow(lead.createdAt, period.previousFrom, period.previousTo) && countsAsRealLead(lead),
   );
   const periodMessages = messages.filter((message) =>
     inWindow(message.sentAt, period.from, period.to),
@@ -1085,6 +1099,7 @@ export async function getOverviewData(
       booked: metric(booked, previousBooked),
       bookingRate: metric(bookingRate, previousBookingRate),
       averageSpeedSeconds: metric(speed, previousSpeed),
+      notALead: metric(notALeadCount, previousNotALead),
     },
     leadFunnel: funnelFor(periodLeads),
     leadTrend: trendFor(periodLeads, period),

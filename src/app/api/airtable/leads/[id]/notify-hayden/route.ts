@@ -48,7 +48,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     lead_source: text(lead.fields, "Source") || "Not captured",
     lead_created_at: text(lead.fields, "Lead Created At") || lead.createdTime,
     lead_message: text(lead.fields, "Message") || "No message captured.",
-    lead_profile_url: "https://crm.harmonymedspafl.com/leads?view=all",
+    lead_profile_url: `https://crm.harmonymedspafl.com/leads?view=all&lead=${lead.id}`,
     notified_by: actor.full_name || actor.email || "Harmony dashboard user",
     notified_at: notifiedAt,
   };

@@ -1,4 +1,5 @@
-import { leadBelongsToView, type LeadView } from "@/lib/leads/view";
+import { countsAsRealLead, needsReview } from "@/lib/leads/classification";
+import { LEAD_VIEWS, leadBelongsToView, type LeadView } from "@/lib/leads/view";
 
 export type LeadSummaryRecord = {
   id: string;
@@ -10,6 +11,9 @@ export type LeadSummaryRecord = {
   email: string;
   phone: string;
   duplicate: boolean;
+  leadType: string;
+  isRealLead: boolean;
+  aiTags: string[];
 };
 
 export type LeadSummaryMetrics = {
@@ -23,6 +27,11 @@ export type LeadSummaryMetrics = {
   notReplied: number;
   topSource: string | null;
   topSourceCount: number;
+  /** Submissions classified as not a lead, across the same filters (ignores the view). */
+  notALead: number;
+  needsReview: number;
+  /** Not-a-lead records grouped by Lead Type. */
+  byLeadType: Record<string, number>;
 };
 
 export type LeadViewCounts = Record<LeadView, number>;
@@ -78,13 +87,14 @@ export function aggregateLeadSummary(
   view: LeadView,
   now = new Date(),
 ) {
-  const viewCounts: LeadViewCounts = {
-    all: records.length,
-    replied: records.filter((record) => record.replied).length,
-    booked: records.filter(
-      (record) => record.status.trim().toLowerCase() === "booked",
-    ).length,
-  };
+  const viewCounts = Object.fromEntries(
+    LEAD_VIEWS.map((candidate) => [candidate, records.filter((record) => leadBelongsToView(record, candidate)).length]),
+  ) as LeadViewCounts;
+  const notALeadRecords = records.filter((record) => !countsAsRealLead(record));
+  const byLeadType: Record<string, number> = {};
+  notALeadRecords.forEach((record) => {
+    byLeadType[record.leadType] = (byLeadType[record.leadType] ?? 0) + 1;
+  });
 
   const matching = records.filter((record) => leadBelongsToView(record, view));
   const duplicates = duplicateIds(matching);
@@ -118,6 +128,9 @@ export function aggregateLeadSummary(
     notReplied: matching.length - replied,
     topSource,
     topSourceCount,
+    notALead: notALeadRecords.length,
+    needsReview: records.filter(needsReview).length,
+    byLeadType,
   };
 
   return { summary, viewCounts };

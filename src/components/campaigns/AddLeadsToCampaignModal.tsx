@@ -23,6 +23,8 @@ type Lead = {
   status: string;
   replied: boolean;
   campaigns?: Array<{ campaign: string; status: string }>;
+  leadType?: string;
+  isRealLead?: boolean;
 };
 type NewLead = {
   name: string;
@@ -66,6 +68,17 @@ function eligibility(lead: Lead) {
   if (!lead.email || digits(lead.phone).length !== 10)
     return "Valid email and US phone required";
   return "";
+}
+/**
+ * AI-classified non-leads (solicitors, spam, appointment changes…) are left out
+ * of "Select all eligible" but can still be ticked individually.
+ */
+function notALeadWarning(lead: Lead) {
+  if (!lead.leadType || lead.isRealLead) return "";
+  return `Not a lead (${lead.leadType}) · include only if they are a prospective patient`;
+}
+function autoSelectable(lead: Lead) {
+  return !eligibility(lead) && !notALeadWarning(lead);
 }
 function rowError(row: NewLead) {
   if (!row.name.trim()) return "Name is required";
@@ -136,7 +149,8 @@ export default function AddLeadsToCampaignModal({
       void (async () => {
         setLeadsLoading(true);
         try {
-          const params = new URLSearchParams({ page: String(leadPage + 1), pageSize: "50" });
+          // view=all so staff can still reach leads the AI marked as not a lead.
+          const params = new URLSearchParams({ view: "all", page: String(leadPage + 1), pageSize: "50" });
           const cursor = leadCursors[leadPage];
           if (cursor) params.set("cursor", cursor);
           if (query.trim()) params.set("search", query.trim());
@@ -165,7 +179,7 @@ export default function AddLeadsToCampaignModal({
       leads,
     [leads],
   );
-  const eligibleVisible = useMemo(() => visible.filter((lead) => !eligibility(lead)), [visible]);
+  const eligibleVisible = useMemo(() => visible.filter(autoSelectable), [visible]);
   const scheduleState = useMemo(() => {
     if (!date || !time) return { schedule: null, error: "" };
     try {
@@ -524,7 +538,7 @@ function Existing({
   onPrevious: () => void;
   onNext: () => void;
 }) {
-  const eligible = leads.filter((lead) => !eligibility(lead));
+  const eligible = leads.filter(autoSelectable);
   const all =
     eligible.length > 0 && eligible.every((lead) => selected.has(lead.id));
   return (
@@ -552,6 +566,7 @@ function Existing({
             "Duplicate",
             "Failed",
             "Not Interested",
+            "Not a Lead",
           ].map((value) => (
             <option key={value}>{value}</option>
           ))}
@@ -618,12 +633,12 @@ function Existing({
                   </span>
                   <span
                     className={
-                      why
+                      why || notALeadWarning(lead)
                         ? "text-[10px] text-(--warning)"
                         : "text-[10px] text-(--healthy)"
                     }
                   >
-                    {why || "Eligible"}
+                    {why || notALeadWarning(lead) || "Eligible"}
                   </span>
                 </span>
               </span>
@@ -683,10 +698,10 @@ function Existing({
                   <td className="p-3 text-(--text-secondary)">{lead.status}</td>
                   <td
                     className={
-                      why ? "p-3 text-(--warning)" : "p-3 text-(--healthy)"
+                      why || notALeadWarning(lead) ? "p-3 text-(--warning)" : "p-3 text-(--healthy)"
                     }
                   >
-                    {why || "Eligible"}
+                    {why || notALeadWarning(lead) || "Eligible"}
                   </td>
                 </tr>
               );

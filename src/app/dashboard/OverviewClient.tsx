@@ -343,8 +343,18 @@ function OverviewContent({
     series?: number[];
     seriesColor?: string;
     invert?: boolean;
+    note?: { label: string; href: string };
   }> = [
-    { label: "Total leads", metric: s.total, display: integer.format(s.total.value ?? 0), icon: Users, tone: "brand", series: seriesFrom((p) => p.leads), seriesColor: "var(--chart-leads)" },
+    {
+      label: "Total leads",
+      metric: s.total,
+      display: integer.format(s.total.value ?? 0),
+      icon: Users,
+      tone: "brand",
+      series: seriesFrom((p) => p.leads),
+      seriesColor: "var(--chart-leads)",
+      note: s.notALead?.value ? { label: `+${integer.format(s.notALead.value)} not a lead`, href: "/leads?view=not-lead" } : undefined,
+    },
     { label: "Contacted", metric: s.contacted, display: integer.format(s.contacted.value ?? 0), icon: ContactRound, tone: "teal", series: seriesFrom((p) => p.contacted), seriesColor: "var(--chart-6)" },
     { label: "Replied", metric: s.replied, display: integer.format(s.replied.value ?? 0), icon: MessageCircleReply, tone: "blue", series: seriesFrom((p) => p.replied), seriesColor: "var(--chart-replied)" },
     { label: "Booked", metric: s.booked, display: integer.format(s.booked.value ?? 0), icon: UserCheck, tone: "teal", series: seriesFrom((p) => p.booked), seriesColor: "var(--chart-booked)" },
@@ -486,6 +496,7 @@ function KpiCard({
   seriesColor,
   previousLabel,
   invert = false,
+  note,
 }: {
   label: string;
   display: string;
@@ -496,6 +507,7 @@ function KpiCard({
   seriesColor?: string;
   previousLabel: string;
   invert?: boolean;
+  note?: { label: string; href: string };
 }) {
   const change = metric.changePercent;
   const good = change !== null && change !== undefined && (invert ? change <= 0 : change >= 0);
@@ -510,6 +522,15 @@ function KpiCard({
       <p className="mt-2 text-2xl font-semibold leading-none tracking-[-0.035em] text-[var(--text-primary)] tabular-nums">
         {display}
       </p>
+      {note && (
+        <a
+          href={note.href}
+          className="mt-1 w-fit text-[11px] font-semibold text-[var(--text-muted)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
+          title="Solicitors, spam, appointment changes and other non-leads. Not counted in lead metrics."
+        >
+          {note.label}
+        </a>
+      )}
       <div className="mt-2 flex-1">
         {series && series.some((v) => v > 0) ? (
           <Sparkline values={series} color={seriesColor} />

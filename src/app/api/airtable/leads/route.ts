@@ -1,6 +1,6 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
-import type { LeadCampaignSummary } from "@/lib/types/campaigns";
+import { mapLead, str, type AirtableRecord } from "@/lib/leads/map-lead";
 import { normalizeUsPhone, invalidateLeadsBaseCache } from "@/lib/airtable/leads-base";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { normalizeLeadView } from "@/lib/leads/view";
@@ -15,86 +15,9 @@ export const revalidate = 0;
 
 const LEADS_TTL = 30; // 30s cache for fast page navigation
 
-export interface Lead {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  treatment: string;
-  message: string;
-  source: string;
-  status: string;
-  utmSource: string;
-  utmCampaign: string;
-  utmMedium: string;
-  utmAdGroup: string;
-  pageUrl: string;
-  createdAt: string;
-  emailSentStatus: string;
-  smsSentStatus: string;
-  replied: boolean;
-  notes: string;
-  lastContactedAt: string;
-  duplicate: boolean;
-  campaigns: LeadCampaignSummary[];
-}
-
-function str(fields: Record<string, unknown>, ...keys: string[]): string {
-  for (const k of keys) {
-    const v = fields[k];
-    if (v !== undefined && v !== null && v !== "") return String(v);
-  }
-  return "";
-}
-
-type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
-
-function values(value: unknown): string[] {
-  return Array.isArray(value) ? value.map(String) : value ? [String(value)] : [];
-}
-
-function campaignSummaries(fields: Record<string, unknown>): LeadCampaignSummary[] {
-  const campaigns: LeadCampaignSummary[] = [];
-  const speedSent = [str(fields, "Email Sent Status"), str(fields, "SMS Sent Status")].some((value) => ["sent", "delivered"].includes(value.toLowerCase()));
-  if (speedSent) campaigns.push({ campaign: "Speed-to-Lead", slug: "speed-to-lead", status: "Completed" });
-  const enrollmentIds = values(fields["Nurture Enrollments"]);
-  const statuses = values(fields["Nurture Status"]);
-  const steps = values(fields["Nurture Current Step"]);
-  const next = values(fields["Nurture Next Send At"]);
-  const last = values(fields["Nurture Last Sent At"]);
-  const reasons = values(fields["Nurture Stop Reason"]);
-  const created = values(fields["Nurture Enrollment Created At"]);
-  enrollmentIds.forEach((enrollmentId, index) => campaigns.push({ campaign: "14-Day Nurture", slug: "14-day-nurture", status: (statuses[index] || "Completed") as LeadCampaignSummary["status"], currentStep: steps[index] || null, nextSendAt: next[index] || null, lastSentAt: last[index] || null, stopReason: reasons[index] || null, enrolledAt: created[index] || null, enrollmentId }));
-  return campaigns;
-}
+export type { Lead } from "@/lib/leads/map-lead";
 
 const PAGE_SIZES = new Set([20, 30, 50]);
-
-function mapLead(r: AirtableRecord): Lead {
-  return {
-    id: r.id,
-    name: str(r.fields, "Name"),
-    phone: str(r.fields, "Phone"),
-    email: str(r.fields, "Email"),
-    treatment: str(r.fields, "Treatment Interest"),
-    message: str(r.fields, "Message"),
-    source: str(r.fields, "Source"),
-    status: str(r.fields, "Status") || "New",
-    utmSource: str(r.fields, "UTM Source"),
-    utmCampaign: str(r.fields, "UTM Campaign"),
-    utmMedium: str(r.fields, "UTM Medium"),
-    utmAdGroup: str(r.fields, "UTM Ad Group", "utm_ad_group", "utm_adgroup"),
-    pageUrl: str(r.fields, "Page URL"),
-    createdAt: str(r.fields, "Lead Created At") || r.createdTime,
-    emailSentStatus: str(r.fields, "Email Sent Status"),
-    smsSentStatus: str(r.fields, "SMS Sent Status"),
-    replied: r.fields.Replied === true,
-    notes: str(r.fields, "Notes"),
-    lastContactedAt: str(r.fields, "Last Contacted At"),
-    duplicate: r.fields["Duplicate Flag"] === true || str(r.fields, "Status").toLowerCase() === "duplicate",
-    campaigns: campaignSummaries(r.fields),
-  };
-}
 
 async function airtableRecord(id: string) {
   const response = await fetch(`https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(TABLE_NAME)}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${getAirtableApiKey()}` }, cache: "no-store" });
@@ -198,6 +121,9 @@ function newLeadFields(input: ReturnType<typeof validateNewLead>) {
     "Lead Created At": input.leadCreatedAt, "Duplicate Flag": false,
     "Last Contacted At": null, "Email Sent Status": null, "SMS Sent Status": null,
     Notes: input.message, Message: input.message, Replied: false,
+    // Staff-entered leads are prospects by definition; record that explicitly.
+    "Lead Type": "Real Lead", "Is Real Lead": true, "Classification Method": "Manual",
+    "Classified At": input.leadCreatedAt, "AI Reason": `Added by staff (${input.source}).`,
   };
   if (input.email) fields.Email = input.email;
   if (input.treatment) fields["Treatment Interest"] = input.treatment;

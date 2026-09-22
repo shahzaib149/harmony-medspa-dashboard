@@ -28,6 +28,7 @@ import {
   Sparkles,
   Trash2,
   FileUp,
+  UserCheck,
   X,
 } from "lucide-react";
 import type { Lead } from "@/app/api/airtable/leads/route";
@@ -46,6 +47,7 @@ import { Toast } from "@/components/ui/Toast";
 import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import {
+  DEFAULT_LEAD_VIEW,
   leadBelongsToView,
   normalizeLeadView,
   type LeadView,
@@ -54,6 +56,15 @@ import type {
   LeadSummaryMetrics,
   LeadViewCounts,
 } from "@/lib/leads/summary";
+import {
+  AI_TAGS,
+  countsAsRealLead,
+  isAiTag,
+  isLeadType,
+  LEAD_TYPES,
+  NOT_A_LEAD_TYPES,
+  type LeadType,
+} from "@/lib/leads/classification";
 
 const AddLeadsToCampaignModal = dynamic(() => import("@/components/campaigns/AddLeadsToCampaignModal"));
 
@@ -109,6 +120,12 @@ const STATUS_CONFIG: Record<
     border: "var(--danger-border)",
     label: "Not Interested",
   },
+  "Not a Lead": {
+    color: "var(--neutral-text)",
+    bg: "var(--neutral-bg)",
+    border: "var(--neutral-border)",
+    label: "Not a Lead",
+  },
 };
 
 const STATUS_OPTIONS = [
@@ -118,15 +135,49 @@ const STATUS_OPTIONS = [
   "Duplicate",
   "Failed",
   "Not Interested",
+  "Not a Lead",
 ];
+
+type Tone = { color: string; bg: string; border: string };
+const TONES: Record<"success" | "warning" | "info" | "neutral" | "danger", Tone> = {
+  success: { color: "var(--success-text)", bg: "var(--success-bg)", border: "var(--success-border)" },
+  warning: { color: "var(--warning-text)", bg: "var(--warning-bg)", border: "var(--warning-border)" },
+  info: { color: "var(--info-text)", bg: "var(--info-bg)", border: "var(--info-border)" },
+  neutral: { color: "var(--neutral-text)", bg: "var(--neutral-bg)", border: "var(--neutral-border)" },
+  danger: { color: "var(--danger-text)", bg: "var(--danger-bg)", border: "var(--danger-border)" },
+};
+
+const LEAD_TYPE_TONE: Record<LeadType, Tone> = {
+  "Real Lead": TONES.success,
+  Unclear: TONES.warning,
+  "Existing Patient": TONES.info,
+  "Appointment Change": TONES.info,
+  Solicitor: TONES.neutral,
+  "Job Seeker": TONES.neutral,
+  Spam: TONES.danger,
+};
+
+function leadTypeTone(leadType: string): Tone {
+  return isLeadType(leadType) ? LEAD_TYPE_TONE[leadType] : TONES.neutral;
+}
+
+const METHOD_LABEL: Record<string, string> = {
+  Rule: "Paid-ad rule",
+  AI: "AI",
+  Fallback: "AI fallback",
+  Manual: "Staff",
+};
 
 type DateFilter = "all" | "today" | "7" | "30";
 type SentFilter = "all" | "sent" | "not_sent";
 
-const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string }> = [
-  { value: "all", label: "All Leads", empty: "No Leads found" },
-  { value: "replied", label: "Replied", empty: "No replied Leads yet" },
-  { value: "booked", label: "Booked", empty: "No booked Leads yet" },
+const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string; hint: string }> = [
+  { value: "leads", label: "Real Leads", empty: "No real Leads yet", hint: "Prospective patients. Solicitors, spam and other non-leads are in Not a Lead." },
+  { value: "review", label: "Needs Review", empty: "Nothing needs review", hint: "The AI was unsure or unavailable. These were treated as leads; confirm or reclassify them." },
+  { value: "not-lead", label: "Not a Lead", empty: "No non-leads found", hint: "Received the speed-to-lead reply, but no Hayden alert and no nurture. Check weekly for real patients." },
+  { value: "replied", label: "Replied", empty: "No replied Leads yet", hint: "" },
+  { value: "booked", label: "Booked", empty: "No booked Leads yet", hint: "" },
+  { value: "all", label: "All", empty: "No Leads found", hint: "Every submission, including non-leads." },
 ];
 
 function normalize(value: string) {
@@ -300,6 +351,240 @@ function NotifyHaydenButton({
   );
 }
 
+function LeadTypeBadge({ leadType }: { leadType: string }) {
+  if (!leadType) return null;
+  const tone = leadTypeTone(leadType);
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold leading-4"
+      style={{ color: tone.color, backgroundColor: tone.bg, borderColor: tone.border }}
+      aria-label={`Lead type: ${leadType}`}
+    >
+      {leadType}
+    </span>
+  );
+}
+
+function TagChip({ tag }: { tag: string }) {
+  const review = tag === "Needs Review";
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-4"
+      style={{
+        color: review ? "var(--warning-text)" : MUTED,
+        backgroundColor: review ? "var(--warning-bg)" : "var(--surface-2)",
+      }}
+    >
+      {tag}
+    </span>
+  );
+}
+
+/** Lead type + first two tags + overflow count, sized for a table row. */
+function LeadClassificationChips({ lead, max = 2 }: { lead: Lead; max?: number }) {
+  if (!lead.leadType && lead.aiTags.length === 0) return null;
+  // Show Needs Review first: it is the tag that asks staff to act.
+  const tags = [...lead.aiTags].sort((a, b) => Number(b === "Needs Review") - Number(a === "Needs Review"));
+  const shown = tags.filter((tag) => tag !== lead.leadType).slice(0, max);
+  const hidden = tags.filter((tag) => tag !== lead.leadType).length - shown.length;
+  return (
+    <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+      <LeadTypeBadge leadType={lead.leadType} />
+      {shown.map((tag) => <TagChip key={tag} tag={tag} />)}
+      {hidden > 0 && (
+        <span className="text-[10px] font-semibold" style={{ color: DIM }} title={tags.slice(max).join(", ")}>
+          +{hidden}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function ConfidenceMeter({ value }: { value: number | null }) {
+  const filled = value === null ? 0 : Math.round(value * 10);
+  return (
+    <div className="flex items-center gap-2" aria-label={value === null ? "Confidence not recorded" : `Confidence ${Math.round(value * 100)}%`}>
+      <div className="flex gap-[3px]" aria-hidden="true">
+        {Array.from({ length: 10 }).map((_, index) => (
+          <span
+            key={index}
+            className="h-3 w-1.5 rounded-[2px]"
+            style={{ backgroundColor: index < filled ? GOLD : "var(--surface-2)" }}
+          />
+        ))}
+      </div>
+      <span className="text-[11px] font-bold tabular-nums" style={{ color: MUTED }}>
+        {value === null ? "—" : `${Math.round(value * 100)}%`}
+      </span>
+    </div>
+  );
+}
+
+function ClassificationCard({
+  lead,
+  canUpdate,
+  saving,
+  onReclassify,
+}: {
+  lead: Lead;
+  canUpdate: boolean;
+  saving: boolean;
+  onReclassify: (leadType: LeadType) => void;
+}) {
+  const [notLeadType, setNotLeadType] = useState<LeadType>("Solicitor");
+  const real = countsAsRealLead(lead);
+  const classified = Boolean(lead.leadType);
+  const tone = classified ? leadTypeTone(lead.leadType) : TONES.neutral;
+  const method = METHOD_LABEL[lead.classificationMethod] ?? lead.classificationMethod;
+  const verdict = classified ? lead.leadType : "Not classified";
+  const outcome = !classified
+    ? "Received before AI classification. Counted as a real lead."
+    : real
+      ? lead.leadType === "Unclear"
+        ? "Treated as a lead: Hayden notified, enrolled in nurture. Confirm below."
+        : "Hayden notified and enrolled in 14-Day Nurture."
+      : lead.leadType === "Existing Patient"
+        ? "Hayden notified. Not enrolled in nurture."
+        : "Speed-to-lead reply only. No Hayden alert, no nurture.";
+
+  return (
+    <section
+      aria-labelledby={`classification-${lead.id}`}
+      className="relative mt-5 overflow-hidden rounded-2xl border"
+      style={{ backgroundColor: CARD, borderColor: tone.border }}
+    >
+      <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: tone.color }} aria-hidden="true" />
+      <div className="p-4 pl-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p id={`classification-${lead.id}`} className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+            Lead classification
+          </p>
+          {lead.classificationMethod && (
+            <span
+              className="rounded-md border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: MUTED, borderColor: "var(--border-strong)" }}
+              title={lead.classificationMethod === "Rule" ? "Paid-ad click detected (GCLID / Google CPC). AI was skipped." : undefined}
+            >
+              {method}
+            </span>
+          )}
+        </div>
+
+        <p className="mt-2 text-[26px] font-extrabold leading-tight tracking-[-0.02em]" style={{ color: classified ? tone.color : MUTED }}>
+          {verdict}
+        </p>
+        <p className="mt-1 text-xs leading-5" style={{ color: MUTED }}>{outcome}</p>
+
+        {lead.aiReason && (
+          <blockquote className="mt-3 border-l-2 pl-3 text-sm italic leading-6" style={{ borderColor: "var(--border-strong)", color: TEXT }}>
+            {lead.aiReason}
+          </blockquote>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+          {classified && lead.classificationMethod !== "Manual" && (
+            <div>
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>Confidence</p>
+              <ConfidenceMeter value={lead.aiConfidence} />
+            </div>
+          )}
+          {lead.aiTags.length > 0 && (
+            <div className="min-w-0">
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>Tags</p>
+              <div className="flex flex-wrap gap-1">{lead.aiTags.map((tag) => <TagChip key={tag} tag={tag} />)}</div>
+            </div>
+          )}
+        </div>
+
+        {(lead.classifiedAt || lead.classificationOverriddenBy) && (
+          <p className="mt-3 text-[11px]" style={{ color: DIM }}>
+            {lead.classificationOverriddenBy
+              ? `Changed by ${lead.classificationOverriddenBy}`
+              : `Classified by ${method || "automation"}`}
+            {lead.classifiedAt ? ` · ${fullDate(lead.classifiedAt)}` : ""}
+          </p>
+        )}
+      </div>
+
+      {canUpdate && (
+        <div className="flex flex-col gap-2 border-t p-4 pl-5 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: BORDER_SOFT, backgroundColor: "var(--surface-2)" }}>
+          {real ? (
+            <>
+              <p className="text-xs" style={{ color: MUTED }}>
+                Not a patient? Marking this stops any active nurture messages.
+              </p>
+              <div className="flex gap-2">
+                <label className="relative">
+                  <span className="sr-only">Reason this is not a lead</span>
+                  <select
+                    value={notLeadType}
+                    onChange={(event) => setNotLeadType(event.target.value as LeadType)}
+                    disabled={saving}
+                    className="h-10 appearance-none rounded-xl border pl-3 pr-8 text-xs font-semibold"
+                    style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}
+                  >
+                    {NOT_A_LEAD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
+                </label>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => onReclassify(notLeadType)}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:cursor-wait disabled:opacity-60"
+                  style={{ color: TEXT, borderColor: BORDER, backgroundColor: CARD }}
+                >
+                  {saving && <Loader2 size={13} className="animate-spin" />}
+                  Mark as not a lead
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs" style={{ color: MUTED }}>
+                This is a prospective patient? Mark it and enroll them in nurture.
+              </p>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => onReclassify("Real Lead")}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-extrabold disabled:cursor-wait disabled:opacity-60"
+                style={{ color: "var(--primary-foreground)", backgroundColor: GOLD }}
+              >
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <UserCheck size={14} />}
+                Mark as real lead
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CopyValue({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-xs"
+      style={{ color: MUTED, backgroundColor: "rgba(255,255,255,0.04)" }}
+      aria-label={`Copy ${label}`}
+      title={value}
+    >
+      <strong>{label}:</strong>
+      <span className="truncate font-mono">{value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-6)}` : value}</span>
+      {copied ? <Check size={12} style={{ color: TEAL }} /> : <Copy size={12} />}
+    </button>
+  );
+}
+
 function SelectControl({
   label,
   value,
@@ -410,50 +695,49 @@ function summaryCardsFor(
   view: LeadView,
   summary: LeadSummaryMetrics | null,
 ): SummaryCardData[] {
-  const unavailable = (labels: string[]): SummaryCardData[] =>
-    labels.map((label, index) => ({
+  const palette = [
+    "var(--brand-primary)",
+    "var(--info)",
+    "var(--warning)",
+    "var(--chart-replied)",
+    "var(--success)",
+    "var(--neutral-text)",
+  ];
+  const labels: Record<LeadView, string[]> = {
+    leads: ["Real Leads", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
+    review: ["Needs Review", "Received Today", "Contacted", "Replied", "Booked", "Not a Lead"],
+    "not-lead": ["Not a Lead", "Solicitors", "Appointment Changes", "Existing Patients", "Spam", "Job Seekers"],
+    replied: ["Total Replied", "Received Today", "Booked from Replied", "Not Booked Yet", "Top Source", "Duplicates"],
+    booked: ["Total Booked", "Received Today", "Replied + Booked", "Not Replied", "Top Source", "Duplicates"],
+    all: ["All Submissions", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
+  };
+
+  if (!summary) {
+    return labels[view].map((label, index) => ({
       label,
       value: "—",
       meta: "Not available",
-      color: [
-        "var(--brand-primary)",
-        "var(--info)",
-        "var(--warning)",
-        "var(--chart-replied)",
-        "var(--success)",
-        "var(--neutral-text)",
-      ][index],
+      color: palette[index],
     }));
+  }
 
-  if (!summary) {
-    if (view === "replied") {
-      return unavailable([
-        "Total Replied",
-        "Received Today",
-        "Booked from Replied",
-        "Not Booked Yet",
-        "Top Source",
-        "Duplicates",
-      ]);
-    }
-    if (view === "booked") {
-      return unavailable([
-        "Total Booked",
-        "Received Today",
-        "Replied + Booked",
-        "Not Replied",
-        "Top Source",
-        "Duplicates",
-      ]);
-    }
-    return unavailable([
-      "Total Leads",
-      "New Today",
-      "Contacted",
-      "Replied",
-      "Booked",
-      "Duplicates",
-    ]);
+  const notALeadCard: SummaryCardData = {
+    label: "Not a Lead",
+    value: summary.notALead,
+    meta: "excluded from lead counts",
+    color: "var(--neutral-text)",
+  };
+
+  if (view === "not-lead") {
+    const type = (name: string) => summary.byLeadType[name] ?? 0;
+    return [
+      { label: "Not a Lead", value: summary.total, meta: "matching filters", color: "var(--neutral-text)" },
+      { label: "Solicitors", value: type("Solicitor"), meta: "vendors, SEO, sales", color: "var(--brand-primary)" },
+      { label: "Appointment Changes", value: type("Appointment Change"), meta: "reschedule or cancel", color: "var(--info)" },
+      { label: "Existing Patients", value: type("Existing Patient"), meta: "Hayden notified", color: "var(--success)" },
+      { label: "Spam", value: type("Spam"), meta: "no action taken", color: "var(--danger)" },
+      { label: "Job Seekers", value: type("Job Seeker"), meta: "employment inquiries", color: "var(--warning)" },
+    ];
   }
 
   if (view === "replied") {
@@ -478,13 +762,14 @@ function summaryCardsFor(
     ];
   }
 
+  const [first, second] = labels[view];
   return [
-    { label: "Total Leads", value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
-    { label: "New Today", value: summary.newToday, meta: "received today", color: "var(--info)" },
+    { label: first, value: summary.total, meta: view === "review" ? "treated as leads" : "matching filters", color: view === "review" ? "var(--warning)" : "var(--brand-primary)" },
+    { label: second, value: summary.newToday, meta: "received today", color: "var(--info)" },
     { label: "Contacted", value: summary.contacted, meta: "status: Contacted", color: "var(--warning)" },
     { label: "Replied", value: summary.replied, meta: "shown in Replied", color: "var(--chart-replied)" },
     { label: "Booked", value: summary.booked, meta: "shown in Booked", color: "var(--success)" },
-    { label: "Duplicates", value: summary.duplicates, meta: "matching records", color: "var(--neutral-text)" },
+    notALeadCard,
   ];
 }
 
@@ -570,6 +855,23 @@ function LeadTicker({
   );
 }
 
+function attributionItems(lead: Lead) {
+  return ([
+    ["Keyword", lead.utmTerm],
+    ["Match type", lead.matchType],
+    ["Ad", lead.utmContent],
+    ["Campaign", lead.utmCampaign],
+    ["Ad group", lead.utmAdGroup],
+    ["Source", lead.utmSource],
+    ["Medium", lead.utmMedium],
+    ["Device", lead.device],
+    ["Network", lead.network],
+    ["Best time", lead.bestTime],
+    ["Landing", lead.landingUrl],
+    ["Page", lead.pageUrl],
+  ] as Array<[string, string]>).filter(([, value]) => Boolean(value));
+}
+
 function LeadDetailsModal({
   lead,
   duplicate,
@@ -584,6 +886,8 @@ function LeadDetailsModal({
   onNotify,
   notifying,
   notified,
+  onReclassify,
+  reclassifying,
 }: {
   lead: Lead | null;
   duplicate: boolean;
@@ -598,6 +902,8 @@ function LeadDetailsModal({
   onNotify: (lead: Lead) => void;
   notifying: boolean;
   notified: boolean;
+  onReclassify: (lead: Lead, leadType: LeadType) => void;
+  reclassifying: boolean;
 }) {
   const [updating, setUpdating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -779,6 +1085,13 @@ function LeadDetailsModal({
             <DeliveryPill label="SMS" value={lead.smsSentStatus} />
             <DeliveryPill label="Email" value={lead.emailSentStatus} />
           </div>
+
+          <ClassificationCard
+            lead={lead}
+            canUpdate={canUpdate}
+            saving={reclassifying}
+            onReclassify={(leadType) => onReclassify(lead, leadType)}
+          />
 
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {[
@@ -1091,33 +1404,23 @@ function LeadDetailsModal({
               Attribution
             </p>
             <div className="flex flex-wrap gap-2">
-              {([
-                ["Source", lead.utmSource],
-                ["Medium", lead.utmMedium],
-                ["Campaign", lead.utmCampaign],
-                ["Ad group", lead.utmAdGroup],
-                ["Page", lead.pageUrl],
-              ] as const)
-                .filter(([, value]) => Boolean(value))
-                .map((item) => (
-                  <span
-                    key={`${item[0]}:${item[1]}`}
-                    className="max-w-full truncate rounded-full px-3 py-1 text-xs"
-                    style={{
-                      color: MUTED,
-                      backgroundColor: "rgba(255,255,255,0.04)",
-                    }}
-                  >
-                    <strong>{item[0]}:</strong> {item[1]}
-                  </span>
-                ))}
-              {![
-                lead.utmSource,
-                lead.utmMedium,
-                lead.utmCampaign,
-                lead.utmAdGroup,
-                lead.pageUrl,
-              ].some(Boolean) && (
+              {lead.gclid && <CopyValue label="GCLID" value={lead.gclid} />}
+              {!lead.gclid && lead.gbraid && <CopyValue label="GBRAID" value={lead.gbraid} />}
+              {!lead.gclid && !lead.gbraid && lead.wbraid && <CopyValue label="WBRAID" value={lead.wbraid} />}
+              {attributionItems(lead).map((item) => (
+                <span
+                  key={item[0]}
+                  className="max-w-full truncate rounded-full px-3 py-1 text-xs"
+                  style={{
+                    color: MUTED,
+                    backgroundColor: "rgba(255,255,255,0.04)",
+                  }}
+                  title={item[1]}
+                >
+                  <strong>{item[0]}:</strong> {item[1]}
+                </span>
+              ))}
+              {!lead.gclid && !lead.gbraid && !lead.wbraid && attributionItems(lead).length === 0 && (
                 <span className="text-xs" style={{ color: MUTED }}>
                   No campaign attribution captured.
                 </span>
@@ -1472,6 +1775,10 @@ export default function LeadsClient() {
   const campaignFilter = searchParams.get("campaign")?.trim() || "all";
   const campaignStatusFilter = searchParams.get("campaignStatus")?.trim() || "all";
   const campaignStepFilter = searchParams.get("campaignStep")?.trim() || "all";
+  const leadTypeFilter = searchParams.get("leadType")?.trim() || "all";
+  const tagsParam = searchParams.get("tags") ?? "";
+  const tagFilter = useMemo(() => tagsParam.split(",").map((tag) => tag.trim()).filter(isAiTag), [tagsParam]);
+  const tagFilterKey = tagFilter.join(",");
   const filterQuery = useMemo(() => {
     const params = new URLSearchParams({ view: activeView });
     if (searchQuery) params.set("search", searchQuery);
@@ -1482,6 +1789,8 @@ export default function LeadsClient() {
     if (campaignFilter !== "all") params.set("campaign", campaignFilter);
     if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
     if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
+    if (leadTypeFilter !== "all") params.set("leadType", leadTypeFilter);
+    if (tagFilterKey) params.set("tags", tagFilterKey);
     const now = new Date();
     if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
     if (dateFilter === "7" || dateFilter === "30") {
@@ -1490,11 +1799,12 @@ export default function LeadsClient() {
       params.set("dateFrom", from.toISOString().slice(0, 10));
     }
     return params.toString();
-  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, searchQuery, smsFilter, sourceFilter, statusFilter]);
+  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, leadTypeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
+  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && !tagFilterKey;
   const cachedLeads = useDashboardCachedData<{ leads?: Lead[]; view?: LeadView; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number }>(
     DATA_CACHE_KEYS.leads,
   );
-  const useCachedFirstPage = pageSize === 20 && currentPage === 1 && activeView === "all" && cachedLeads?.view === "all" && !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all";
+  const useCachedFirstPage = pageSize === 20 && currentPage === 1 && activeView === DEFAULT_LEAD_VIEW && cachedLeads?.view === DEFAULT_LEAD_VIEW && noExtraFilters;
   const [leads, setLeads] = useState<Lead[]>(() => useCachedFirstPage ? cachedLeads?.leads ?? [] : []);
   const [loading, setLoading] = useState(() => !useCachedFirstPage);
   const [refreshing, setRefreshing] = useState(false);
@@ -1540,6 +1850,7 @@ export default function LeadsClient() {
   );
   const [notifyingHayden, setNotifyingHayden] = useState<Set<string>>(new Set());
   const [notifiedHayden, setNotifiedHayden] = useState<Set<string>>(new Set());
+  const [reclassifying, setReclassifying] = useState(false);
   const [importingLeads, setImportingLeads] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -1578,6 +1889,8 @@ export default function LeadsClient() {
       date: null,
       smsStatus: null,
       emailStatus: null,
+      leadType: null,
+      tags: null,
       ...(clearSearch ? { search: null } : {}),
     });
     if (clearSearch) setSearch("");
@@ -1621,11 +1934,26 @@ export default function LeadsClient() {
     return () => document.removeEventListener("mousedown", close);
   }, [actionsOpen]);
 
+  const deepLinkLeadId = searchParams.get("lead");
   useEffect(() => {
-    const leadId = searchParams.get("lead");
-    if (leadId)
-      setSelectedLead(leads.find((lead) => lead.id === leadId) ?? null);
-  }, [leads, searchParams]);
+    if (!deepLinkLeadId || !/^rec[a-zA-Z0-9]{14}$/.test(deepLinkLeadId)) return;
+    const onPage = leads.find((lead) => lead.id === deepLinkLeadId);
+    if (onPage) {
+      setSelectedLead(onPage);
+      return;
+    }
+    if (loading) return;
+    // Notification emails link straight to a lead; fetch it directly if it is not on this page.
+    const controller = new AbortController();
+    void fetch(`/api/airtable/leads?view=all&pageSize=20&recordId=${deepLinkLeadId}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.json() as Promise<{ leads?: Lead[] }>)
+      .then((data) => {
+        const match = data.leads?.find((lead) => lead.id === deepLinkLeadId);
+        if (match) setSelectedLead(match);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [deepLinkLeadId, leads, loading]);
 
   const load = useCallback(async (showLoading = true, cursor: string | null = null, pageNumber = 1) => {
     requestRef.current?.abort();
@@ -1650,7 +1978,7 @@ export default function LeadsClient() {
       setLeads(data.leads ?? []);
       setNextCursor(data.nextCursor ?? null);
       setVisibleRange({ from: data.visibleFrom ?? 0, to: data.visibleTo ?? 0 });
-      if (pageNumber === 1 && pageSize === 20 && activeView === "all" && !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all") setCachedData(DATA_CACHE_KEYS.leads, data);
+      if (pageNumber === 1 && pageSize === 20 && activeView === DEFAULT_LEAD_VIEW && noExtraFilters) setCachedData(DATA_CACHE_KEYS.leads, data);
       return true;
     } catch (event) {
       if (event instanceof DOMException && event.name === "AbortError") return false;
@@ -1663,7 +1991,7 @@ export default function LeadsClient() {
         setRefreshing(false);
       }
     }
-  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, filterQuery, pageSize, searchQuery, setLeads, smsFilter, sourceFilter, statusFilter]);
+  }, [activeView, filterQuery, noExtraFilters, pageSize, setLeads]);
 
   const loadSummary = useCallback(async (showLoading = true) => {
     summaryRequestRef.current?.abort();
@@ -1718,7 +2046,7 @@ export default function LeadsClient() {
     });
     void load(!hasLoadedRowsRef.current, currentCursor, currentPage);
     return () => requestRef.current?.abort();
-  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, currentCursor, currentPage, dateFilter, emailFilter, pageSize, searchQuery, smsFilter, sourceFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeView, filterQuery, currentCursor, currentPage, pageSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     void loadSummary(true);
@@ -1785,6 +2113,8 @@ export default function LeadsClient() {
     dateFilter !== "all" ? { key: "date", label: dateFilter === "today" ? "Today" : `Last ${dateFilter} days` } : null,
     smsFilter !== "all" ? { key: "smsStatus", label: smsFilter === "sent" ? "SMS sent" : "SMS not sent" } : null,
     emailFilter !== "all" ? { key: "emailStatus", label: emailFilter === "sent" ? "Email sent" : "Email not sent" } : null,
+    leadTypeFilter !== "all" ? { key: "leadType", label: `Lead type: ${leadTypeFilter}` } : null,
+    tagFilter.length ? { key: "tags", label: `Tags: ${tagFilter.join(", ")}` } : null,
   ].filter((chip): chip is { key: string; label: string } => Boolean(chip));
   const activeFilterCount = filterChips.length;
   const hasQueryFilters = activeFilterCount > 0 || Boolean(searchQuery);
@@ -1883,22 +2213,7 @@ export default function LeadsClient() {
   }
 
   function exportCsv() {
-    const params = new URLSearchParams({ view: activeView });
-    if (searchQuery) params.set("search", searchQuery);
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    if (sourceFilter !== "all") params.set("source", sourceFilter);
-    if (smsFilter !== "all") params.set("smsStatus", smsFilter);
-    if (emailFilter !== "all") params.set("emailStatus", emailFilter);
-    if (campaignFilter !== "all") params.set("campaign", campaignFilter);
-    if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
-    if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
-    const now = new Date();
-    if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
-    if (dateFilter === "7" || dateFilter === "30") {
-      const from = new Date(now);
-      from.setDate(from.getDate() - Number(dateFilter));
-      params.set("dateFrom", from.toISOString().slice(0, 10));
-    }
+    const params = new URLSearchParams(filterQuery);
     window.location.assign(`/api/airtable/leads/export?${params}`);
     showToast("success", "Filtered Leads export started.");
   }
@@ -1996,6 +2311,42 @@ export default function LeadsClient() {
         next.delete(lead.id);
         return next;
       });
+    }
+  }
+
+  async function reclassifyLead(lead: Lead, leadType: LeadType) {
+    if (!canUpdateLeads || reclassifying) return;
+    setReclassifying(true);
+    try {
+      const response = await fetch(`/api/airtable/leads/${lead.id}/classification`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ leadType }),
+      });
+      const data = await response.json().catch(() => ({})) as { error?: string; lead?: Lead; stoppedEnrollments?: number; stopError?: string | null };
+      if (!response.ok || data.error || !data.lead) throw new Error(data.error || "Couldn’t change the classification. Try again.");
+      const updated = data.lead;
+      setLeads((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedLead(updated);
+      if (leadType === "Real Lead") {
+        if (role === "admin") {
+          setCampaignLead(updated);
+          showToast("success", "Marked as a real lead. Choose a start time to enroll them in 14-Day Nurture.");
+        } else {
+          showToast("success", "Marked as a real lead. Ask an admin to enroll them in 14-Day Nurture.");
+        }
+      } else if (data.stopError) {
+        showToast("error", `Marked as not a lead, but nurture could not be stopped: ${data.stopError}`);
+      } else {
+        const stopped = data.stoppedEnrollments ?? 0;
+        showToast("success", `Marked as not a lead (${leadType}).${stopped ? " Nurture messages stopped." : ""}`);
+      }
+      void reloadRowsAndSummary();
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Couldn’t change the classification. Try again.");
+    } finally {
+      setReclassifying(false);
     }
   }
 
@@ -2165,7 +2516,7 @@ export default function LeadsClient() {
           <div
             role="tablist"
             aria-label="Lead views"
-            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1"
+            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1 lg:grid-cols-6"
             style={{ borderColor: BORDER, backgroundColor: CARD }}
           >
             {VIEW_OPTIONS.map((option) => {
@@ -2206,9 +2557,9 @@ export default function LeadsClient() {
               );
             })}
           </div>
-          {activeView === "all" && (
+          {activeViewOption.hint && (
             <p className="mt-2 text-[11px] leading-4" style={{ color: MUTED }}>
-              All Leads includes replied and booked Leads.
+              {activeViewOption.hint}
             </p>
           )}
         </div>
@@ -2392,6 +2743,16 @@ export default function LeadsClient() {
                 { label: "Last 30 days", value: "30" },
               ]}
             />
+            <SelectControl
+              label="Filter by tag"
+              value={tagFilter.length === 1 ? tagFilter[0] : tagFilter.length > 1 ? "__multi" : "all"}
+              onChange={(value) => { if (value !== "__multi") setFilterParam("tags", value); }}
+              options={[
+                { label: "All tags", value: "all" },
+                ...(tagFilter.length > 1 ? [{ label: `${tagFilter.length} tags`, value: "__multi" }] : []),
+                ...AI_TAGS.map((tag) => ({ label: tag, value: tag })),
+              ]}
+            />
         </div>
 
         {filterChips.length > 0 && (
@@ -2511,7 +2872,45 @@ export default function LeadsClient() {
                     { label: "Email not sent", value: "not_sent" },
                   ]}
                 />
+                <SelectControl
+                  label="Filter by lead type"
+                  value={leadTypeFilter}
+                  onChange={(value) => setFilterParam("leadType", value)}
+                  options={[
+                    { label: "Lead type: All", value: "all" },
+                    ...LEAD_TYPES.map((type) => ({ label: type, value: type })),
+                  ]}
+                />
               </div>
+              <fieldset className="mt-5">
+                <legend className="mb-2 text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: DIM }}>
+                  Tags <span className="normal-case tracking-normal" style={{ color: MUTED }}>· matches any selected</span>
+                </legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {AI_TAGS.map((tag) => {
+                    const selected = tagFilter.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          const next = selected ? tagFilter.filter((item) => item !== tag) : [...tagFilter, tag];
+                          setFilterParam("tags", next.join(","));
+                        }}
+                        className="min-h-8 rounded-full border px-3 text-[11px] font-bold transition"
+                        style={{
+                          borderColor: selected ? "var(--brand-primary)" : BORDER,
+                          backgroundColor: selected ? "var(--brand-primary-soft)" : CARD,
+                          color: selected ? "var(--brand-primary-strong)" : MUTED,
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
             </div>
             <div className="flex items-center justify-between gap-3 border-t p-4 sm:p-5" style={{ borderColor: BORDER }}>
               <button type="button" onClick={() => clearFilters()} disabled={activeFilterCount === 0} className="min-h-11 rounded-xl px-3 text-xs font-bold disabled:opacity-40" style={{ color: MUTED }}>
@@ -2661,6 +3060,7 @@ export default function LeadsClient() {
                                   ? "Possible duplicate"
                                   : lead.treatment || "No treatment captured"}
                               </p>
+                              <LeadClassificationChips lead={lead} />
                             </div>
                           </div>
                         </td>
@@ -2956,6 +3356,7 @@ export default function LeadsClient() {
                         >
                           {lead.phone || lead.email || "No contact captured"}
                         </p>
+                        <LeadClassificationChips lead={lead} />
                       </div>
                     </div>
                     <StatusPill status={lead.status} />
@@ -3120,7 +3521,10 @@ export default function LeadsClient() {
       <LeadDetailsModal
         lead={selectedLead}
         duplicate={selectedLead ? isDuplicateLead(selectedLead) : false}
-        onClose={() => setSelectedLead(null)}
+        onClose={() => {
+          setSelectedLead(null);
+          if (deepLinkLeadId) updateQuery({ lead: null }, { resetPagination: false });
+        }}
         onStatusChange={(updated) => {
           applyLeadUpdate(updated);
           void reloadRowsAndSummary();
@@ -3141,6 +3545,8 @@ export default function LeadsClient() {
         onNotify={(lead) => void notifyHayden(lead)}
         notifying={selectedLead ? notifyingHayden.has(selectedLead.id) : false}
         notified={selectedLead ? notifiedHayden.has(selectedLead.id) : false}
+        onReclassify={(lead, leadType) => void reclassifyLead(lead, leadType)}
+        reclassifying={reclassifying}
       />
       {role === "admin" && <AddLeadsToCampaignModal
         open={Boolean(campaignLead)}

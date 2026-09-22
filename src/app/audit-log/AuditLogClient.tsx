@@ -42,10 +42,10 @@ type ResponseData = {
 };
 
 const emptyFilters: Filters = { search: "", dateFrom: "", dateTo: "", user: "", role: "", category: "", action: "", result: "", resourceType: "" };
-const actions = ["user_logged_in", "user_logged_out", "user_invited", "user_removed", "user_role_changed", "user_access_changed", "lead_created", "lead_updated", "lead_status_changed", "lead_replied_changed", "lead_deleted", "leads_imported", "leads_exported", "campaign_enrollment_started", "campaign_enrollment_stopped", "campaign_enrollment_removed", "campaign_step_changed", "clinic_metrics_updated", "audit_logs_exported", "action_failed"];
+const actions = ["user_logged_in", "user_logged_out", "user_invited", "user_removed", "user_role_changed", "user_access_changed", "lead_created", "lead_updated", "lead_status_changed", "lead_replied_changed", "lead_classification_overridden", "lead_deleted", "leads_imported", "leads_exported", "campaign_enrollment_started", "campaign_enrollment_stopped", "campaign_enrollment_removed", "campaign_step_changed", "clinic_metrics_updated", "audit_logs_exported", "action_failed"];
 const actionLabels: Record<string, string> = {
   user_logged_in: "Signed in", user_logged_out: "Signed out", user_invited: "Invited user", user_removed: "Removed user", user_role_changed: "Changed user role", user_access_changed: "Changed user access", user_updated: "Updated user",
-  lead_created: "Created Lead", lead_updated: "Updated Lead", lead_status_changed: "Changed Lead status", lead_replied_changed: "Changed replied state", lead_deleted: "Deleted Lead", leads_imported: "Imported Leads", leads_exported: "Exported Leads",
+  lead_created: "Created Lead", lead_updated: "Updated Lead", lead_status_changed: "Changed Lead status", lead_replied_changed: "Changed replied state", lead_classification_overridden: "Changed Lead classification", lead_deleted: "Deleted Lead", leads_imported: "Imported Leads", leads_exported: "Exported Leads",
   campaign_enrollment_started: "Started enrollment", campaign_enrollment_stopped: "Stopped nurture", campaign_enrollment_removed: "Removed from campaign", campaign_step_changed: "Changed campaign step", clinic_metrics_updated: "Updated clinic metrics", audit_logs_exported: "Exported Audit Log", action_failed: "Action failed",
 };
 const label = (value: string) => actionLabels[value] || value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
