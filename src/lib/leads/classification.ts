@@ -79,3 +79,6 @@ export function needsReview(lead: { aiTags: string[] }) {
 export const REAL_LEAD_FORMULA = 'OR({Is Real Lead}=TRUE(),LEN({Lead Type}&"")=0)';
 export const NOT_A_LEAD_FORMULA = 'AND(NOT({Is Real Lead}),LEN({Lead Type}&"")>0)';
 export const NEEDS_REVIEW_FORMULA = 'FIND("Needs Review",{AI Tags}&"")>0';
+
+/** `?leadType=not-lead` matches every non-lead type at once. */
+export const NOT_A_LEAD_FILTER = "not-lead";

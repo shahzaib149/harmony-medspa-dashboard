@@ -1,4 +1,4 @@
-import { isAiTag } from "@/lib/leads/classification";
+import { isAiTag, NOT_A_LEAD_FILTER, NOT_A_LEAD_FORMULA } from "@/lib/leads/classification";
 import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
 
 function formulaString(value: string) {
@@ -46,7 +46,9 @@ export function buildLeadFormula(
   }
 
   exact(["source"], "Source");
-  exact(["leadType"], "Lead Type");
+  const leadType = searchParams.get("leadType")?.trim();
+  if (leadType === NOT_A_LEAD_FILTER) filters.push(NOT_A_LEAD_FORMULA);
+  else exact(["leadType"], "Lead Type");
 
   // Multi-select tag filter: ?tags=Solicitor,Spam matches records carrying any of them.
   const tags = (searchParams.get("tags") ?? "")

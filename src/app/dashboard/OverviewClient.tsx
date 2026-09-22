@@ -353,7 +353,7 @@ function OverviewContent({
       tone: "brand",
       series: seriesFrom((p) => p.leads),
       seriesColor: "var(--chart-leads)",
-      note: s.notALead?.value ? { label: `+${integer.format(s.notALead.value)} not a lead`, href: "/leads?view=not-lead" } : undefined,
+      note: s.notALead?.value ? { label: `+${integer.format(s.notALead.value)} not a lead`, href: "/leads?view=all&leadType=not-lead" } : undefined,
     },
     { label: "Contacted", metric: s.contacted, display: integer.format(s.contacted.value ?? 0), icon: ContactRound, tone: "teal", series: seriesFrom((p) => p.contacted), seriesColor: "var(--chart-6)" },
     { label: "Replied", metric: s.replied, display: integer.format(s.replied.value ?? 0), icon: MessageCircleReply, tone: "blue", series: seriesFrom((p) => p.replied), seriesColor: "var(--chart-replied)" },

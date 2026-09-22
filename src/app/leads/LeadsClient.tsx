@@ -62,6 +62,7 @@ import {
   isAiTag,
   isLeadType,
   LEAD_TYPES,
+  NOT_A_LEAD_FILTER,
   NOT_A_LEAD_TYPES,
   type LeadType,
 } from "@/lib/leads/classification";
@@ -172,12 +173,9 @@ type DateFilter = "all" | "today" | "7" | "30";
 type SentFilter = "all" | "sent" | "not_sent";
 
 const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string; hint: string }> = [
-  { value: "leads", label: "Real Leads", empty: "No real Leads yet", hint: "Prospective patients. Solicitors, spam and other non-leads are in Not a Lead." },
-  { value: "review", label: "Needs Review", empty: "Nothing needs review", hint: "The AI was unsure or unavailable. These were treated as leads; confirm or reclassify them." },
-  { value: "not-lead", label: "Not a Lead", empty: "No non-leads found", hint: "Received the speed-to-lead reply, but no Hayden alert and no nurture. Check weekly for real patients." },
-  { value: "replied", label: "Replied", empty: "No replied Leads yet", hint: "" },
+  { value: "all", label: "All", empty: "No Leads found", hint: "Every submission, including solicitors, spam and other non-leads." },
+  { value: "leads", label: "Real Leads", empty: "No real Leads yet", hint: "Prospective patients only. Filter by Lead type → Not a lead to review everything else." },
   { value: "booked", label: "Booked", empty: "No booked Leads yet", hint: "" },
-  { value: "all", label: "All", empty: "No Leads found", hint: "Every submission, including non-leads." },
 ];
 
 function normalize(value: string) {
@@ -704,12 +702,9 @@ function summaryCardsFor(
     "var(--neutral-text)",
   ];
   const labels: Record<LeadView, string[]> = {
-    leads: ["Real Leads", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
-    review: ["Needs Review", "Received Today", "Contacted", "Replied", "Booked", "Not a Lead"],
-    "not-lead": ["Not a Lead", "Solicitors", "Appointment Changes", "Existing Patients", "Spam", "Job Seekers"],
-    replied: ["Total Replied", "Received Today", "Booked from Replied", "Not Booked Yet", "Top Source", "Duplicates"],
-    booked: ["Total Booked", "Received Today", "Replied + Booked", "Not Replied", "Top Source", "Duplicates"],
     all: ["All Submissions", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
+    leads: ["Real Leads", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
+    booked: ["Total Booked", "Received Today", "Replied + Booked", "Not Replied", "Top Source", "Duplicates"],
   };
 
   if (!summary) {
@@ -721,55 +716,25 @@ function summaryCardsFor(
     }));
   }
 
-  const notALeadCard: SummaryCardData = {
-    label: "Not a Lead",
-    value: summary.notALead,
-    meta: "excluded from lead counts",
-    color: "var(--neutral-text)",
-  };
-
-  if (view === "not-lead") {
-    const type = (name: string) => summary.byLeadType[name] ?? 0;
-    return [
-      { label: "Not a Lead", value: summary.total, meta: "matching filters", color: "var(--neutral-text)" },
-      { label: "Solicitors", value: type("Solicitor"), meta: "vendors, SEO, sales", color: "var(--brand-primary)" },
-      { label: "Appointment Changes", value: type("Appointment Change"), meta: "reschedule or cancel", color: "var(--info)" },
-      { label: "Existing Patients", value: type("Existing Patient"), meta: "Hayden notified", color: "var(--success)" },
-      { label: "Spam", value: type("Spam"), meta: "no action taken", color: "var(--danger)" },
-      { label: "Job Seekers", value: type("Job Seeker"), meta: "employment inquiries", color: "var(--warning)" },
-    ];
-  }
-
-  if (view === "replied") {
-    return [
-      { label: "Total Replied", value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
-      { label: "Received Today", value: summary.newToday, meta: "Lead Created At today", color: "var(--info)" },
-      { label: "Booked from Replied", value: summary.booked, meta: "also shown in Booked", color: "var(--success)" },
-      { label: "Not Booked Yet", value: summary.notBooked, meta: "replied, not booked", color: "var(--warning)" },
-      { label: "Top Source", value: summary.topSource ?? "—", meta: summary.topSource ? `${summary.topSourceCount} replied Leads` : "No source data", color: "var(--chart-replied)" },
-      { label: "Duplicates", value: summary.duplicates, meta: "matching records", color: "var(--neutral-text)" },
-    ];
-  }
-
   if (view === "booked") {
     return [
       { label: "Total Booked", value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
       { label: "Received Today", value: summary.newToday, meta: "Lead Created At today", color: "var(--info)" },
-      { label: "Replied + Booked", value: summary.replied, meta: "also shown in Replied", color: "var(--chart-replied)" },
+      { label: "Replied + Booked", value: summary.replied, meta: "booked, replied", color: "var(--chart-replied)" },
       { label: "Not Replied", value: summary.notReplied, meta: "booked, not replied", color: "var(--warning)" },
       { label: "Top Source", value: summary.topSource ?? "—", meta: summary.topSource ? `${summary.topSourceCount} booked Leads` : "No source data", color: "var(--success)" },
       { label: "Duplicates", value: summary.duplicates, meta: "matching records", color: "var(--neutral-text)" },
     ];
   }
 
-  const [first, second] = labels[view];
+  const [first] = labels[view];
   return [
-    { label: first, value: summary.total, meta: view === "review" ? "treated as leads" : "matching filters", color: view === "review" ? "var(--warning)" : "var(--brand-primary)" },
-    { label: second, value: summary.newToday, meta: "received today", color: "var(--info)" },
+    { label: first, value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
+    { label: "New Today", value: summary.newToday, meta: "received today", color: "var(--info)" },
     { label: "Contacted", value: summary.contacted, meta: "status: Contacted", color: "var(--warning)" },
-    { label: "Replied", value: summary.replied, meta: "shown in Replied", color: "var(--chart-replied)" },
+    { label: "Replied", value: summary.replied, meta: "marked replied", color: "var(--chart-replied)" },
     { label: "Booked", value: summary.booked, meta: "shown in Booked", color: "var(--success)" },
-    notALeadCard,
+    { label: "Not a Lead", value: summary.notALead, meta: "not counted", color: "var(--neutral-text)" },
   ];
 }
 
@@ -2113,7 +2078,7 @@ export default function LeadsClient() {
     dateFilter !== "all" ? { key: "date", label: dateFilter === "today" ? "Today" : `Last ${dateFilter} days` } : null,
     smsFilter !== "all" ? { key: "smsStatus", label: smsFilter === "sent" ? "SMS sent" : "SMS not sent" } : null,
     emailFilter !== "all" ? { key: "emailStatus", label: emailFilter === "sent" ? "Email sent" : "Email not sent" } : null,
-    leadTypeFilter !== "all" ? { key: "leadType", label: `Lead type: ${leadTypeFilter}` } : null,
+    leadTypeFilter !== "all" ? { key: "leadType", label: leadTypeFilter === NOT_A_LEAD_FILTER ? "Not a lead" : `Lead type: ${leadTypeFilter}` } : null,
     tagFilter.length ? { key: "tags", label: `Tags: ${tagFilter.join(", ")}` } : null,
   ].filter((chip): chip is { key: string; label: string } => Boolean(chip));
   const activeFilterCount = filterChips.length;
@@ -2516,7 +2481,7 @@ export default function LeadsClient() {
           <div
             role="tablist"
             aria-label="Lead views"
-            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1 lg:grid-cols-6"
+            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1"
             style={{ borderColor: BORDER, backgroundColor: CARD }}
           >
             {VIEW_OPTIONS.map((option) => {
@@ -2878,6 +2843,7 @@ export default function LeadsClient() {
                   onChange={(value) => setFilterParam("leadType", value)}
                   options={[
                     { label: "Lead type: All", value: "all" },
+                    { label: "Not a lead (any type)", value: NOT_A_LEAD_FILTER },
                     ...LEAD_TYPES.map((type) => ({ label: type, value: type })),
                   ]}
                 />

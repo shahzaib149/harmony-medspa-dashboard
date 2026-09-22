@@ -43,7 +43,7 @@ test("Lead summary aggregates beyond the visible 20-row page", () => {
   assert.equal(summary.total, 28);
   assert.equal(summary.newToday, 28);
   assert.equal(summary.contacted, 9);
-  assert.deepEqual(viewCounts, { leads: 28, review: 0, "not-lead": 0, replied: 0, booked: 0, all: 28 });
+  assert.deepEqual(viewCounts, { all: 28, leads: 28, booked: 0 });
 });
 
 test("summary tab counts overlap for replied and booked Leads", () => {
@@ -55,17 +55,13 @@ test("summary tab counts overlap for replied and booked Leads", () => {
   ];
 
   const aggregate = aggregateLeadSummary(records, "booked");
-  assert.deepEqual(aggregate.viewCounts, { leads: 4, review: 0, "not-lead": 0, replied: 2, booked: 2, all: 4 });
+  assert.deepEqual(aggregate.viewCounts, { all: 4, leads: 4, booked: 2 });
   assert.equal(aggregate.summary.total, 2);
   assert.equal(aggregate.summary.booked, 2);
   assert.equal(aggregate.summary.replied, 1);
   assert.equal(aggregate.summary.notReplied, 1);
 
-  const replied = aggregateLeadSummary(records, "replied").summary;
-  assert.equal(replied.total, 2);
-  assert.equal(replied.booked, 1);
-  assert.equal(replied.notBooked, 1);
-
+  assert.equal(aggregateLeadSummary(records, "all").summary.replied, 2);
   assert.equal(aggregateLeadSummary(records, "all").summary.total, 4);
 });
 
@@ -82,7 +78,7 @@ test("duplicate metrics use the complete matching view", () => {
 
 test("table and summary formulas share filters while summary can omit the active view", () => {
   const params = new URLSearchParams({
-    view: "replied",
+    view: "booked",
     search: "Jane",
     leadStatus: "Contacted",
     source: "Website",
@@ -93,9 +89,8 @@ test("table and summary formulas share filters while summary can omit the active
   const paginatedFormula = buildLeadFormula(params);
   const summaryFormula = buildLeadFormula(params, { includeView: false });
 
-  assert.match(paginatedFormula, /\{Replied\}=TRUE\(\)/);
-  assert.doesNotMatch(paginatedFormula, /Status.*booked/);
-  assert.doesNotMatch(summaryFormula, /\{Replied\}=TRUE\(\)/);
+  assert.match(paginatedFormula, /LOWER\(\{Status\}&""\)="booked"/);
+  assert.doesNotMatch(summaryFormula, /="booked"/);
   assert.match(summaryFormula, /\{Status\}="Contacted"/);
   assert.match(summaryFormula, /\{Source\}="Website"/);
   assert.match(summaryFormula, /\{Nurture Current Step\}="Day 3 Email"/);
@@ -118,7 +113,7 @@ test("Real leads exclude non-leads while counting them separately", () => {
   assert.equal(summary.notALead, 3);
   assert.equal(summary.needsReview, 1);
   assert.deepEqual(summary.byLeadType, { Solicitor: 1, "Appointment Change": 1, "Existing Patient": 1 });
-  assert.equal(viewCounts["not-lead"], 3);
+  assert.equal(viewCounts.leads, 3);
   assert.equal(viewCounts.all, 6);
 });
 
