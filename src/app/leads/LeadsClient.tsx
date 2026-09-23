@@ -1826,7 +1826,7 @@ export default function LeadsClient() {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", activeView);
     for (const [key, value] of Object.entries(updates)) {
-      if (!value || value === "all") params.delete(key);
+      if (!value || (value === "all" && key !== "view")) params.delete(key);
       else params.set(key, value);
     }
     if (options.resetPagination !== false) {
