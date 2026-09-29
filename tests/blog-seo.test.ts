@@ -55,6 +55,20 @@ test("technical SEO package follows manual publication state", () => {
   assert.equal(publishedSeo.articleSchema.datePublished, "2026-08-07T09:00:00.000Z");
 });
 
+test("a long but well-formed slug can still publish", () => {
+  const longSlug = "unlocking-the-power-of-nutraceuticals-why-hrt-complete-t-e-are-essential-for-optimized-bhrt";
+  assert.ok(longSlug.length > 80, "fixture must exceed the old 80-char limit");
+  const result = validateBlog(article({ slug: longSlug }));
+  assert.ok(
+    !result.errors.includes("Use a lowercase, hyphenated URL slug."),
+    "a valid lowercase/hyphenated slug must not be rejected for its length",
+  );
+  assert.deepEqual(result.errors, []);
+
+  const badSlug = validateBlog(article({ slug: "Not A Valid Slug!" }));
+  assert.ok(badSlug.errors.includes("Use a lowercase, hyphenated URL slug."));
+});
+
 test("publishing validation reports missing content and SEO reminders", () => {
   const valid = validateBlog(article());
   assert.deepEqual(valid.errors, []);

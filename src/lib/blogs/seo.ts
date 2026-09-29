@@ -28,6 +28,16 @@ export function blogSiteUrl(value?: string) {
   }
 }
 
+export const MAX_BLOG_SLUG_LENGTH = 96;
+
+// A well-formed slug: lowercase letters/digits in hyphen-separated groups,
+// with no leading, trailing, or doubled hyphens.
+const BLOG_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function isValidBlogSlug(value: string) {
+  return BLOG_SLUG_PATTERN.test(value);
+}
+
 export function slugifyBlogKeyword(value: string) {
   return value
     .normalize("NFKD")
@@ -37,7 +47,7 @@ export function slugifyBlogKeyword(value: string) {
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
+    .slice(0, MAX_BLOG_SLUG_LENGTH)
     .replace(/-+$/g, "");
 }
 
@@ -184,8 +194,11 @@ export function validateBlog(input: BlogInput) {
   if (!input.primaryKeyword.trim()) errors.push("Add a primary keyword.");
   if (!input.title.trim()) errors.push("Add an article title.");
   if (!input.slug.trim()) errors.push("Add a URL slug.");
-  if (input.slug && slugifyBlogKeyword(input.slug) !== input.slug) {
+  if (input.slug && !isValidBlogSlug(input.slug)) {
     errors.push("Use a lowercase, hyphenated URL slug.");
+  }
+  if (input.slug && input.slug.length > MAX_BLOG_SLUG_LENGTH) {
+    warnings.push(`URL slug is longer than ${MAX_BLOG_SLUG_LENGTH} characters; consider shortening it.`);
   }
   if (!input.excerpt.trim()) errors.push("Add a short article excerpt.");
   if (!input.seoTitle.trim()) errors.push("Add an SEO title.");
