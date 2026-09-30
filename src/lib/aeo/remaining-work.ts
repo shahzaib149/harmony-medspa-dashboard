@@ -10,7 +10,7 @@ export const WORK_ITEMS: WorkItem[] = [
   { label: "AI crawler access", detail: "8 AI crawlers explicitly allowed", done: true },
   { label: "Share metadata", detail: "Each page shares its own title and link", done: true },
   { label: "Google Search Console", detail: "Verify the site and submit the sitemap", done: false },
-  { label: "Bing Webmaster Tools", detail: "Bing's index feeds ChatGPT search", done: false },
+  { label: "Bing Webmaster Tools", detail: "Improve discovery through Bing search", done: false },
   { label: "Google Business Profile", detail: "Complete services, photos and Q&A", done: false },
   { label: "Review requests", detail: "Automatic request after each visit", done: false },
   { label: "Provider review of medical FAQs", detail: "Three safety answers await Jessica's review", done: false },
