@@ -29,7 +29,7 @@ export function MentionRateChart({ data }: { data: MentionRatePoint[] }) {
   return (
     <div style={{ width: "100%", height: 300 }} role="img" aria-label="Share of tracked prompts where Harmony was mentioned, by engine and check date">
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+        <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 5" vertical={false} />
           <XAxis dataKey="date" tickFormatter={shortDate} tick={axisTick} tickLine={false} axisLine={false} minTickGap={16} />
           <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(v: number) => `${v}%`} tick={axisTick} tickLine={false} axisLine={false} width={48} />

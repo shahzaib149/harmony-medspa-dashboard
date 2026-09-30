@@ -305,7 +305,7 @@ function Programme() {
             {done.map((item) => (
               <li key={item.label} className={styles.statusItem}>
                 <span className={styles.tick} aria-hidden="true"><Check size={13} strokeWidth={3} /></span>
-                <strong>{item.label}</strong><span>{item.detail}</span>
+                <strong className={styles.statusLabel}>{item.label}</strong><span className={styles.statusDetail}>{item.detail}</span>
               </li>
             ))}
           </ul>
@@ -316,7 +316,7 @@ function Programme() {
             {pending.map((item) => (
               <li key={item.label} className={styles.statusItem}>
                 <span className={styles.ring} aria-hidden="true" />
-                <strong>{item.label}</strong><span>{item.detail}</span>
+                <strong className={styles.statusLabel}>{item.label}</strong><span className={styles.statusDetail}>{item.detail}</span>
               </li>
             ))}
           </ul>
