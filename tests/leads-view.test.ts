@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {
+  countsAsRealLead,
+  NO_AUTO_REPLY_TYPES,
+  sendsAutoReply,
+} from "../src/lib/leads/classification";
 import { buildLeadFormula } from "../src/lib/leads/query";
 import {
   LEAD_VIEWS,
@@ -41,12 +46,31 @@ test("Real Leads excludes non-leads; All keeps everything", () => {
 test("Airtable view formulas mirror view membership", () => {
   assert.equal(leadViewFormula("all"), "");
   assert.equal(leadViewFormula("booked"), 'LOWER({Status}&"")="booked"');
-  assert.match(leadViewFormula("leads"), /\{Is Real Lead\}=TRUE\(\)/);
+  // Driven by Lead Type, not the Is Real Lead checkbox: Make drops checkbox mappings on import.
   assert.match(leadViewFormula("leads"), /LEN\(\{Lead Type\}&""\)=0/);
+  assert.match(leadViewFormula("leads"), /\{Lead Type\}="Real Lead"/);
+  assert.match(leadViewFormula("leads"), /\{Lead Type\}="Unclear"/);
+  assert.doesNotMatch(leadViewFormula("leads"), /Is Real Lead/);
+});
+
+test("classification stands alone when the Is Real Lead checkbox never got written", () => {
+  assert.equal(countsAsRealLead({ leadType: "Real Lead", isRealLead: false }), true);
+  assert.equal(countsAsRealLead({ leadType: "Unclear", isRealLead: false }), true);
+  assert.equal(countsAsRealLead({ leadType: "Solicitor", isRealLead: true }), false);
+  assert.equal(countsAsRealLead({ leadType: "" }), true);
+});
+
+test("solicitors, spam and job seekers get no auto-reply; other non-leads still do", () => {
+  assert.deepEqual([...NO_AUTO_REPLY_TYPES], ["Solicitor", "Spam", "Job Seeker"]);
+  for (const type of ["Solicitor", "Spam", "Job Seeker"]) assert.equal(sendsAutoReply(type), false);
+  for (const type of ["Real Lead", "Unclear", "Existing Patient", "Appointment Change", ""]) {
+    assert.equal(sendsAutoReply(type), true);
+  }
 });
 
 test("leadType=not-lead filters every non-lead type", () => {
   const formula = buildLeadFormula(new URLSearchParams({ view: "all", leadType: "not-lead" }));
-  assert.match(formula, /NOT\(\{Is Real Lead\}\)/);
+  assert.match(formula, /LEN\(\{Lead Type\}&""\)>0/);
+  assert.match(formula, /\{Lead Type\}!="Real Lead"/);
   assert.doesNotMatch(formula, /\{Lead Type\}="not-lead"/);
 });

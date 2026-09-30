@@ -64,6 +64,7 @@ import {
   LEAD_TYPES,
   NOT_A_LEAD_FILTER,
   NOT_A_LEAD_TYPES,
+  sendsAutoReply,
   type LeadType,
 } from "@/lib/leads/classification";
 
@@ -439,11 +440,13 @@ function ClassificationCard({
     ? "Received before AI classification. Counted as a real lead."
     : real
       ? lead.leadType === "Unclear"
-        ? "Treated as a lead: Hayden notified, enrolled in nurture. Confirm below."
-        : "Hayden notified and enrolled in 14-Day Nurture."
-      : lead.leadType === "Existing Patient"
-        ? "Hayden notified. Not enrolled in nurture."
-        : "Speed-to-lead reply only. No Hayden alert, no nurture.";
+        ? "Treated as a lead: instant reply sent, Hayden notified, enrolled in nurture. Confirm below."
+        : "Instant reply sent, Hayden notified, enrolled in 14-Day Nurture."
+      : !sendsAutoReply(lead.leadType)
+        ? "No reply sent, no alert, no nurture. Only the record was kept."
+        : lead.leadType === "Existing Patient"
+          ? "Instant reply sent and Hayden notified. Not enrolled in nurture."
+          : "Instant reply sent. No Hayden alert, no nurture.";
 
   return (
     <section

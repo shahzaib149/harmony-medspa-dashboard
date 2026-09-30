@@ -57,14 +57,28 @@ export function isAiTag(value: unknown): value is AiTag {
   return typeof value === "string" && (AI_TAGS as readonly string[]).includes(value);
 }
 
-type ClassifiedFields = { leadType: string; isRealLead: boolean };
+/**
+ * Types that get no instant speed-to-lead email/SMS at all. Everyone else,
+ * including existing patients and appointment changes, still gets the reply.
+ * Kept in sync with the `reply` variable in the Make scenario.
+ */
+export const NO_AUTO_REPLY_TYPES: readonly LeadType[] = ["Solicitor", "Spam", "Job Seeker"];
+
+export function sendsAutoReply(leadType: string) {
+  return !NO_AUTO_REPLY_TYPES.includes(leadType as LeadType);
+}
+
+type ClassifiedFields = { leadType: string; isRealLead?: boolean };
 
 /**
- * Records created before AI classification have no Lead Type. They were all
- * treated as leads at the time, so they keep counting as real leads.
+ * Derived from Lead Type, not the Is Real Lead checkbox: Make drops checkbox
+ * mappings on blueprint import, so the checkbox can be missing on records the
+ * scenario classified. Records created before AI classification have no Lead
+ * Type at all and were all treated as leads, so they still count as real.
  */
 export function countsAsRealLead(lead: ClassifiedFields) {
-  return lead.isRealLead || !lead.leadType;
+  if (!lead.leadType) return true;
+  return REAL_LEAD_TYPES.includes(lead.leadType as LeadType);
 }
 
 export function isNotALead(lead: ClassifiedFields) {
@@ -76,8 +90,8 @@ export function needsReview(lead: { aiTags: string[] }) {
 }
 
 // Airtable formula fragments that mirror the helpers above.
-export const REAL_LEAD_FORMULA = 'OR({Is Real Lead}=TRUE(),LEN({Lead Type}&"")=0)';
-export const NOT_A_LEAD_FORMULA = 'AND(NOT({Is Real Lead}),LEN({Lead Type}&"")>0)';
+export const REAL_LEAD_FORMULA = 'OR(LEN({Lead Type}&"")=0,{Lead Type}="Real Lead",{Lead Type}="Unclear")';
+export const NOT_A_LEAD_FORMULA = 'AND(LEN({Lead Type}&"")>0,{Lead Type}!="Real Lead",{Lead Type}!="Unclear")';
 export const NEEDS_REVIEW_FORMULA = 'FIND("Needs Review",{AI Tags}&"")>0';
 
 /** `?leadType=not-lead` matches every non-lead type at once. */
