@@ -33,6 +33,8 @@ export const config = {
     "/audit-log/:path*",
     "/audit-log",
     "/google-business/:path*",
+    "/aeo/:path*",
+    "/aeo",
     "/google-business",
   ],
 };
