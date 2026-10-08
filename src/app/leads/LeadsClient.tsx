@@ -2191,10 +2191,26 @@ export default function LeadsClient() {
     }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
     const params = new URLSearchParams(filterQuery);
-    window.location.assign(`/api/airtable/leads/export?${params}`);
-    showToast("success", "Filtered Leads export started.");
+    try {
+      const response = await fetch(`/api/airtable/leads/export?${params}`, { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error || "Lead export could not be prepared");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const download = document.createElement("a");
+      download.href = url;
+      download.download = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] || "harmony-leads.csv";
+      document.body.appendChild(download);
+      download.click();
+      download.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      showToast("success", "Filtered Leads CSV downloaded.");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Lead export could not be prepared");
+    }
   }
 
   async function importCsv(file: File) {
