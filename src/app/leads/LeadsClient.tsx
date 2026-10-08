@@ -2196,7 +2196,7 @@ export default function LeadsClient() {
   async function exportCsv(format: "csv" | "xlsx" = "csv") {
     try {
       await downloadLeadExport(format);
-      showToast("success", "Full history downloaded: Leads, Marketing Leads and Call Leads.");
+      showToast("success", "Every saved lead and all calls downloaded, including missed calls, spam and duplicates.");
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Lead export could not be prepared");
     }

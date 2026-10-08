@@ -12,14 +12,11 @@ function leadRow(lead: Lead): ExportRow {
 }
 
 // Export events/records, not unique patients. Keep manual marketing imports explicit.
-export function organizedLeadRows(leads: Lead[], today = DateTime.now().setZone("America/New_York").toISODate()!): ExportRow[] {
-  const rows = leads.filter((lead) => {
-    const date = DateTime.fromISO(lead.createdAt).setZone("America/New_York");
-    return !date.isValid || date.toISODate()! <= today;
-  }).map(leadRow);
+export function organizedLeadRows(leads: Lead[]): ExportRow[] {
+  // All saved records are included, even if their timestamps need correction.
+  const rows = leads.map(leadRow);
   for (const source of CALL_SOURCES) {
     for (const call of source.calls) {
-      if (call.occurredAt.slice(0, 10) > today) continue;
       const linked = leads.filter((lead) => lead.source === "Call Leads" && `${lead.message}\n${lead.notes}`.includes(callMarker(call.id)));
       const linkedRows = rows.filter((row) => linked.some((lead) => lead.id === row[3]));
       // Preserve every saved contact if multiple records link to the same event.

@@ -7,7 +7,7 @@ export async function leadExportWorkbook(rows: ExportRow[]) {
   for (const name of ["Overall Data", ...EXPORT_CATEGORIES]) {
     const sheet = workbook.addWorksheet(name, { views: [{ state: "frozen", ySplit: 4, xSplit: 3 }] });
     sheet.addRow([`Harmony MedSpa — ${name}`]);
-    sheet.addRow(["Full available history. Marketing Leads are manual campaign entries; calls are events, not unique patients."]);
+    sheet.addRow(["Every saved lead and all calls, including missed calls, hangups, spam and duplicates. Marketing Leads are manual campaign entries."]);
     sheet.addRow(["Linked calls include saved contact details. Pending caller names and numbers remain blank. Booking status does not confirm sales revenue."]);
     sheet.mergeCells(1, 1, 1, 12);
     sheet.mergeCells(2, 1, 2, 12);
