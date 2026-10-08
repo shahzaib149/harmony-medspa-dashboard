@@ -8,6 +8,7 @@ import {
 } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
 import { countsAsRealLead } from "@/lib/leads/classification";
+import { withCallOpportunities } from "@/lib/leads/call-overview";
 import { requireRole } from "@/lib/auth/requireRole";
 import { createServiceClient } from "@/lib/supabase/server";
 import type {
@@ -120,6 +121,8 @@ const OVERVIEW_FIELDS = {
     "SMS Sent Status",
     "Lead Type",
     "Is Real Lead",
+    "Message",
+    "Notes",
   ],
   enrollments: ["Lead", "Status", "Current Step", "Next Send At", "Last Sent At", "Created At"],
   // Message Log is fetched without a field projection (see getOverviewData) so the
@@ -974,6 +977,9 @@ export async function getOverviewData(
     errors.googleAds = safeError("Google Ads");
 
   const leads = leadResult.status === "fulfilled" ? leadResult.value.map(mapLead) : [];
+  const reportingLeads = withCallOpportunities(
+    leadResult.status === "fulfilled" ? leadResult.value : [],
+  ).map(mapLead);
   const enrollments =
     enrollmentResult.status === "fulfilled"
       ? enrollmentResult.value.map(mapEnrollment)
@@ -989,13 +995,13 @@ export async function getOverviewData(
       : [];
   // Headline KPIs, funnel and conversion rates count prospective patients only;
   // solicitors, spam and other non-leads would otherwise drag the funnel down.
-  const allPeriodSubmissions = leads.filter((lead) => inWindow(lead.createdAt, period.from, period.to));
+  const allPeriodSubmissions = reportingLeads.filter((lead) => inWindow(lead.createdAt, period.from, period.to));
   const periodLeads = allPeriodSubmissions.filter(countsAsRealLead);
   const notALeadCount = allPeriodSubmissions.length - periodLeads.length;
-  const previousNotALead = leads.filter(
+  const previousNotALead = reportingLeads.filter(
     (lead) => inWindow(lead.createdAt, period.previousFrom, period.previousTo) && !countsAsRealLead(lead),
   ).length;
-  const previousLeads = leads.filter((lead) =>
+  const previousLeads = reportingLeads.filter((lead) =>
     inWindow(lead.createdAt, period.previousFrom, period.previousTo) && countsAsRealLead(lead),
   );
   const periodMessages = messages.filter((message) =>
@@ -1063,7 +1069,7 @@ export async function getOverviewData(
     period,
   );
   const updatedCandidates = [
-    ...leads.map((lead) => lead.createdAt),
+    ...reportingLeads.map((lead) => lead.createdAt),
     ...enrollments.flatMap((enrollment) => [enrollment.lastSentAt, enrollment.createdAt]),
     ...messages.map((message) => message.sentAt),
     ...clinicMetrics.map((item) => item.updatedAt),
@@ -1119,7 +1125,7 @@ export async function getOverviewData(
     clinicMetrics,
     googleAdsSummary,
     activityByDay,
-    attentionItems: attentionFor(periodLeads, enrollments, periodMessages, failedSmsAlerts.length),
+    attentionItems: attentionFor(periodLeads.filter((lead) => overviewLeadMap.has(lead.id)), enrollments, periodMessages, failedSmsAlerts.length),
     failedSmsAlerts,
     reviewedSmsCount,
     recentActivity,

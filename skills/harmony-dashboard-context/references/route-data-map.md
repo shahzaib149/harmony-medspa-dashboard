@@ -191,6 +191,8 @@ Middleware includes protected and compatibility routes. Protected server pages a
 
 `src/lib/airtable/leads-base.ts` owns shared reads/mapping/cache. `src/lib/overview-data.ts` performs the cross-table overview aggregation.
 
+Call history is currently maintained in `src/lib/leads/call-records.ts`, not an Airtable Call Logs table. Overview's Call Leads panel defaults to All and also offers Website and CS2 filters. `call-overview.ts` merges these inbound opportunities into overview reporting by occurrence date; saved Airtable Leads with Source `Call Leads` and a matching `[Call lead: ID]` marker replace the corresponding opportunity. Unlinked calls contribute to totals, trends and the funnel, without creating Airtable patients or inventing contact/reply/booking activity. The Add details form creates the actual Airtable lead; operational attention links use actual Airtable record IDs only.
+
 ### Airtable advertising base: `AIRTABLE_BASE_ID`
 
 | Table | Purpose |

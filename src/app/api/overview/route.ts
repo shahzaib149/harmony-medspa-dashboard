@@ -3,6 +3,7 @@ import { getOverviewData } from "@/lib/overview-data";
 import type { OverviewPeriodKey } from "@/lib/overview-types";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { withCache, bustCache } from "@/lib/server-cache";
+import { invalidateLeadsBaseCache } from "@/lib/airtable/leads-base";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,7 +25,10 @@ export async function GET(request: Request) {
   // Allow the Refresh button to force a fresh fetch
   const forceRefresh = request.headers.get("x-force-refresh") === "1";
   const cacheKey = `overview:${period}`;
-  if (forceRefresh) bustCache(cacheKey);
+  if (forceRefresh) {
+    bustCache(cacheKey);
+    invalidateLeadsBaseCache();
+  }
 
   try {
     const data = await withCache(cacheKey, OVERVIEW_TTL, () =>

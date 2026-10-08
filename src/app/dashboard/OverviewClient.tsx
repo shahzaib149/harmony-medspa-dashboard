@@ -136,8 +136,8 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
   const requestAbort = useRef<AbortController | null>(null);
   const inFlightRange = useRef<OverviewPeriodKey | null>(null);
 
-  const load = useCallback(async (nextPeriod: OverviewPeriodKey) => {
-    if (inFlightRange.current === nextPeriod) return;
+  const load = useCallback(async (nextPeriod: OverviewPeriodKey, forceRefresh = false) => {
+    if (inFlightRange.current === nextPeriod && !forceRefresh) return;
     requestAbort.current?.abort();
     const controller = new AbortController();
     requestAbort.current = controller;
@@ -150,6 +150,7 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
       const response = await fetch(`/api/overview?range=${nextPeriod}`, {
         cache: "no-store",
         credentials: "same-origin",
+        ...(forceRefresh ? { headers: { "x-force-refresh": "1" } } : {}),
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
       });
       const body = (await response.json()) as OverviewResponse & { error?: string; message?: string };
@@ -268,9 +269,9 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
       {loading && !data ? (
         <OverviewSkeleton />
       ) : !data ? (
-        <OverviewErrorState message={error} onRetry={() => void load(period)} />
+        <OverviewErrorState message={error} onRetry={() => void load(period, true)} />
       ) : (
-        <OverviewContent data={data} refreshing={refreshing} refreshError={error} onRetry={() => void load(period)} onReviewFailedSms={removeFailedSmsAlert} />
+        <OverviewContent data={data} refreshing={refreshing} refreshError={error} onRetry={() => void load(period, true)} onReviewFailedSms={removeFailedSmsAlert} />
       )}
     </DashboardLayout>
   );
@@ -372,7 +373,7 @@ function OverviewContent({
           </h2>
         </div>
         <span className="text-xs text-[var(--text-muted)]">
-          {data.period.label} · through {formatDateTime(data.updatedAt)}
+          {data.period.label} · through {formatDateTime(data.period.to)}
         </span>
       </div>
 
