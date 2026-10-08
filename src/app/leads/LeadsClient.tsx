@@ -46,6 +46,8 @@ import { Alert } from "@/components/ui/Alert";
 import { Toast } from "@/components/ui/Toast";
 import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
 import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
+import LeadExportButtons from "@/components/leads/LeadExportButtons";
+import { downloadLeadExport } from "@/lib/leads/download-export";
 import { callDateWindow } from "@/lib/leads/call-filter";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import {
@@ -2191,23 +2193,10 @@ export default function LeadsClient() {
     }
   }
 
-  async function exportCsv() {
-    const params = new URLSearchParams(filterQuery);
+  async function exportCsv(format: "csv" | "xlsx" = "csv") {
     try {
-      const response = await fetch(`/api/airtable/leads/export?${params}`, { credentials: "same-origin", cache: "no-store" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error || "Lead export could not be prepared");
-      }
-      const url = URL.createObjectURL(await response.blob());
-      const download = document.createElement("a");
-      download.href = url;
-      download.download = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] || "harmony-leads.csv";
-      document.body.appendChild(download);
-      download.click();
-      download.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      showToast("success", "Filtered Leads CSV downloaded.");
+      await downloadLeadExport(format);
+      showToast("success", "Full history downloaded: Leads, Marketing Leads and Call Leads.");
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Lead export could not be prepared");
     }
@@ -2467,6 +2456,7 @@ export default function LeadsClient() {
             { label: "Last 30 days", value: "30" },
           ]} />
           <button type="button" onClick={() => setFilterParam("source", "all")} className="min-h-11 rounded-xl border px-4 text-xs font-bold" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>Back to lead list</button>
+          <LeadExportButtons />
         </div>
         <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} onLeadCreated={() => void refreshLeads()} />
       </div>
@@ -2700,7 +2690,10 @@ export default function LeadsClient() {
                     <RefreshCw size={14} /> Refresh
                   </button>
                   <button type="button" role="menuitem" onClick={() => { setActionsOpen(false); exportCsv(); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold" style={{ color: TEXT }}>
-                    <Download size={14} /> Export CSV
+                    <Download size={14} /> Export CSV (all history)
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setActionsOpen(false); void exportCsv("xlsx"); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold" style={{ color: TEXT }}>
+                    <Download size={14} /> Export Excel (source tabs)
                   </button>
                   <button type="button" role="menuitem" onClick={() => { setActionsOpen(false); setMetricsModalOpen(true); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold" style={{ color: TEXT }}>
                     <Activity size={14} /> Update visits

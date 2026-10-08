@@ -9,6 +9,10 @@ export function leadExportPageRequest(request: Request, params: URLSearchParams)
   return new Request(`${new URL(request.url).origin}/api/airtable/leads?${params}`, { headers });
 }
 
+export function allLeadExportParams() {
+  return new URLSearchParams({ view: "all", pageSize: "50" });
+}
+
 export function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
   // Spreadsheet apps must treat lead-supplied text and phone numbers as data.

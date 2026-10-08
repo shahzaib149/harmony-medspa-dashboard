@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Sparkline from "@/components/overview/Sparkline";
 import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
+import LeadExportButtons from "@/components/leads/LeadExportButtons";
 import { getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import { useAuth } from "@/contexts/AuthContext";
 import type {
@@ -393,6 +394,7 @@ function OverviewContent({
         ))}
       </div>
 
+      <div className="mt-4"><LeadExportButtons /></div>
       <CallLeadsPanel onLeadCreated={onRetry} />
 
       {/* Analytical grid */}
