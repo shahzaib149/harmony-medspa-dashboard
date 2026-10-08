@@ -63,6 +63,13 @@ const CS2_CALLS: CallRecord[] = [
   { id: "cs2-2026-09-18-0953", date: "Sep 18", time: "9:53 AM", occurredAt: "2026-09-18T09:53:00-04:00", areaCode: "941", duration: 38, assessment: "Short but real", kind: "conversation" },
   { id: "cs2-2026-09-21-1034", date: "Sep 21", time: "10:34 AM", occurredAt: "2026-09-21T10:34:00-04:00", areaCode: "732 · Central New Jersey", duration: 106, assessment: "Out of state, but long", kind: "out-of-state" },
   { id: "cs2-2026-09-21-1113", date: "Sep 21", time: "11:13 AM", occurredAt: "2026-09-21T11:13:00-04:00", areaCode: "404 · Atlanta", duration: 17, assessment: "Out of state", kind: "out-of-state" },
+  { id: "cs2-2026-10-02-0921", date: "Oct 2", time: "9:21 AM", occurredAt: "2026-10-02T09:21:00-04:00", areaCode: "941", duration: 41, assessment: "Brief", kind: "brief" },
+  { id: "cs2-2026-10-02-0933", date: "Oct 2", time: "9:33 AM", occurredAt: "2026-10-02T09:33:00-04:00", areaCode: "281 · Texas", duration: 31, assessment: "Out of state", kind: "out-of-state" },
+  { id: "cs2-2026-10-05-0940", date: "Oct 5", time: "9:40 AM", occurredAt: "2026-10-05T09:40:00-04:00", areaCode: "Unknown", duration: 12, assessment: "Brief", kind: "brief" },
+  { id: "cs2-2026-10-05-1243", date: "Oct 5", time: "12:43 PM", occurredAt: "2026-10-05T12:43:00-04:00", areaCode: "Unknown", duration: 0, assessment: "Missed call", kind: "hangup", missed: true },
+  { id: "cs2-2026-10-06-1320", date: "Oct 6", time: "1:20 PM", occurredAt: "2026-10-06T13:20:00-04:00", areaCode: "630 · Illinois", duration: 18, assessment: "Out of state", kind: "out-of-state" },
+  { id: "cs2-2026-10-06-1342", date: "Oct 6", time: "1:42 PM", occurredAt: "2026-10-06T13:42:00-04:00", areaCode: "727 · Florida", duration: 44, assessment: "Brief", kind: "brief" },
+  { id: "cs2-2026-10-07-1130", date: "Oct 7", time: "11:30 AM", occurredAt: "2026-10-07T11:30:00-04:00", areaCode: "941", duration: 18, assessment: "Brief", kind: "brief" },
 ];
 
 // Website tracking line. Calls from other Florida area codes count as in-state.
@@ -95,7 +102,7 @@ const WEBSITE_CALLS: CallRecord[] = [
 
 const CALL_SOURCES: CallSource[] = [
   { id: "website", label: "Website", line: "Website new", range: "Aug 3–Sep 8, 2026", calls: WEBSITE_CALLS },
-  { id: "cs2", label: "CS2", line: "CS2", range: "Aug 31–Sep 21, 2026", calls: CS2_CALLS },
+  { id: "cs2", label: "CS2", line: "CS2", range: "Aug 31–Oct 7, 2026", calls: CS2_CALLS },
 ];
 
 const ALL_CALLS = CALL_SOURCES.flatMap((source) => source.calls);
