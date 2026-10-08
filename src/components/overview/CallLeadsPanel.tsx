@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ALL_CALLS, CALL_SOURCES, callMarker as marker, type CallRecord, type CallSourceId } from "@/lib/leads/call-records";
+import { filterCalls } from "@/lib/leads/call-filter";
 
 type CallLeadForm = {
   name: string;
@@ -50,8 +51,12 @@ function assessmentStyle(kind: CallRecord["kind"]) {
 
 export default function CallLeadsPanel({
   onLeadCreated,
+  fromDate,
+  toDate,
 }: {
   onLeadCreated: () => void;
+  fromDate?: string;
+  toDate?: string;
 }) {
   const { can } = useAuth();
   const canAddLead = can("update:leads");
@@ -110,9 +115,15 @@ export default function CallLeadsPanel({
     };
   }, [saving, selected]);
 
+  const availableSources = useMemo(() => CALL_SOURCES.map((item) => ({
+    ...item,
+    calls: filterCalls(item.calls, fromDate, toDate),
+    range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : item.range,
+  })), [fromDate, toDate]);
+  const allCalls = useMemo(() => availableSources.flatMap((item) => item.calls), [availableSources]);
   const source = useMemo(() => sourceId === "all"
-    ? { label: "All", line: "Website and CS2", range: "Aug 3–Oct 7, 2026", calls: ALL_CALLS }
-    : CALL_SOURCES.find((item) => item.id === sourceId) ?? CALL_SOURCES[0], [sourceId]);
+    ? { label: "All", line: "Website and CS2", range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : "Aug 3–Oct 7, 2026", calls: allCalls }
+    : availableSources.find((item) => item.id === sourceId) ?? availableSources[0], [sourceId, availableSources, allCalls, fromDate, toDate]);
   const calls = useMemo(() => [...source.calls].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)), [source]);
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(calls.length / pageSize));
@@ -197,7 +208,7 @@ export default function CallLeadsPanel({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="overview-display text-lg font-semibold text-[var(--text-primary)]">Call Leads</h2>
               <div role="tablist" aria-label="Call source" className="inline-flex rounded-full border border-[var(--border-subtle)] bg-[var(--surface-2)] p-0.5">
-                {[{ id: "all" as const, label: "All", calls: ALL_CALLS }, ...CALL_SOURCES].map((item) => {
+                {[{ id: "all" as const, label: "All", calls: allCalls }, ...availableSources].map((item) => {
                   const active = item.id === sourceId;
                   return (
                     <button
@@ -244,6 +255,9 @@ export default function CallLeadsPanel({
             </tr>
           </thead>
           <tbody role="rowgroup" className="divide-y divide-[var(--border-subtle)]">
+            {!calls.length && (
+              <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-[var(--text-muted)]">No calls in the selected date range.</td></tr>
+            )}
             {visibleCalls.map((call) => {
               const added = addedIds.has(call.id);
               return (

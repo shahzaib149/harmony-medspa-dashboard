@@ -8,7 +8,7 @@ import { requirePageAuth } from "@/lib/auth/require-page-auth";
 export default async function LeadsPage() {
   await requirePageAuth({ next: "/leads" });
   return (
-    <DashboardLayout title="Leads" subtitle="Form submissions from Harmony MedSpa lead form">
+    <DashboardLayout title="Leads" subtitle="Website inquiries and inbound call leads">
       <Suspense fallback={<LoadingRegion label="Loading leads" className="overflow-hidden rounded-2xl border"><SkeletonRows rows={8} /></LoadingRegion>}><LeadsClient /></Suspense>
     </DashboardLayout>
   );

@@ -45,6 +45,8 @@ import { DestructiveConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Alert } from "@/components/ui/Alert";
 import { Toast } from "@/components/ui/Toast";
 import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
+import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
+import { callDateWindow } from "@/lib/leads/call-filter";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import {
   DEFAULT_LEAD_VIEW,
@@ -1843,6 +1845,14 @@ export default function LeadsClient() {
 
   function setFilterParam(key: string, value: string) {
     setCursorHistory([null]);
+    if (key === "source" && value === "Call Leads") {
+      setSearch("");
+      setFiltersOpen(false);
+      updateQuery({ source: value, view: "all", search: null, status: null,
+        campaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
+        emailStatus: null, leadType: null, tags: null, lead: null });
+      return;
+    }
     updateQuery({ [key]: value });
   }
 
@@ -2061,6 +2071,7 @@ export default function LeadsClient() {
   const sources = useMemo(() => {
     const values = Array.from(
       new Set([
+        "Call Leads",
         ...leads.map((lead) => sourceLabel(lead.source)).filter(Boolean),
         ...(sourceFilter !== "all" ? [sourceFilter] : []),
       ]),
@@ -2425,6 +2436,25 @@ export default function LeadsClient() {
     setLoading(true);
     setCursorHistory([null]);
     updateQuery({ pageSize: String(nextSize), lead: null });
+  }
+
+  if (sourceFilter === "Call Leads") {
+    const callWindow = callDateWindow(dateFilter);
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ backgroundColor: PANEL, borderColor: BORDER }}>
+          <SelectControl label="Filter by source" value={sourceFilter} onChange={(value) => setFilterParam("source", value)} options={sources} />
+          <SelectControl label="Filter by date range" value={dateFilter} onChange={(value) => setFilterParam("date", value)} options={[
+            { label: "All dates", value: "all" },
+            { label: "Today", value: "today" },
+            { label: "Last 7 days", value: "7" },
+            { label: "Last 30 days", value: "30" },
+          ]} />
+          <button type="button" onClick={() => setFilterParam("source", "all")} className="min-h-11 rounded-xl border px-4 text-xs font-bold" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>Back to lead list</button>
+        </div>
+        <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} onLeadCreated={() => void refreshLeads()} />
+      </div>
+    );
   }
 
   return (
