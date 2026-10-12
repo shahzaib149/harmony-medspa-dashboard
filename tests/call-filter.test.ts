@@ -6,15 +6,15 @@ import { ALL_CALLS, CALL_SOURCES } from "../src/lib/leads/call-records";
 
 test("Call Leads source filter can show the complete Overview history", () => {
   const window = callDateWindow("all", DateTime.fromISO("2026-10-08T12:00:00Z"));
-  assert.equal(filterCalls(ALL_CALLS, window.fromDate, window.toDate).length, 45);
+  assert.equal(filterCalls(ALL_CALLS, window.fromDate, window.toDate).length, 48);
 });
 
-test("seven-day range matches Overview and includes the missed call", () => {
+test("seven-day range matches Overview and includes the missed calls", () => {
   const window = callDateWindow("7", DateTime.fromISO("2026-10-08T12:00:00Z"));
   assert.equal(window.fromDate, "2026-10-02");
   const calls = filterCalls(ALL_CALLS, window.fromDate, window.toDate);
-  assert.equal(calls.length, 7);
-  assert.equal(calls.filter((call) => call.missed).length, 1);
+  assert.equal(calls.length, 10);
+  assert.equal(calls.filter((call) => call.missed).length, 2);
   assert.equal(filterCalls(CALL_SOURCES[0].calls, window.fromDate, window.toDate).length, 0);
 });
 

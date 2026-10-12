@@ -42,6 +42,10 @@ const CS2_CALLS: CallRecord[] = [
   { id: "cs2-2026-10-06-1320", date: "Oct 6", time: "1:20 PM", occurredAt: "2026-10-06T13:20:00-04:00", areaCode: "630 · Illinois", duration: 18, assessment: "Out of state", kind: "out-of-state" },
   { id: "cs2-2026-10-06-1342", date: "Oct 6", time: "1:42 PM", occurredAt: "2026-10-06T13:42:00-04:00", areaCode: "727 · Florida", duration: 44, assessment: "Brief", kind: "brief" },
   { id: "cs2-2026-10-07-1130", date: "Oct 7", time: "11:30 AM", occurredAt: "2026-10-07T11:30:00-04:00", areaCode: "941", duration: 18, assessment: "Brief", kind: "brief" },
+  { id: "cs2-2026-10-08-0930", date: "Oct 8", time: "9:30 AM", occurredAt: "2026-10-08T09:30:00-04:00", areaCode: "941", duration: 713, assessment: "Longest CS2 call · 11m 53s", kind: "conversation" },
+  { id: "cs2-2026-10-08-0942", date: "Oct 8", time: "9:42 AM", occurredAt: "2026-10-08T09:42:00-04:00", areaCode: "Unknown", duration: 12, assessment: "Likely callback (40s later)", kind: "hangup" },
+  { id: "cs2-2026-10-08-1615", date: "Oct 8", time: "4:15 PM", occurredAt: "2026-10-08T16:15:00-04:00", areaCode: "Unknown", duration: 0, assessment: "Missed call", kind: "hangup", missed: true },
+  { id: "cs2-2026-10-09-1253", date: "Oct 9", time: "12:53 PM", occurredAt: "2026-10-09T12:53:00-04:00", areaCode: "941", duration: 18, assessment: "Brief", kind: "brief" },
 ];
 
 // Website tracking line. Calls from other Florida area codes count as in-state.
@@ -74,7 +78,7 @@ const WEBSITE_CALLS: CallRecord[] = [
 
 export const CALL_SOURCES: CallSource[] = [
   { id: "website", label: "Website", line: "Website new", range: "Aug 3–Sep 8, 2026", calls: WEBSITE_CALLS },
-  { id: "cs2", label: "CS2", line: "CS2", range: "Aug 31–Oct 7, 2026", calls: CS2_CALLS },
+  { id: "cs2", label: "CS2", line: "CS2", range: "Aug 31–Oct 9, 2026", calls: CS2_CALLS },
 ];
 
 export const ALL_CALLS = CALL_SOURCES.flatMap((source) => source.calls);
