@@ -122,7 +122,7 @@ export default function CallLeadsPanel({
   })), [fromDate, toDate]);
   const allCalls = useMemo(() => availableSources.flatMap((item) => item.calls), [availableSources]);
   const source = useMemo(() => sourceId === "all"
-    ? { label: "All", line: "Website and CS2", range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : "Aug 3–Oct 9, 2026", calls: allCalls }
+    ? { label: "All", line: "Website and CS2", range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : "Aug 3–Oct 21, 2026", calls: allCalls }
     : availableSources.find((item) => item.id === sourceId) ?? availableSources[0], [sourceId, availableSources, allCalls, fromDate, toDate]);
   const calls = useMemo(() => [...source.calls].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)), [source]);
   const pageSize = 10;

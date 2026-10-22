@@ -12,10 +12,10 @@ function totalBetween(from: string, to: string) {
 }
 
 test("All combines both call sources with unique call identities", () => {
-  assert.equal(ALL_CALLS.length, 49);
-  assert.equal(new Set(ALL_CALLS.map((call) => call.id)).size, 49);
+  assert.equal(ALL_CALLS.length, 53);
+  assert.equal(new Set(ALL_CALLS.map((call) => call.id)).size, 53);
   assert.equal(CALL_SOURCES.find((source) => source.id === "website")?.calls.length, 24);
-  assert.equal(CALL_SOURCES.find((source) => source.id === "cs2")?.calls.length, 25);
+  assert.equal(CALL_SOURCES.find((source) => source.id === "cs2")?.calls.length, 29);
 });
 
 test("seven-day totals include the October calls through midday Oct 8, including the missed call", () => {
@@ -36,7 +36,7 @@ test("saving caller details preserves totals and recorded follow-up status", () 
       fields: { Source: "Call Leads", Status: "Booked", Replied: true,
         "Lead Created At": "2026-10-08T16:00:00Z", [field]: callMarker(call.id) },
     }]);
-    assert.equal(records.length, 49);
+    assert.equal(records.length, 53);
     assert.equal(records.some((record) => record.id === call.id), false);
     const saved = records.find((record) => record.id === "recSaved")!;
     assert.equal(saved.fields["Lead Created At"], call.occurredAt);
@@ -61,6 +61,6 @@ test("a saved call classified as spam stays excluded rather than reappearing as 
     id: "recSpam", createdTime: call.occurredAt,
     fields: { Source: "Call Leads", Message: callMarker(call.id), "Lead Type": "Spam" },
   }]);
-  assert.equal(records.length, 49);
-  assert.equal(records.filter((record) => countsAsRealLead({ leadType: String(record.fields["Lead Type"]) })).length, 48);
+  assert.equal(records.length, 53);
+  assert.equal(records.filter((record) => countsAsRealLead({ leadType: String(record.fields["Lead Type"]) })).length, 52);
 });
