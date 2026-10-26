@@ -1,6 +1,13 @@
 import { isAiTag, NOT_A_LEAD_FILTER, NOT_A_LEAD_FORMULA } from "@/lib/leads/classification";
 import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
 
+import type { DateTime } from "luxon";
+import { clinicRangeToUtc } from "@/lib/date-range";
+
+function utcStamp(value: DateTime) {
+  return value.toFormat("yyyy-MM-dd HH:mm:ss");
+}
+
 function formulaString(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').slice(0, 150);
 }
@@ -102,14 +109,19 @@ export function buildLeadFormula(
 
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
-  if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+  // dateFrom/dateTo are inclusive clinic-local days. Lead Created At is an
+  // instant, so compare against the clinic-day boundaries expressed in UTC
+  // (Airtable evaluates DATETIME_PARSE as UTC for API requests).
+  const fromBounds = dateFrom ? clinicRangeToUtc(dateFrom, dateFrom) : null;
+  const toBounds = dateTo ? clinicRangeToUtc(dateTo, dateTo) : null;
+  if (fromBounds) {
     filters.push(
-      `IS_AFTER({Lead Created At},DATEADD(DATETIME_PARSE("${dateFrom}"),-1,'seconds'))`,
+      `NOT(IS_BEFORE({Lead Created At},DATETIME_PARSE("${utcStamp(fromBounds.start)}")))`,
     );
   }
-  if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+  if (toBounds) {
     filters.push(
-      `IS_BEFORE({Lead Created At},DATEADD(DATETIME_PARSE("${dateTo}"),1,'days'))`,
+      `IS_BEFORE({Lead Created At},DATETIME_PARSE("${utcStamp(toBounds.endExclusive)}"))`,
     );
   }
 

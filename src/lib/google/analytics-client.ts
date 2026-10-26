@@ -1,6 +1,5 @@
 import "server-only";
 
-import { DateTime } from "luxon";
 import { analyticsdata_v1beta, google } from "googleapis";
 import {
   normalizeDevices,
@@ -11,10 +10,11 @@ import {
   normalizeTrend,
   reportMetricTotal,
 } from "@/lib/google/analytics-normalization";
+import { dateRanges } from "@/lib/google/analytics-range";
+import { dayCount } from "@/lib/date-range";
 import type { WebsiteAnalyticsSnapshot } from "@/lib/google/analytics-types";
 
 const ANALYTICS_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
-const REPORT_TIME_ZONE = "America/New_York";
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const HARMONY_GA4_PROPERTY_ID = "433407977";
 
@@ -67,23 +67,6 @@ function analyticsConfiguration() {
   }
 
   return { propertyId, clientEmail, privateKey };
-}
-
-function dateRanges(days: number) {
-  const today = DateTime.now().setZone(REPORT_TIME_ZONE).startOf("day");
-  const currentStart = today.minus({ days: days - 1 });
-  const previousEnd = currentStart.minus({ days: 1 });
-  const previousStart = previousEnd.minus({ days: days - 1 });
-  return {
-    current: {
-      start: currentStart.toISODate()!,
-      end: today.toISODate()!,
-    },
-    previous: {
-      start: previousStart.toISODate()!,
-      end: previousEnd.toISODate()!,
-    },
-  };
 }
 
 function exactDimensionFilter(
@@ -155,10 +138,10 @@ function leadRequest(
 }
 
 function reportRequestsFor(
-  days: number,
+  selected: { from: string; to: string },
   hostname: string | null,
 ): { first: ReportRequest[]; second: ReportRequest[]; ranges: ReturnType<typeof dateRanges> } {
-  const ranges = dateRanges(days);
+  const ranges = dateRanges(selected);
   const current = ranges.current;
   const previous = ranges.previous;
 
@@ -322,7 +305,7 @@ function realtimeTrendRows(
   });
 }
 async function loadWebsiteAnalytics(
-  days: number,
+  range: { from: string; to: string },
   hostname: string | null,
 ): Promise<WebsiteAnalyticsSnapshot> {
   const { propertyId, clientEmail, privateKey } = analyticsConfiguration();
@@ -331,7 +314,7 @@ async function loadWebsiteAnalytics(
     scopes: [ANALYTICS_SCOPE],
   });
   const analytics = google.analyticsdata({ version: "v1beta", auth });
-  const { first, second, ranges } = reportRequestsFor(days, hostname);
+  const { first, second, ranges } = reportRequestsFor(range, hostname);
 
   const [firstBatch, secondBatch, realtimeUsers, realtimeEvents, realtimePages, realtimeTrend, realtimeDevices, realtimeLocations] =
     await Promise.all([
@@ -403,7 +386,7 @@ async function loadWebsiteAnalytics(
     source: "ga4",
     fetchedAt: new Date().toISOString(),
     propertyId,
-    days,
+    days: dayCount(range.from, range.to),
     selectedHostname: hostname,
     dateRange: ranges,
     summary: normalizeSummary(firstReports[0], currentLeads),
@@ -440,18 +423,18 @@ export function isSafeAnalyticsHostname(value: string) {
 }
 
 export async function fetchWebsiteAnalytics(
-  days: number,
+  range: { from: string; to: string },
   hostname: string | null,
   force = false,
 ) {
-  const key = `${days}:${hostname ?? "all"}`;
+  const key = `${range.from}:${range.to}:${hostname ?? "all"}`;
   if (force) cache.delete(key);
   const cached = cache.get(key);
   if (!force && cached && cached.expiresAt > Date.now()) return cached.data;
   const pending = requests.get(key);
   if (!force && pending) return pending;
 
-  const request = loadWebsiteAnalytics(days, hostname).then((data) => {
+  const request = loadWebsiteAnalytics(range, hostname).then((data) => {
     cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
     return data;
   });

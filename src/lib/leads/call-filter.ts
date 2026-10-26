@@ -16,3 +16,14 @@ export function filterCalls(calls: CallRecord[], fromDate?: string, toDate?: str
     return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
   });
 }
+
+/** Call-lead window for a resolved date range; no range means all dates up to today. */
+export function callWindowForRange(
+  range: { from: string; to: string } | null,
+  now = DateTime.now(),
+) {
+  return {
+    fromDate: range?.from,
+    toDate: range?.to ?? now.setZone("America/New_York").toISODate()!,
+  };
+}

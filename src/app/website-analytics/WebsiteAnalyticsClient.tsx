@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
-  CalendarDays,
   ChevronDown,
   Clock3,
   Database,
@@ -33,6 +32,9 @@ import {
   WebsiteTrafficChart,
 } from "@/app/website-analytics/WebsiteAnalyticsCharts";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { dateRangeParams, formatRangeLabel } from "@/lib/date-range";
+import { ANALYTICS_DATE_PRESETS, ANALYTICS_MAX_DAYS, defaultAnalyticsRange, resolveAnalyticsRange } from "@/lib/google/analytics-range";
 import type {
   WebsiteAnalyticsRealtime,
   WebsiteAnalyticsSnapshot,
@@ -645,8 +647,22 @@ export default function WebsiteAnalyticsClient() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const requestedDays = Number(searchParams.get("days") ?? 30);
-  const days = [7, 14, 30, 90].includes(requestedDays) ? requestedDays : 30;
+  const rangeKey = searchParams.toString();
+  const rangeResult = useMemo(() => resolveAnalyticsRange(new URLSearchParams(rangeKey)), [rangeKey]);
+  // A bad shared link (e.g. future end date) shows the error and loads 30 days.
+  const activeResult = rangeResult.ok ? rangeResult : defaultAnalyticsRange();
+  const range = activeResult.ok ? activeResult.range : null;
+  const rangeFrom = range?.from ?? "";
+  const rangeTo = range?.to ?? "";
+  const rangeSelection = useMemo(
+    () => ({
+      preset: searchParams.get("range") || searchParams.get("days") || "30",
+      month: searchParams.get("month"),
+      from: searchParams.get("from"),
+      to: searchParams.get("to"),
+    }),
+    [searchParams],
+  );
   const hostname = HARMONY_HOSTNAME;
   const [snapshot, setSnapshot] = useState<WebsiteAnalyticsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -663,7 +679,7 @@ export default function WebsiteAnalyticsClient() {
       }
       setError(null);
       try {
-        const params = new URLSearchParams({ days: String(days) });
+        const params = new URLSearchParams({ from: rangeFrom, to: rangeTo, range: "custom" });
         if (hostname) params.set("hostname", hostname);
         if (force) params.set("refresh", "1");
         const data = await getAnalytics(`/api/google-analytics/overview?${params.toString()}`);
@@ -680,7 +696,7 @@ export default function WebsiteAnalyticsClient() {
         setRefreshing(false);
       }
     },
-    [days, hostname],
+    [rangeFrom, rangeTo, hostname],
   );
 
   useEffect(() => void load(), [load]);
@@ -694,10 +710,14 @@ export default function WebsiteAnalyticsClient() {
     };
   }, [load]);
 
-  function setFilter(name: "days", value: string) {
+  function setRange(selection: Parameters<typeof dateRangeParams>[1]) {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("hostname");
-    params.set(name, value);
+    params.delete("days");
+    for (const [key, value] of Object.entries(dateRangeParams("range", selection))) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
@@ -738,6 +758,16 @@ export default function WebsiteAnalyticsClient() {
                 ? `Property ${snapshot.propertyId} · Updated ${new Date(snapshot.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · Auto-refreshes every minute`
                 : "Realtime and historical website reporting"}
             </p>
+            {snapshot && (
+              <p className="mt-0.5 truncate text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                {formatRangeLabel(snapshot.dateRange.current.start, snapshot.dateRange.current.end)} · vs {formatRangeLabel(snapshot.dateRange.previous.start, snapshot.dateRange.previous.end)}
+              </p>
+            )}
+            {!rangeResult.ok && (
+              <p role="alert" className="mt-0.5 text-[10px] font-semibold" style={{ color: "var(--danger-text, #b42318)" }}>
+                {rangeResult.error} Showing the last 30 days instead.
+              </p>
+            )}
           </div>
         </div>
 
@@ -748,20 +778,14 @@ export default function WebsiteAnalyticsClient() {
           </div>
         ) : (
           <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
-            <div className="flex min-h-11 flex-1 items-center rounded-xl border p-1 sm:flex-none" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-2)" }} role="group" aria-label="Website Analytics date range">
-              <CalendarDays size={13} className="ml-2" style={{ color: "var(--text-muted)" }} />
-              {[7, 14, 30, 90].map((value) => (
-                <button
-                  key={value}
-                  onClick={() => setFilter("days", String(value))}
-                  aria-pressed={days === value}
-                  className="min-h-9 min-w-10 flex-1 rounded-lg px-2 text-[11px] font-bold sm:flex-none"
-                  style={{ background: days === value ? "var(--surface-1)" : "transparent", color: days === value ? "var(--brand-primary-strong)" : "var(--text-muted)", boxShadow: days === value ? "var(--shadow-soft)" : "none" }}
-                >
-                  {value}d
-                </button>
-              ))}
-            </div>
+            <DateRangeFilter
+              variant="segmented"
+              value={rangeSelection}
+              onChange={setRange}
+              presets={ANALYTICS_DATE_PRESETS}
+              maxDays={ANALYTICS_MAX_DAYS}
+              label="Website Analytics date range"
+            />
             <button onClick={() => void load(true)} disabled={refreshing || loading} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-bold disabled:opacity-50" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}>
               {refreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               Refresh

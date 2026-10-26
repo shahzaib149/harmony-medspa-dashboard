@@ -5,8 +5,7 @@ import {
   isSafeAnalyticsHostname,
   websiteAnalyticsErrorMessage,
 } from "@/lib/google/analytics-client";
-
-const ALLOWED_DAYS = new Set([7, 14, 30, 90]);
+import { resolveAnalyticsRange } from "@/lib/google/analytics-range";
 
 export async function GET(request: Request) {
   try {
@@ -16,8 +15,11 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const requestedDays = Number(searchParams.get("days") ?? 30);
-  const days = ALLOWED_DAYS.has(requestedDays) ? requestedDays : 30;
+  const rangeResult = resolveAnalyticsRange(searchParams);
+  if (!rangeResult.ok) {
+    return Response.json({ error: rangeResult.error }, { status: 400 });
+  }
+  const { from, to } = rangeResult.range;
   const requestedHostname = searchParams.get("hostname")?.trim().toLowerCase();
   const hostname =
     !requestedHostname || requestedHostname === "all" ? null : requestedHostname;
@@ -30,7 +32,7 @@ export async function GET(request: Request) {
 
   try {
     const snapshot = await fetchWebsiteAnalytics(
-      days,
+      { from, to },
       hostname,
       searchParams.get("refresh") === "1",
     );

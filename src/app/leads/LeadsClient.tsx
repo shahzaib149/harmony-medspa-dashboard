@@ -48,7 +48,9 @@ import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModa
 import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
 import LeadExportButtons from "@/components/leads/LeadExportButtons";
 import { downloadLeadExport } from "@/lib/leads/download-export";
-import { callDateWindow } from "@/lib/leads/call-filter";
+import { callWindowForRange } from "@/lib/leads/call-filter";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { dateRangeParams, resolveDateRange } from "@/lib/date-range";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import {
   DEFAULT_LEAD_VIEW,
@@ -174,7 +176,7 @@ const METHOD_LABEL: Record<string, string> = {
   Manual: "Staff",
 };
 
-type DateFilter = "all" | "today" | "7" | "30";
+const LEAD_DATE_PRESETS = ["today", "7", "30", "this-month", "last-month", "month", "custom"] as const;
 type SentFilter = "all" | "sent" | "not_sent";
 
 const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string; hint: string }> = [
@@ -1739,7 +1741,15 @@ export default function LeadsClient() {
   const statusFilter = searchParams.get("status")?.trim() || "all";
   const sourceFilter = searchParams.get("source")?.trim() || "all";
   const dateParam = searchParams.get("date");
-  const dateFilter: DateFilter = ["today", "7", "30"].includes(dateParam || "") ? dateParam as DateFilter : "all";
+  const dateSelection = useMemo(
+    () => ({ preset: dateParam, month: searchParams.get("month"), from: searchParams.get("from"), to: searchParams.get("to") }),
+    [dateParam, searchParams],
+  );
+  const dateResult = useMemo(() => resolveDateRange(dateSelection, { presets: LEAD_DATE_PRESETS }), [dateSelection]);
+  // An invalid shared link (e.g. end date in the future) falls back to all dates.
+  const dateRange = dateResult?.ok ? dateResult.range : null;
+  const dateFrom = dateRange?.from ?? null;
+  const dateTo = dateRange?.to ?? null;
   const smsParam = searchParams.get("smsStatus");
   const smsFilter: SentFilter = smsParam === "sent" || smsParam === "not_sent" ? smsParam : "all";
   const emailParam = searchParams.get("emailStatus");
@@ -1763,16 +1773,11 @@ export default function LeadsClient() {
     if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
     if (leadTypeFilter !== "all") params.set("leadType", leadTypeFilter);
     if (tagFilterKey) params.set("tags", tagFilterKey);
-    const now = new Date();
-    if (dateFilter === "today") params.set("dateFrom", now.toISOString().slice(0, 10));
-    if (dateFilter === "7" || dateFilter === "30") {
-      const from = new Date(now);
-      from.setDate(from.getDate() - Number(dateFilter));
-      params.set("dateFrom", from.toISOString().slice(0, 10));
-    }
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
     return params.toString();
-  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFilter, emailFilter, leadTypeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
-  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && dateFilter === "all" && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && !tagFilterKey;
+  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFrom, dateTo, emailFilter, leadTypeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
+  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && !dateRange && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && !tagFilterKey;
   const cachedLeads = useDashboardCachedData<{ leads?: Lead[]; view?: LeadView; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number }>(
     DATA_CACHE_KEYS.leads,
   );
@@ -1845,14 +1850,24 @@ export default function LeadsClient() {
     else router.replace(href, { scroll: false });
   }, [activeView, router, searchParams]);
 
+  function setDateRange(selection: Parameters<typeof dateRangeParams>[1]) {
+    setCursorHistory([null]);
+    updateQuery(dateRangeParams("date", selection));
+  }
+
   function setFilterParam(key: string, value: string) {
     setCursorHistory([null]);
+    if (key === "date") {
+      updateQuery(dateRangeParams("date", { preset: value }));
+      return;
+    }
     if (key === "source" && value === "Call Leads") {
       setSearch("");
       setFiltersOpen(false);
       updateQuery({ source: value, view: "all", search: null, status: null,
         campaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
-        emailStatus: null, leadType: null, tags: null, lead: null });
+        emailStatus: null, leadType: null, tags: null, lead: null,
+        date: null, month: null, from: null, to: null });
       return;
     }
     updateQuery({ [key]: value });
@@ -1867,6 +1882,9 @@ export default function LeadsClient() {
       status: null,
       source: null,
       date: null,
+      month: null,
+      from: null,
+      to: null,
       smsStatus: null,
       emailStatus: null,
       leadType: null,
@@ -2091,7 +2109,7 @@ export default function LeadsClient() {
     campaignStepFilter !== "all" ? { key: "campaignStep", label: `Step: ${campaignStepFilter}` } : null,
     statusFilter !== "all" ? { key: "status", label: `Lead status: ${statusFilter}` } : null,
     sourceFilter !== "all" ? { key: "source", label: `Source: ${sourceFilter}` } : null,
-    dateFilter !== "all" ? { key: "date", label: dateFilter === "today" ? "Today" : `Last ${dateFilter} days` } : null,
+    dateRange ? { key: "date", label: dateRange.label } : null,
     smsFilter !== "all" ? { key: "smsStatus", label: smsFilter === "sent" ? "SMS sent" : "SMS not sent" } : null,
     emailFilter !== "all" ? { key: "emailStatus", label: emailFilter === "sent" ? "Email sent" : "Email not sent" } : null,
     leadTypeFilter !== "all" ? { key: "leadType", label: leadTypeFilter === NOT_A_LEAD_FILTER ? "Not a lead" : `Lead type: ${leadTypeFilter}` } : null,
@@ -2444,17 +2462,12 @@ export default function LeadsClient() {
   }
 
   if (sourceFilter === "Call Leads") {
-    const callWindow = callDateWindow(dateFilter);
+    const callWindow = callWindowForRange(dateRange);
     return (
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ backgroundColor: PANEL, borderColor: BORDER }}>
           <SelectControl label="Filter by source" value={sourceFilter} onChange={(value) => setFilterParam("source", value)} options={sources} />
-          <SelectControl label="Filter by date range" value={dateFilter} onChange={(value) => setFilterParam("date", value)} options={[
-            { label: "All dates", value: "all" },
-            { label: "Today", value: "today" },
-            { label: "Last 7 days", value: "7" },
-            { label: "Last 30 days", value: "30" },
-          ]} />
+          <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
           <button type="button" onClick={() => setFilterParam("source", "all")} className="min-h-11 rounded-xl border px-4 text-xs font-bold" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>Back to lead list</button>
           <LeadExportButtons />
         </div>
@@ -2739,17 +2752,7 @@ export default function LeadsClient() {
               onChange={(value) => setFilterParam("source", value)}
               options={sources}
             />
-            <SelectControl
-              label="Filter by date range"
-              value={dateFilter}
-              onChange={(value) => setFilterParam("date", value)}
-              options={[
-                { label: "All dates", value: "all" },
-                { label: "Today", value: "today" },
-                { label: "Last 7 days", value: "7" },
-                { label: "Last 30 days", value: "30" },
-              ]}
-            />
+            <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
             <SelectControl
               label="Filter by tag"
               value={tagFilter.length === 1 ? tagFilter[0] : tagFilter.length > 1 ? "__multi" : "all"}
@@ -2848,17 +2851,7 @@ export default function LeadsClient() {
                   ]}
                 />
                 <SelectControl label="Filter by source" value={sourceFilter} onChange={(value) => setFilterParam("source", value)} options={sources} />
-                <SelectControl
-                  label="Filter by date range"
-                  value={dateFilter}
-                  onChange={(value) => setFilterParam("date", value)}
-                  options={[
-                    { label: "All dates", value: "all" },
-                    { label: "Today", value: "today" },
-                    { label: "Last 7 days", value: "7" },
-                    { label: "Last 30 days", value: "30" },
-                  ]}
-                />
+                <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
                 <SelectControl
                   label="Filter by SMS sent"
                   value={smsFilter}
