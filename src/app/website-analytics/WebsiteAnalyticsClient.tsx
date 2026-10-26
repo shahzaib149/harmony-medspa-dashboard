@@ -779,7 +779,7 @@ export default function WebsiteAnalyticsClient() {
         ) : (
           <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
             <DateRangeFilter
-              variant="segmented"
+              size="lg"
               value={rangeSelection}
               onChange={setRange}
               presets={ANALYTICS_DATE_PRESETS}
