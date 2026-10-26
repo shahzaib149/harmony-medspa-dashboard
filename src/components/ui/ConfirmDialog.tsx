@@ -10,6 +10,7 @@ type Props = {
   confirmLabel: string;
   cancelLabel?: string;
   destructive?: boolean;
+  confirmDisabled?: boolean;
   loading?: boolean;
   loadingLabel?: string;
   children?: React.ReactNode;
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel = "Cancel",
   destructive = false,
+  confirmDisabled = false,
   loading = false,
   loadingLabel = "Working…",
   children,
@@ -152,7 +154,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             onClick={onConfirm}
             className="min-h-11 rounded-xl px-4 py-2.5 text-sm font-bold disabled:opacity-50"
             style={{

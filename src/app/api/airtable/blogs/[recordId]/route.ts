@@ -1,5 +1,5 @@
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
-import { BlogStorageError, getBlog, updateBlog } from "@/lib/airtable/blogs";
+import { BlogStorageError, deleteBlog, getBlog, updateBlog } from "@/lib/airtable/blogs";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { notifyPublicBlogWebsite } from "@/lib/blogs/publication";
 
@@ -54,8 +54,7 @@ export async function PATCH(
   try {
     const { before, after } = await updateBlog(recordId, body, actorLabel(actor));
     const published = before.status !== "Published" && after.status === "Published";
-    const unpublished = before.status === "Published" && after.status === "Draft";
-    const action = published ? "blog_published" : unpublished ? "blog_unpublished" : "blog_updated";
+    const action = published ? (before.status === "Archived" ? "blog_restored" : "blog_published") : "blog_updated";
     const publicationSync = before.status === "Published" || after.status === "Published"
       ? await notifyPublicBlogWebsite({ slug: after.slug, previousSlug: before.slug })
       : { ok: true, skipped: true };
@@ -65,10 +64,8 @@ export async function PATCH(
       category: "blogs",
       resource: { type: "blog", id: after.id, label: after.title },
       summary: published
-        ? `Published ${after.title}`
-        : unpublished
-          ? `Unpublished ${after.title}`
-          : `Updated ${after.title}`,
+        ? `${before.status === "Archived" ? "Restored" : "Published"} ${after.title}`
+        : `Updated ${after.title}`,
       before: {
         title: before.title,
         slug: before.slug,
@@ -98,5 +95,56 @@ export async function PATCH(
       request,
     });
     return storageError(error, "Blog article could not be updated.");
+  }
+}
+
+// Permanent removal is admin-only; archive is the reversible path.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ recordId: string }> },
+) {
+  let actor;
+  try {
+    ({ profile: actor } = await requireRole(request, "admin"));
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+  const { recordId } = await params;
+
+  try {
+    const before = await deleteBlog(recordId);
+    const publicationSync = before.status === "Published"
+      ? await notifyPublicBlogWebsite({ slug: before.slug })
+      : { ok: true, skipped: true };
+    const audit = await logAuditEvent({
+      actor,
+      action: "blog_deleted",
+      category: "blogs",
+      resource: { type: "blog", id: before.id, label: before.title },
+      summary: `Deleted ${before.status.toLowerCase()} article ${before.title}`,
+      before: {
+        title: before.title,
+        slug: before.slug,
+        status: before.status,
+        primary_keyword: before.primaryKeyword,
+        category: before.category,
+        published_at: before.publishedAt,
+        excerpt: before.excerpt,
+      },
+      request,
+    });
+    return Response.json({ deleted: true, id: before.id, publicationSync, requestId: audit.requestId });
+  } catch (error) {
+    await logAuditEvent({
+      actor,
+      action: "blog_delete_failed",
+      category: "blogs",
+      resource: { type: "blog", id: recordId },
+      summary: "Blog article deletion failed",
+      metadata: { result: "failed" },
+      result: "failed",
+      request,
+    });
+    return storageError(error, "Blog article could not be deleted.");
   }
 }

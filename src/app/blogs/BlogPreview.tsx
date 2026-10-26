@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   BadgeCheck,
   CalendarDays,
@@ -13,6 +15,7 @@ import {
   Link2,
   Loader2,
   Send,
+  Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { blogSiteUrl, validateBlog } from "@/lib/blogs/seo";
@@ -20,6 +23,7 @@ import { type BlogContentBlock, type BlogRecord, type BlogTextBlock } from "@/li
 import BlogImage from "@/app/blogs/BlogImage";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Toast } from "@/components/ui/Toast";
+import { useBlogLifecycle } from "@/app/blogs/useBlogLifecycle";
 
 function textLines(value: string) {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -74,10 +78,12 @@ function PreviewBlock({ block }: { block: BlogContentBlock }) {
 export default function BlogPreview({
   blog: initialBlog,
   canEdit,
+  canDelete = false,
   siteUrl,
 }: {
   blog: BlogRecord;
   canEdit: boolean;
+  canDelete?: boolean;
   siteUrl?: string;
 }) {
   const router = useRouter();
@@ -87,6 +93,16 @@ export default function BlogPreview({
   const [toast, setToast] = useState<{ variant: "success" | "warning" | "danger"; message: string } | null>(null);
   const publicUrl = `${blogSiteUrl(siteUrl)}/blog/${blog.slug}`;
   const published = blog.status === "Published";
+  const archived = blog.status === "Archived";
+  const lifecycle = useBlogLifecycle({
+    onToast: setToast,
+    onChanged: (next) => {
+      setBlog(next);
+      router.refresh();
+    },
+    onDeleted: () => router.replace("/blogs"),
+  });
+  const lifecycleTarget = { id: blog.id, title: blog.title, slug: blog.slug, status: blog.status };
   const publishInput = useMemo(() => ({
     title: blog.title,
     slug: blog.slug,
@@ -148,7 +164,7 @@ export default function BlogPreview({
       <div className="blog-preview-toolbar">
         <Link href="/blogs" className="blog-back-link"><ArrowLeft size={17} /> Blog library</Link>
         <div className="blog-preview-actions">
-          {canEdit && !published && (
+          {canEdit && blog.status === "Draft" && (
             <button type="button" className="blog-preview-action" data-action="publish" disabled={publishing} onClick={requestPublish}>
               {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {publishing ? "Publishing…" : "Publish article"}
             </button>
@@ -163,14 +179,29 @@ export default function BlogPreview({
               <ExternalLink size={16} /> Open published URL
             </a>
           )}
+          {canEdit && published && (
+            <button type="button" className="blog-preview-action" data-action="archive" disabled={lifecycle.busy} onClick={() => lifecycle.request("archive", lifecycleTarget)}>
+              <Archive size={16} /> Archive
+            </button>
+          )}
+          {canEdit && archived && (
+            <button type="button" className="blog-preview-action" data-action="publish" disabled={lifecycle.busy} onClick={() => lifecycle.request("restore", lifecycleTarget)}>
+              <ArchiveRestore size={16} /> Restore and publish
+            </button>
+          )}
+          {canDelete && (
+            <button type="button" className="blog-preview-action" data-action="delete" disabled={lifecycle.busy} onClick={() => lifecycle.request("delete", lifecycleTarget)}>
+              <Trash2 size={16} /> Delete
+            </button>
+          )}
         </div>
       </div>
 
       <div className="blog-preview-notice" data-status={blog.status.toLowerCase()}>
         <Eye size={17} />
         <div>
-          <strong>{published ? "Dashboard preview of the published article" : "Dashboard-only draft preview"}</strong>
-          <span>{published ? "Use the published URL to check the live website version." : "This draft is not visible on the public website."}</span>
+          <strong>{published ? "Dashboard preview of the published article" : archived ? "Archived article" : "Dashboard-only draft preview"}</strong>
+          <span>{published ? "Use the published URL to check the live website version." : archived ? "Hidden from the public website. Restore it to republish at the same URL." : "This draft is not visible on the public website."}</span>
         </div>
       </div>
 
@@ -201,7 +232,7 @@ export default function BlogPreview({
         </dl>
 
         <div className="blog-preview-url-card">
-          <span><Link2 size={15} /> {published ? "Published URL" : "Planned URL"}</span>
+          <span><Link2 size={15} /> {published ? "Published URL" : archived ? "Reserved URL" : "Planned URL"}</span>
           {published ? (
             <a href={publicUrl} target="_blank" rel="noreferrer"><span>{publicUrl}</span><ExternalLink size={14} /></a>
           ) : (
@@ -260,6 +291,7 @@ export default function BlogPreview({
           <p>The article has passed publishing validation and is ready to go live.</p>
         )}
       </ConfirmDialog>
+      {lifecycle.dialog}
     </div>
   );
 }

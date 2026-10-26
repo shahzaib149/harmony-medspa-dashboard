@@ -1,4 +1,4 @@
-export const BLOG_STATUSES = ["Draft", "Published"] as const;
+export const BLOG_STATUSES = ["Draft", "Published", "Archived"] as const;
 export type BlogStatus = (typeof BLOG_STATUSES)[number];
 
 export const BLOG_BLOCK_TYPES = [

@@ -2,7 +2,8 @@ import "server-only";
 
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey } from "@/lib/airtable/config";
 import { blogWordCount, slugifyBlogKeyword, validateBlog } from "@/lib/blogs/seo";
-import { BLOG_STATUSES, type BlogContentBlock, type BlogInput, type BlogRecord, type BlogStatus, type BlogSummary } from "@/lib/blogs/types";
+import { blogTransitionError, parseBlogStatus } from "@/lib/blogs/lifecycle";
+import type { BlogContentBlock, BlogInput, BlogRecord, BlogStatus, BlogSummary } from "@/lib/blogs/types";
 import { resilientFetch } from "@/lib/network/resilient-fetch";
 
 const BASE_ID = process.env.AIRTABLE_BLOGS_BASE_ID?.trim() || AIRTABLE_LEADS_BASE_ID;
@@ -107,7 +108,7 @@ function cleanContent(value: unknown): BlogContentBlock[] {
 
 export function normalizeBlogInput(value: unknown): BlogInput {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  const status = BLOG_STATUSES.includes(input.status as BlogStatus) ? input.status as BlogStatus : "Draft";
+  const status = parseBlogStatus(input.status);
   return {
     title: cleanText(input.title, 200),
     slug: slugifyBlogKeyword(cleanText(input.slug, 100)),
@@ -140,8 +141,7 @@ function parseStoredData(fields: Record<string, unknown>): Partial<StoredBlogDat
 
 export function mapBlogRecord(record: AirtableBlogRecord): BlogRecord {
   const stored = parseStoredData(record.fields);
-  const statusValue = stringField(record.fields, "Status");
-  const status: BlogStatus = statusValue === "Published" ? "Published" : "Draft";
+  const status = parseBlogStatus(stringField(record.fields, "Status"));
   return {
     id: record.id,
     title: stringField(record.fields, "Title"),
@@ -233,6 +233,9 @@ async function blogFetch(path: string, init: RequestInit = {}) {
 async function checked(response: Response) {
   if (response.ok) return response;
   const body = await response.json().catch(() => null) as { error?: { message?: string; type?: string } } | null;
+  if (body?.error?.type === "INVALID_MULTIPLE_CHOICE_OPTIONS" && /Archived/.test(body.error.message || "")) {
+    throw new BlogStorageError(422, "Archiving needs an \"Archived\" option on the Status field of the Airtable Blogs table. Add it in Airtable, then try again.");
+  }
   const detail = body?.error?.message || body?.error?.type;
   const setupHint = response.status === 404 || /unknown field|not found/i.test(detail || "")
     ? " Check the Blogs table and field setup in docs/airtable-blogs-setup.md."
@@ -277,6 +280,7 @@ export async function createBlog(raw: unknown, actor: string) {
   const input = normalizeBlogInput(raw);
   if (!input.title) throw new BlogStorageError(400, "Article title is required.");
   if (!input.slug) throw new BlogStorageError(400, "URL slug is required.");
+  if (input.status === "Archived") throw new BlogStorageError(400, "New articles start as a draft or a published article.");
   assertPublishable(input);
   await assertUniqueSlug(input.slug);
   const now = new Date().toISOString();
@@ -303,6 +307,10 @@ export async function updateBlog(id: string, raw: unknown, actor: string) {
   if (before.publishedAt && input.slug !== before.slug) {
     throw new BlogStorageError(409, "Published article URLs are locked until redirect support is added to the public website.");
   }
+  const transitionError = input.status === "Archived" && before.status !== "Archived"
+    ? "Use Archive to take an article off the website."
+    : blogTransitionError(before.status, input.status);
+  if (transitionError) throw new BlogStorageError(409, transitionError);
   assertPublishable(input);
   await assertUniqueSlug(input.slug, id);
   const now = new Date().toISOString();
@@ -318,6 +326,54 @@ export async function updateBlog(id: string, raw: unknown, actor: string) {
     }),
   }));
   return { before, after: mapBlogRecord(await response.json() as AirtableBlogRecord) };
+}
+
+export function blogRecordToInput(blog: BlogRecord): BlogInput {
+  return {
+    title: blog.title,
+    slug: blog.slug,
+    status: blog.status,
+    primaryKeyword: blog.primaryKeyword,
+    category: blog.category,
+    tags: blog.tags,
+    excerpt: blog.excerpt,
+    content: blog.content,
+    seoTitle: blog.seoTitle,
+    metaDescription: blog.metaDescription,
+    relatedServiceUrl: blog.relatedServiceUrl,
+    relatedArticleUrls: blog.relatedArticleUrls,
+    ctaLabel: blog.ctaLabel,
+    ctaUrl: blog.ctaUrl,
+  };
+}
+
+// Archive and restore change only the status columns, so the article body in
+// CMS Data is never rewritten by a library row action.
+export async function setBlogStatus(id: string, status: BlogStatus, actor: string) {
+  const before = await getBlog(id);
+  if (before.status === status) throw new BlogStorageError(409, `This article is already ${status.toLowerCase()}.`);
+  const transitionError = blogTransitionError(before.status, status);
+  if (transitionError) throw new BlogStorageError(409, transitionError);
+  assertPublishable({ ...blogRecordToInput(before), status });
+  const now = new Date().toISOString();
+  const response = await checked(await blogFetch(`/${encodeURIComponent(id)}?typecast=true`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      fields: {
+        Status: status,
+        "Updated At": now,
+        "Updated By": actor,
+        ...(status === "Published" && !before.publishedAt ? { "Published At": now } : {}),
+      },
+    }),
+  }));
+  return { before, after: mapBlogRecord(await response.json() as AirtableBlogRecord) };
+}
+
+export async function deleteBlog(id: string) {
+  const before = await getBlog(id);
+  await checked(await blogFetch(`/${encodeURIComponent(id)}`, { method: "DELETE" }));
+  return before;
 }
 
 export function blogSummary(blog: BlogRecord): BlogSummary {

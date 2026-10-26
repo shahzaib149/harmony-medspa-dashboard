@@ -2,20 +2,37 @@
 
 import Link from "next/link";
 import {
+  Archive,
+  ArchiveRestore,
   ArrowRight,
   BookOpenText,
   Check,
   ChevronDown,
+  ExternalLink,
+  FilePenLine,
   FileText,
+  MoreHorizontal,
   PenLine,
   Plus,
   Search,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { Toast } from "@/components/ui/Toast";
+import { blogSiteUrl } from "@/lib/blogs/seo";
 import type { BlogSummary } from "@/lib/blogs/types";
+import { useBlogLifecycle, type BlogLifecycleTarget } from "./useBlogLifecycle";
+
+const STATUS_FILTERS = ["Active", "Published", "Draft", "Archived", "All"] as const;
+
+function matchesStatus(filter: string, status: BlogSummary["status"]) {
+  if (filter === "All") return true;
+  if (filter === "Active") return status !== "Archived";
+  return status === filter;
+}
 
 function formatDate(value: string | null) {
   if (!value) return "Not published";
@@ -29,12 +46,113 @@ function formatDate(value: string | null) {
 }
 
 function StatusBadge({ status }: { status: BlogSummary["status"] }) {
-  const published = status === "Published";
   return (
     <span className="blog-status-badge" data-status={status.toLowerCase()}>
       <span className="blog-status-dot" aria-hidden="true" />
-      {published ? "Published" : "Draft"}
+      {status}
     </span>
+  );
+}
+
+function RowActions({ blog, canDelete, publicUrl, onRequest }: {
+  blog: BlogSummary;
+  canDelete: boolean;
+  publicUrl: string;
+  onRequest: (action: "archive" | "restore" | "delete", target: BlogLifecycleTarget) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const placeMenu = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = 228;
+    const openAbove = window.innerHeight - rect.bottom < 240 && rect.top > 240;
+    setPosition({
+      position: "fixed",
+      zIndex: 100,
+      width,
+      left: Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12)),
+      top: openAbove ? "auto" : rect.bottom + 6,
+      bottom: openAbove ? window.innerHeight - rect.top + 6 : "auto",
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
+    const closeOnKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("keydown", closeOnKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("keydown", closeOnKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+
+  const choose = (action: "archive" | "restore" | "delete") => {
+    setOpen(false);
+    onRequest(action, { id: blog.id, title: blog.title, slug: blog.slug, status: blog.status });
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="blog-row-menu-trigger"
+        aria-label={`Actions for ${blog.title || "untitled article"}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => { if (!open) placeMenu(); setOpen((current) => !current); }}
+      >
+        <MoreHorizontal size={17} />
+      </button>
+      {open && createPortal(
+        <div ref={menuRef} className="blog-row-menu" style={position} role="menu" aria-label="Article actions">
+          <Link role="menuitem" href={`/blogs/${blog.id}/edit`} className="blog-row-menu-item"><FilePenLine size={15} /><span>Edit article</span></Link>
+          {blog.status === "Published" && (
+            <a role="menuitem" href={publicUrl} target="_blank" rel="noreferrer" className="blog-row-menu-item"><ExternalLink size={15} /><span>View on website</span></a>
+          )}
+          {blog.status === "Published" && (
+            <button role="menuitem" type="button" className="blog-row-menu-item" onClick={() => choose("archive")}>
+              <Archive size={15} /><span>Archive<small>Hide from website, keep here</small></span>
+            </button>
+          )}
+          {blog.status === "Archived" && (
+            <button role="menuitem" type="button" className="blog-row-menu-item" onClick={() => choose("restore")}>
+              <ArchiveRestore size={15} /><span>Restore and publish<small>Live again at the same URL</small></span>
+            </button>
+          )}
+          {canDelete && (
+            <>
+              <span className="blog-row-menu-divider" role="separator" />
+              <button role="menuitem" type="button" className="blog-row-menu-item" data-tone="danger" onClick={() => choose("delete")}>
+                <Trash2 size={15} /><span>Delete permanently<small>Cannot be undone</small></span>
+              </button>
+            </>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -113,13 +231,22 @@ function CategoryFilter({ value, options, counts, onChange }: {
     </div>
   );
 }
-export default function BlogsClient({ canManage }: { canManage: boolean }) {
+export default function BlogsClient({ canManage, canDelete, siteUrl }: { canManage: boolean; canDelete: boolean; siteUrl?: string }) {
   const [blogs, setBlogs] = useState<BlogSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("All");
+  const [status, setStatus] = useState<string>("Active");
   const [category, setCategory] = useState("All");
+  const [toast, setToast] = useState<{ variant: "success" | "warning" | "danger"; message: string } | null>(null);
+  const lifecycle = useBlogLifecycle({
+    onToast: setToast,
+    onChanged: (blog) => setBlogs((current) => current.map((item) => item.id === blog.id
+      ? { ...item, status: blog.status, updatedAt: blog.updatedAt, updatedBy: blog.updatedBy, publishedAt: blog.publishedAt }
+      : item)),
+    onDeleted: (id) => setBlogs((current) => current.filter((item) => item.id !== id)),
+  });
+  const publicBase = blogSiteUrl(siteUrl);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,7 +272,7 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
   const categoryCounts = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const matching = blogs.filter((blog) =>
-      (status === "All" || blog.status === status)
+      matchesStatus(status, blog.status)
       && (!needle || `${blog.title} ${blog.primaryKeyword} ${blog.category} ${blog.slug}`.toLowerCase().includes(needle)),
     );
     return matching.reduce<Record<string, number>>((totals, blog) => {
@@ -158,20 +285,23 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return blogs.filter((blog) =>
-      (status === "All" || blog.status === status)
+      matchesStatus(status, blog.status)
       && (category === "All" || blog.category === category)
       && (!needle || `${blog.title} ${blog.primaryKeyword} ${blog.category} ${blog.slug}`.toLowerCase().includes(needle)),
     );
   }, [blogs, category, query, status]);
 
   const counts = {
-    all: blogs.length,
+    active: blogs.filter((blog) => blog.status !== "Archived").length,
     published: blogs.filter((blog) => blog.status === "Published").length,
     drafts: blogs.filter((blog) => blog.status === "Draft").length,
+    archived: blogs.filter((blog) => blog.status === "Archived").length,
   };
+  const archiveEmpty = status === "Archived" && !query.trim() && category === "All";
 
   return (
     <div className="blog-studio blog-library space-y-4 sm:space-y-5">
+      {toast && <Toast variant={toast.variant} message={toast.message} onClose={() => setToast(null)} />}
       <section className="blog-library-hero">
         <div className="blog-library-intro">
           <p className="blog-eyebrow"><BookOpenText size={13} /> Editorial desk</p>
@@ -189,8 +319,12 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
         <div className="blog-library-ledger" aria-label="Blog library summary">
           <div className="blog-ledger-cell">
             <span className="blog-ledger-label">Library</span>
-            <strong>{counts.all}</strong>
-            <small>Total articles</small>
+            <strong>{counts.active}</strong>
+            {counts.archived ? (
+              <button type="button" className="blog-ledger-archived" onClick={() => setStatus("Archived")}>
+                Active · {counts.archived} archived
+              </button>
+            ) : <small>Active articles</small>}
           </div>
           <div className="blog-ledger-cell blog-ledger-cell--live">
             <span className="blog-ledger-label">Live</span>
@@ -224,9 +358,11 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
           />
         </label>
         <select aria-label="Blog status" value={status} onChange={(event) => setStatus(event.target.value)} className="blog-filter-select">
-          <option>All</option>
-          <option>Draft</option>
-          <option>Published</option>
+          {STATUS_FILTERS.map((item) => (
+            <option key={item} value={item}>
+              {item === "Active" ? "Live + drafts" : item === "All" ? "All, incl. archived" : item}
+            </option>
+          ))}
         </select>
         <CategoryFilter value={category} options={categories} counts={categoryCounts} onChange={setCategory} />
       </section>
@@ -244,9 +380,9 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
       ) : visible.length === 0 ? (
         <div className="blog-message-state">
           <span className="blog-empty-mark"><PenLine size={23} /></span>
-          <p className="blog-eyebrow">{blogs.length ? "No matches" : "Your editorial queue is clear"}</p>
-          <h2 className="blog-display-subtitle">{blogs.length ? "Try a different filter." : "Begin with the question patients are already asking."}</h2>
-          <p>{blogs.length ? "Change the search, status, or category to see more articles." : "Enter a primary keyword, write the answer manually, then publish when it is ready."}</p>
+          <p className="blog-eyebrow">{archiveEmpty ? "Archive is empty" : blogs.length ? "No matches" : "Your editorial queue is clear"}</p>
+          <h2 className="blog-display-subtitle">{archiveEmpty ? "No archived articles." : blogs.length ? "Try a different filter." : "Begin with the question patients are already asking."}</h2>
+          <p>{archiveEmpty ? "Archived articles are hidden from the website and kept here so they can be restored." : blogs.length ? "Change the search, status, or category to see more articles." : "Enter a primary keyword, write the answer manually, then publish when it is ready."}</p>
           {canManage && blogs.length === 0 && (
             <Link href="/blogs/new" className="blog-primary-action"><Plus size={16} /> Create first article</Link>
           )}
@@ -258,7 +394,8 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
           </div>
           <div className="blog-queue-list">
             {visible.map((blog) => (
-              <Link key={blog.id} href={`/blogs/${blog.id}`} className="blog-article-row" data-status={blog.status.toLowerCase()}>
+              <div key={blog.id} className="blog-article-item" data-actions={canManage || undefined}>
+              <Link href={`/blogs/${blog.id}`} className="blog-article-row" data-status={blog.status.toLowerCase()}>
                 <span className="blog-row-status-rail" aria-hidden="true" />
                 <div className="blog-article-primary">
                   <div className="blog-article-heading">
@@ -282,10 +419,20 @@ export default function BlogsClient({ canManage }: { canManage: boolean }) {
                 </div>
                 <span className="blog-row-open" aria-hidden="true"><ArrowRight size={17} /></span>
               </Link>
+              {canManage && (
+                <RowActions
+                  blog={blog}
+                  canDelete={canDelete}
+                  publicUrl={`${publicBase}/blog/${blog.slug}`}
+                  onRequest={lifecycle.request}
+                />
+              )}
+              </div>
             ))}
           </div>
         </section>
       )}
+      {lifecycle.dialog}
     </div>
   );
 }

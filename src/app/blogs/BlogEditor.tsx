@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
@@ -47,11 +49,13 @@ import {
   type BlogStatus,
 } from "@/lib/blogs/types";
 import BlogImage from "@/app/blogs/BlogImage";
+import { useBlogLifecycle } from "@/app/blogs/useBlogLifecycle";
 
 type Props = {
   mode: "new" | "edit";
   recordId?: string;
   canEdit: boolean;
+  canDelete?: boolean;
   siteUrl?: string;
 };
 
@@ -375,7 +379,7 @@ function ContentBlockEditor({
   );
 }
 
-export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) {
+export default function BlogEditor({ mode, recordId, canEdit, canDelete = false, siteUrl }: Props) {
   const router = useRouter();
   const [blog, setBlog] = useState<BlogInput>(EMPTY_BLOG);
   const [record, setRecord] = useState<BlogRecord | null>(null);
@@ -384,12 +388,32 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [issues, setIssues] = useState<string[]>([]);
-  const [confirmAction, setConfirmAction] = useState<"publish" | "unpublish" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"publish" | null>(null);
   const [toast, setToast] = useState<{ variant: "success" | "danger" | "warning" | "info"; message: string } | null>(null);
+  const lifecycle = useBlogLifecycle({
+    onToast: setToast,
+    onChanged: (next) => {
+      const input = recordToInput(next);
+      setRecord(next);
+      setBlog(input);
+      setOriginal(JSON.stringify(input));
+      router.refresh();
+    },
+    onDeleted: () => router.replace("/blogs"),
+  });
   const previousSuggestions = useRef({ slug: "", seoTitle: "", metaDescription: "" });
   const configuredSiteUrl = blogSiteUrl(siteUrl);
   const dirty = JSON.stringify(blog) !== original;
   const urlLocked = Boolean(record?.publishedAt);
+  const archived = blog.status === "Archived";
+  const lifecycleTarget = record ? { id: record.id, title: record.title, slug: record.slug, status: record.status } : null;
+  const requestPublish = () => {
+    const next = validateBlog({ ...blog, status: "Published" });
+    if (next.errors.length) {
+      setIssues(next.errors);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else setConfirmAction("publish");
+  };
 
   const load = useCallback(async () => {
     if (mode !== "edit" || !recordId) return;
@@ -526,11 +550,13 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
       setToast(publicSyncFailed
         ? {
             variant: "warning",
-            message: `${status === "Published" ? "Published in Airtable" : "Saved as a draft"}, but the public website refresh is pending. ${body.publicationSync?.message || "Check the website publishing configuration."}`,
+            message: `${status === "Published" ? "Published in Airtable" : "Saved in Airtable"}, but the public website refresh is pending. ${body.publicationSync?.message || "Check the website publishing configuration."}`,
           }
         : {
             variant: "success",
-            message: status === "Published" ? "Article published and the public website was refreshed." : "Draft saved to Airtable.",
+            message: status === "Published"
+              ? "Article published and the public website was refreshed."
+              : status === "Archived" ? "Archived article saved. It stays hidden from the website." : "Draft saved to Airtable.",
           });
       if (mode === "new") router.replace(`/blogs/${body.blog.id}`);
       router.refresh();
@@ -663,18 +689,29 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
 
         <aside className="blog-editor-rail">
           <Panel eyebrow="Publish" title="Publication control" className="blog-publish-panel">
-            <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>Current status</span><span className="rounded-full border px-2.5 py-1 text-[10px] font-extrabold uppercase" style={{ color: blog.status === "Published" ? "var(--success-text)" : "var(--warning-text)", backgroundColor: blog.status === "Published" ? "var(--success-bg)" : "var(--warning-bg)", borderColor: blog.status === "Published" ? "var(--success-border)" : "var(--warning-border)" }}>{blog.status}</span></div>
+            <div className="flex items-center justify-between gap-3"><span className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>Current status</span><span className="rounded-full border px-2.5 py-1 text-[10px] font-extrabold uppercase" style={{ color: blog.status === "Published" ? "var(--success-text)" : archived ? "var(--neutral-text)" : "var(--warning-text)", backgroundColor: blog.status === "Published" ? "var(--success-bg)" : archived ? "var(--neutral-bg)" : "var(--warning-bg)", borderColor: blog.status === "Published" ? "var(--success-border)" : archived ? "var(--neutral-border)" : "var(--warning-border)" }}>{blog.status}</span></div>
             {canEdit && (
               <div className="blog-publish-actions">
                 <button disabled={saving || !dirty} type="button" onClick={() => void save(blog.status)} data-action="save">{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save changes</button>
                 {blog.status === "Published" ? (
-                  <button disabled={saving} type="button" onClick={() => setConfirmAction("unpublish")} data-action="unpublish">Move to draft</button>
+                  <button disabled={saving || lifecycle.busy || dirty || !lifecycleTarget} type="button" onClick={() => lifecycleTarget && lifecycle.request("archive", lifecycleTarget)} data-action="unpublish" title={dirty ? "Save or discard your changes before archiving." : undefined}><Archive size={16} /> Archive</button>
+                ) : archived ? (
+                  <button disabled={saving} type="button" onClick={requestPublish} data-action="publish"><ArchiveRestore size={16} /> Restore and publish</button>
                 ) : (
-                  <button disabled={saving} type="button" onClick={() => { const next = validateBlog({ ...blog, status: "Published" }); if (next.errors.length) { setIssues(next.errors); window.scrollTo({ top: 0, behavior: "smooth" }); } else setConfirmAction("publish"); }} data-action="publish"><Send size={16} /> Publish manually</button>
+                  <button disabled={saving} type="button" onClick={requestPublish} data-action="publish"><Send size={16} /> Publish manually</button>
+                )}
+                {canDelete && lifecycleTarget && (
+                  <button disabled={saving || lifecycle.busy} type="button" onClick={() => lifecycle.request("delete", lifecycleTarget)} data-action="delete"><Trash2 size={16} /> Delete permanently</button>
                 )}
               </div>
             )}
-            <p className="mt-3 text-[11px] leading-5" style={{ color: "var(--text-muted)" }}>Nothing publishes automatically. An editor or administrator must click Publish and confirm.</p>
+            <p className="mt-3 text-[11px] leading-5" style={{ color: "var(--text-muted)" }}>
+              {blog.status === "Published"
+                ? "Archive takes the article off the website and keeps it here. Published articles do not return to draft."
+                : archived
+                  ? "Archived articles are hidden from the website. Restore republishes the article at the same URL."
+                  : "Nothing publishes automatically. An editor or administrator must click Publish and confirm."}
+            </p>
           </Panel>
 
           <Panel eyebrow="Optimize" title="Technical SEO dossier" description="Prepared from the primary keyword and article fields." className="blog-seo-panel">
@@ -720,29 +757,32 @@ export default function BlogEditor({ mode, recordId, canEdit, siteUrl }: Props) 
             {saving ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
           </button>
           {blog.status === "Published" ? (
-            <button disabled={saving} type="button" onClick={() => setConfirmAction("unpublish")} data-action="secondary">Draft</button>
+            <button disabled={saving || lifecycle.busy || dirty || !lifecycleTarget} type="button" onClick={() => lifecycleTarget && lifecycle.request("archive", lifecycleTarget)} data-action="secondary">Archive</button>
           ) : (
-            <button disabled={saving} type="button" onClick={() => { const next = validateBlog({ ...blog, status: "Published" }); if (next.errors.length) { setIssues(next.errors); window.scrollTo({ top: 0, behavior: "smooth" }); } else setConfirmAction("publish"); }} data-action="primary">Publish</button>
+            <button disabled={saving} type="button" onClick={requestPublish} data-action="primary">{archived ? "Restore" : "Publish"}</button>
           )}
         </div>
       )}
 
       <ConfirmDialog
         open={confirmAction !== null}
-        title={confirmAction === "publish" ? "Publish this article?" : "Move this article back to draft?"}
-        description={confirmAction === "publish" ? "This is the manual publishing step. The CMS will mark the Airtable record as published and prepare it for the future public website." : "The public website will exclude this article after the website integration is completed."}
-        confirmLabel={confirmAction === "publish" ? "Publish article" : "Move to draft"}
+        title={archived ? "Restore and republish this article?" : "Publish this article?"}
+        description={archived
+          ? `The article and any changes you made go live again at /blog/${blog.slug}.`
+          : "This is the manual publishing step. The CMS will mark the Airtable record as published and refresh the public website."}
+        confirmLabel={archived ? "Restore and publish" : "Publish article"}
         loading={saving}
         loadingLabel="Saving..."
         onCancel={() => setConfirmAction(null)}
-        onConfirm={() => void save(confirmAction === "publish" ? "Published" : "Draft")}
+        onConfirm={() => void save("Published")}
       >
-        {confirmAction === "publish" && validation.warnings.length > 0 ? (
+        {validation.warnings.length > 0 ? (
           <div><p className="font-bold">You can publish with these reminders:</p><ul className="mt-2 list-disc space-y-1 pl-5">{validation.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>
         ) : (
-          <p>{confirmAction === "publish" ? "Nothing is generated or published until you confirm." : "The article and its Airtable history will be preserved."}</p>
+          <p>Nothing is generated or published until you confirm.</p>
         )}
       </ConfirmDialog>
+      {lifecycle.dialog}
     </div>
   );
 }

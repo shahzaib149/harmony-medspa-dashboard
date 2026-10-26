@@ -8,6 +8,8 @@ import BlogsClient from "./BlogsClient";
 export default async function BlogsPage() {
   const { profile } = await requirePageAuth({ next: "/blogs" });
   const canManage = hasMinimumRole(profile.role, "editor");
+  const canDelete = hasMinimumRole(profile.role, "admin");
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
   return (
     <DashboardLayout
       title="Blog editorial"
@@ -23,7 +25,7 @@ export default async function BlogsPage() {
         </Link>
       ) : undefined}
     >
-      <BlogsClient canManage={canManage} />
+      <BlogsClient canManage={canManage} canDelete={canDelete} siteUrl={siteUrl} />
     </DashboardLayout>
   );
 }

@@ -20,6 +20,7 @@ export default async function BlogPreviewPage({ params }: { params: Promise<{ re
       <BlogPreview
         blog={blog}
         canEdit={hasMinimumRole(profile.role, "editor")}
+        canDelete={hasMinimumRole(profile.role, "admin")}
         siteUrl={siteUrl}
       />
     </DashboardLayout>

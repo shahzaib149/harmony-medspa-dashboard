@@ -14,6 +14,7 @@ export default async function EditBlogPage({ params }: { params: Promise<{ recor
         mode="edit"
         recordId={recordId}
         canEdit={hasMinimumRole(profile.role, "editor")}
+        canDelete={hasMinimumRole(profile.role, "admin")}
         siteUrl={siteUrl}
       />
     </DashboardLayout>
