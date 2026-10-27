@@ -23,10 +23,15 @@ export function reportingDateRange(days: number, now = new Date()) {
   return { from, to };
 }
 
-export function isReportingDateInRange(value: string, days: number, now = new Date()) {
+/** `window` is a day count (legacy) or explicit inclusive YYYY-MM-DD bounds. */
+export function isReportingDateInRange(
+  value: string,
+  window: number | { from: string; to: string },
+  now = new Date(),
+) {
   if (!value) return false;
   const date = value.slice(0, 10);
-  const { from, to } = reportingDateRange(days, now);
+  const { from, to } = typeof window === "number" ? reportingDateRange(window, now) : window;
   return date >= from && date <= to;
 }
 

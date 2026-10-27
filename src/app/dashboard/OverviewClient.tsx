@@ -6,7 +6,6 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   Clock3,
   ContactRound,
@@ -42,6 +41,14 @@ import type {
   OverviewResponse,
   RecentActivityItem,
 } from "@/lib/overview-types";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import {
+  OVERVIEW_DATE_PRESETS,
+  OVERVIEW_MAX_DAYS,
+  overviewQuery,
+  overviewQueryFromParams,
+  overviewSelection,
+} from "@/lib/overview-range";
 
 const ChartFallback = ({ height = 300 }: { height?: number }) => (
   <div className="w-full animate-pulse rounded-xl bg-[var(--surface-2)]" style={{ height }} />
@@ -75,19 +82,9 @@ const currency = new Intl.NumberFormat("en-US", {
 });
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
-const RANGE_OPTIONS: Array<{ key: OverviewPeriodKey; label: string; full: string }> = [
-  { key: "7d", label: "7D", full: "Last 7 days" },
-  { key: "30d", label: "30D", full: "Last 30 days" },
-  { key: "90d", label: "90D", full: "Last 90 days" },
-  { key: "month", label: "Month", full: "This month" },
-];
-
-const SUPPORTED = new Set<OverviewPeriodKey>(["7d", "30d", "90d", "month"]);
-
 function rangeFromLocation(fallback: OverviewPeriodKey): OverviewPeriodKey {
   if (typeof window === "undefined") return fallback;
-  const value = new URLSearchParams(window.location.search).get("range");
-  return SUPPORTED.has(value as OverviewPeriodKey) ? (value as OverviewPeriodKey) : fallback;
+  return overviewQueryFromParams(new URLSearchParams(window.location.search));
 }
 
 function formatDateTime(value: string | null) {
@@ -126,7 +123,7 @@ function formatSpeed(value: number | null) {
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-export default function OverviewClient({ initialRange = "30d" }: { initialRange?: OverviewPeriodKey }) {
+export default function OverviewClient({ initialRange = "range=30d" }: { initialRange?: OverviewPeriodKey }) {
   const [period, setPeriod] = useState<OverviewPeriodKey>(initialRange);
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,7 +145,7 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
     else setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/overview?range=${nextPeriod}`, {
+      const response = await fetch(`/api/overview?${nextPeriod}`, {
         cache: "no-store",
         credentials: "same-origin",
         ...(forceRefresh ? { headers: { "x-force-refresh": "1" } } : {}),
@@ -227,7 +224,7 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
     (next: OverviewPeriodKey) => {
       setPeriod((current) => {
         if (current === next) return current;
-        window.history.pushState(null, "", `/dashboard?range=${next}`);
+        window.history.pushState(null, "", `/dashboard?${next}`);
         return next;
       });
     },
@@ -257,7 +254,13 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
       {refreshing && (
         <RefreshCw size={15} className="animate-spin text-[var(--text-muted)]" aria-label="Refreshing overview" />
       )}
-      <RangeControl value={period} onChange={selectRange} />
+      <DateRangeFilter
+        value={overviewSelection(new URLSearchParams(period))}
+        onChange={(selection) => selectRange(overviewQuery(selection))}
+        presets={OVERVIEW_DATE_PRESETS}
+        maxDays={OVERVIEW_MAX_DAYS}
+        label="Overview date range"
+      />
     </div>
   );
 
@@ -275,43 +278,6 @@ export default function OverviewClient({ initialRange = "30d" }: { initialRange?
         <OverviewContent data={data} refreshing={refreshing} refreshError={error} onRetry={() => void load(period, true)} onReviewFailedSms={removeFailedSmsAlert} />
       )}
     </DashboardLayout>
-  );
-}
-
-function RangeControl({
-  value,
-  onChange,
-}: {
-  value: OverviewPeriodKey;
-  onChange: (next: OverviewPeriodKey) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label="Overview date range"
-      className="inline-flex items-center gap-0.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-0.5"
-    >
-      <CalendarDays size={14} className="ml-1.5 mr-0.5 hidden text-[var(--brand-primary)] sm:block" aria-hidden="true" />
-      {RANGE_OPTIONS.map((option) => {
-        const active = option.key === value;
-        return (
-          <button
-            key={option.key}
-            role="tab"
-            aria-selected={active}
-            title={option.full}
-            onClick={() => onChange(option.key)}
-            className={`min-h-9 rounded-lg px-2.5 text-xs font-bold transition-colors sm:px-3 ${
-              active
-                ? "bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)]"
-                : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

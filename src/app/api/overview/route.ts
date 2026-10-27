@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getOverviewData } from "@/lib/overview-data";
-import type { OverviewPeriodKey } from "@/lib/overview-types";
+import { overviewQueryFromParams, resolveOverviewRange } from "@/lib/overview-range";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { withCache, bustCache } from "@/lib/server-cache";
 import { invalidateLeadsBaseCache } from "@/lib/airtable/leads-base";
@@ -16,11 +16,9 @@ export async function GET(request: Request) {
   try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const requestId = request.headers.get("x-request-id")?.slice(0, 128) || randomUUID();
   const params = new URL(request.url).searchParams;
-  const requestedPeriod = params.get("range") ?? params.get("period");
-  const supported = new Set<OverviewPeriodKey>(["7d", "30d", "90d", "month"]);
-  const period: OverviewPeriodKey = supported.has(requestedPeriod as OverviewPeriodKey)
-    ? (requestedPeriod as OverviewPeriodKey)
-    : "30d";
+  // Resolve once so the cache key and the data agree (e.g. "range=last-month").
+  const range = resolveOverviewRange(params);
+  const period = overviewQueryFromParams(params);
 
   // Allow the Refresh button to force a fresh fetch
   const forceRefresh = request.headers.get("x-force-refresh") === "1";
@@ -32,7 +30,7 @@ export async function GET(request: Request) {
 
   try {
     const data = await withCache(cacheKey, OVERVIEW_TTL, () =>
-      getOverviewData(request, period),
+      getOverviewData(request, period, range),
     );
     return Response.json(data, {
       headers: {

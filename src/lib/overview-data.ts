@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import type { ResolvedDateRange } from "@/lib/date-range";
 import { fetchAllRecords, num, str } from "@/lib/airtable/client";
 import {
   linkedIds,
@@ -130,32 +131,34 @@ const OVERVIEW_FIELDS = {
   clinic: ["Month", "Total Visits", "New Patients", "Updated At"],
 } as const;
 
-function periodFor(key: OverviewPeriodKey): Period {
+const CALENDAR_PRESETS = new Set(["this-month", "last-month", "month"]);
+
+function periodFor(key: OverviewPeriodKey, range: ResolvedDateRange): Period {
   const now = DateTime.now().setZone(ZONE);
-  if (key !== "month") {
-    const days = key === "7d" ? 7 : key === "90d" ? 90 : 30;
-    const from = now.minus({ days: days - 1 }).startOf("day");
-    const previousTo = from.minus({ milliseconds: 1 });
+  const from = DateTime.fromISO(range.from, { zone: ZONE }).startOf("day");
+  // A range ending today runs up to now; past ranges cover their whole last day.
+  const to = range.to === now.toISODate() ? now : DateTime.fromISO(range.to, { zone: ZONE }).endOf("day");
+  const previousTo = from.minus({ milliseconds: 1 });
+  if (CALENDAR_PRESETS.has(range.preset)) {
+    const previousFrom = from.minus({ months: 1 });
     return {
       key,
-      label: `Last ${days} days`,
+      label: range.preset === "this-month" ? now.toFormat("LLLL yyyy") : range.label,
       from,
-      to: now,
-      previousFrom: previousTo.minus({ days: days - 1 }).startOf("day"),
+      to,
+      previousFrom,
       previousTo,
-      previousLabel: `previous ${days} days`,
+      previousLabel: previousFrom.toFormat("LLLL yyyy"),
     };
   }
-  const from = now.startOf("month");
-  const previousFrom = from.minus({ months: 1 });
   return {
-    key: "month",
-    label: now.toFormat("LLLL yyyy"),
+    key,
+    label: range.label,
     from,
-    to: now,
-    previousFrom,
-    previousTo: from.minus({ milliseconds: 1 }),
-    previousLabel: previousFrom.toFormat("LLLL yyyy"),
+    to,
+    previousFrom: previousTo.minus({ days: range.days - 1 }).startOf("day"),
+    previousTo,
+    previousLabel: `previous ${range.days} ${range.days === 1 ? "day" : "days"}`,
   };
 }
 
@@ -939,8 +942,9 @@ function safeError(section: string) {
 export async function getOverviewData(
   request: Request,
   key: OverviewPeriodKey,
+  range: ResolvedDateRange,
 ): Promise<OverviewResponse> {
-  const period = periodFor(key);
+  const period = periodFor(key, range);
   const unavailable = () => Promise.reject(new Error("Airtable is not configured"));
   const airtable = isAirtableConfigured();
   const auditPromise = auditActivity(request, period);

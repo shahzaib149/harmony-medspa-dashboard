@@ -711,7 +711,7 @@ function summaryCardsFor(
     "var(--neutral-text)",
   ];
   const labels: Record<LeadView, string[]> = {
-    all: ["All Submissions", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
+    all: ["All Submissions", "Leads", "Contacted", "Replied", "Booked", "Not a Lead"],
     leads: ["Real Leads", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
     booked: ["Total Booked", "Received Today", "Replied + Booked", "Not Replied", "Top Source", "Duplicates"],
   };
@@ -739,7 +739,9 @@ function summaryCardsFor(
   const [first] = labels[view];
   return [
     { label: first, value: summary.total, meta: "matching filters", color: "var(--brand-primary)" },
-    { label: "New Today", value: summary.newToday, meta: "received today", color: "var(--info)" },
+    view === "all"
+      ? { label: "Leads", value: summary.realLeads, meta: "real leads", color: "var(--info)" }
+      : { label: "New Today", value: summary.newToday, meta: "received today", color: "var(--info)" },
     { label: "Contacted", value: summary.contacted, meta: "status: Contacted", color: "var(--warning)" },
     { label: "Replied", value: summary.replied, meta: "marked replied", color: "var(--chart-replied)" },
     { label: "Booked", value: summary.booked, meta: "shown in Booked", color: "var(--success)" },

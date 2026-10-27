@@ -27,6 +27,8 @@ export type LeadSummaryMetrics = {
   notReplied: number;
   topSource: string | null;
   topSourceCount: number;
+  /** Real leads across the same filters (ignores the view). */
+  realLeads: number;
   /** Submissions classified as not a lead, across the same filters (ignores the view). */
   notALead: number;
   needsReview: number;
@@ -128,6 +130,7 @@ export function aggregateLeadSummary(
     notReplied: matching.length - replied,
     topSource,
     topSourceCount,
+    realLeads: viewCounts.leads,
     notALead: notALeadRecords.length,
     needsReview: records.filter(needsReview).length,
     byLeadType,

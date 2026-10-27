@@ -1,6 +1,6 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { fetchGoogleAdsWorkspace } from "@/lib/google/ads-client";
-import { reportingDateRange } from "@/lib/google/ads-normalization";
+import { adsReportingRange } from "@/lib/google/ads-range";
 
 const WORKSPACE_TTL_MS = 2 * 60 * 1000;
 type WorkspacePayload = Awaited<ReturnType<typeof fetchGoogleAdsWorkspace>>;
@@ -129,8 +129,6 @@ function paginatedAds(
   };
 }
 
-const dateRange = reportingDateRange;
-
 export async function GET(request: Request) {
   try {
     await requireRole(request, "viewer");
@@ -154,7 +152,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const view = searchParams.get("view") || "core";
-  const { from, to } = dateRange(Number(searchParams.get("days") ?? 30));
+  const { from, to } = adsReportingRange(searchParams);
   try {
     const workspace = await cachedWorkspace(
       from,

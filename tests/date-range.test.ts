@@ -145,3 +145,30 @@ test("call leads window follows the selected range", () => {
   assert.deepEqual(callWindowForRange({ from: "2026-06-01", to: "2026-06-30" }, NOW), { fromDate: "2026-06-01", toDate: "2026-06-30" });
   assert.deepEqual(callWindowForRange(null, NOW), { fromDate: undefined, toDate: "2026-10-26" });
 });
+
+test("overview keeps legacy range links and adds month and custom ranges", async () => {
+  const { overviewQuery, overviewQueryFromParams, overviewSelection, resolveOverviewRange } = await import("../src/lib/overview-range");
+  assert.equal(overviewQueryFromParams(new URLSearchParams("range=7d")), "range=7d");
+  assert.deepEqual(overviewSelection(new URLSearchParams("range=month")), { preset: "this-month" });
+  const legacyMonth = resolveOverviewRange(new URLSearchParams("range=month"), NOW);
+  assert.deepEqual([legacyMonth.preset, legacyMonth.from, legacyMonth.to], ["this-month", "2026-10-01", "2026-10-26"]);
+  const june = resolveOverviewRange(new URLSearchParams("range=month&month=2026-06"), NOW);
+  assert.deepEqual([june.from, june.to], ["2026-06-01", "2026-06-30"]);
+  const bad = resolveOverviewRange(new URLSearchParams("range=custom&from=2026-07-10&to=2026-07-01"), NOW);
+  assert.equal(bad.days, 30);
+  assert.equal(overviewQuery({ preset: "custom", from: "2026-07-01", to: "2026-07-09" }), "range=custom&from=2026-07-01&to=2026-07-09");
+  assert.equal(overviewQuery({ preset: "last-month" }), "range=last-month");
+});
+
+test("google ads ranges keep days links and send explicit dates", async () => {
+  const { adsRangeQuery, adsReportingRange, resolveAdsRange } = await import("../src/lib/google/ads-range");
+  const { isReportingDateInRange } = await import("../src/lib/google/ads-normalization");
+  const legacy = resolveAdsRange(new URLSearchParams("days=90"), NOW);
+  assert.deepEqual([legacy.from, legacy.to, legacy.days], ["2026-07-29", "2026-10-26", 90]);
+  const lastMonth = resolveAdsRange(new URLSearchParams("range=last-month"), NOW);
+  assert.equal(adsRangeQuery(lastMonth), "days=30&from=2026-09-01&to=2026-09-30");
+  assert.deepEqual(adsReportingRange(new URLSearchParams("days=30&from=2026-09-01&to=2026-09-30")), { from: "2026-09-01", to: "2026-09-30" });
+  assert.deepEqual(adsReportingRange(new URLSearchParams("from=2026-09-30&to=2026-09-01&days=7")).to.length, 10);
+  assert.equal(isReportingDateInRange("2026-09-15", { from: "2026-09-01", to: "2026-09-30" }), true);
+  assert.equal(isReportingDateInRange("2026-10-01", { from: "2026-09-01", to: "2026-09-30" }), false);
+});

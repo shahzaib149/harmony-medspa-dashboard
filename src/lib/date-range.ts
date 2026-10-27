@@ -80,6 +80,11 @@ function parseDay(value: string | null | undefined) {
   return parsed.isValid && parsed.toISODate() === value ? parsed : null;
 }
 
+/** True for a real YYYY-MM-DD calendar day. */
+export function isClinicDay(value: string | null | undefined) {
+  return Boolean(parseDay(value));
+}
+
 export function dayCount(from: string, to: string) {
   const start = parseDay(from);
   const end = parseDay(to);

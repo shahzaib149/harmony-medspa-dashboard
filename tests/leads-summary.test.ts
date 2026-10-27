@@ -111,6 +111,8 @@ test("Real leads exclude non-leads while counting them separately", () => {
   const { summary, viewCounts } = aggregateLeadSummary(records, "leads");
   assert.equal(summary.total, 3);
   assert.equal(summary.notALead, 3);
+  assert.equal(summary.realLeads, 3);
+  assert.equal(aggregateLeadSummary(records, "all").summary.realLeads, 3);
   assert.equal(summary.needsReview, 1);
   assert.deepEqual(summary.byLeadType, { Solicitor: 1, "Appointment Change": 1, "Existing Patient": 1 });
   assert.equal(viewCounts.leads, 3);

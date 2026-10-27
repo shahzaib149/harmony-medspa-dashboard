@@ -4,7 +4,8 @@
 import { LoadingRegion, SkeletonRows } from "@/components/ui/Skeleton";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { resolveAdsRange } from "@/lib/google/ads-range";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -1749,6 +1750,9 @@ function useServerAds({
   initialStatus?: string;
   days: number;
 }) {
+  const searchParams = useSearchParams();
+  const rangeKey = searchParams.toString();
+  const range = useMemo(() => resolveAdsRange(new URLSearchParams(rangeKey)), [rangeKey]);
   const [rows, setRows] = useState(initialRows);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(initialStatus || "");
@@ -1804,12 +1808,14 @@ function useServerAds({
 
   useEffect(() => {
     if (!enabled) return;
-    const requestKey = `${page}|${pageSize}|${sort}|${debouncedSearch}|${status}|${campaign}`;
+    const requestKey = `${range.from}|${range.to}|${page}|${pageSize}|${sort}|${debouncedSearch}|${status}|${campaign}`;
     if (loadedKey.current === requestKey) return;
     loadedKey.current = requestKey;
     const controller = new AbortController();
     const params = new URLSearchParams({
       days: String(days),
+      from: range.from,
+      to: range.to,
       view: "ads",
       page: String(page),
       pageSize: String(pageSize),
@@ -1843,7 +1849,7 @@ function useServerAds({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [campaign, days, debouncedSearch, enabled, page, pageSize, sort, status]);
+  }, [campaign, days, range, debouncedSearch, enabled, page, pageSize, sort, status]);
 
   useEffect(
     () => setPage(0),

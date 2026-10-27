@@ -1,5 +1,6 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { fetchAllRecords, num, str } from "@/lib/airtable/client";
+import { isClinicDay } from "@/lib/date-range";
 
 const TABLES = {
   campaign: "Google Ads Campaign Analytics",
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
   const kind = searchParams.get("entity") as EntityKind | null;
   const id = searchParams.get("id")?.trim() || "";
   const days = Math.min(365, Math.max(1, Number(searchParams.get("days") || 30)));
+  const from = searchParams.get("from") ?? "";
+  const to = searchParams.get("to") ?? "";
+  const explicitRange = isClinicDay(from) && isClinicDay(to) && from <= to;
   if (!kind || !TABLES[kind] || !id) return Response.json({ error: "A valid entity and ID are required." }, { status: 400 });
 
   try {
@@ -37,7 +41,7 @@ export async function GET(request: Request) {
     for (const row of rows) {
       if (rowIdentity(kind, row.fields) !== id) continue;
       const date = str(row.fields, "Date", "date", "Day") || row.createdTime.slice(0, 10);
-      if (new Date(date) < cutoff) continue;
+      if (explicitRange ? date.slice(0, 10) < from || date.slice(0, 10) > to : new Date(date) < cutoff) continue;
       const current = daily.get(date) ?? { date, cost: 0, impressions: 0, clicks: 0, conversions: 0, conversionValue: 0, conversionValueAvailable: false };
       current.cost += num(row.fields, "Cost", "cost", "Spend");
       current.impressions += num(row.fields, "Impressions", "impressions");

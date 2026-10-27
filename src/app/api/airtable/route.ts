@@ -8,6 +8,7 @@ import {
   isReportingDateInRange,
   type SnapshotMetric as Summable,
 } from "@/lib/google/ads-normalization";
+import { adsReportingRange } from "@/lib/google/ads-range";
 
 const TABLE_NAMES = {
   campaigns: "Google Ads Campaign Analytics",
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
   }
   const { searchParams } = new URL(request.url);
   const table = searchParams.get("table") as keyof typeof TABLE_NAMES | null;
-  const days = Number(searchParams.get("days") ?? 30);
+  const range = adsReportingRange(searchParams);
   const forceRefresh =
     searchParams.get("refresh") === "1" ||
     request.headers.get("x-force-refresh") === "1";
@@ -121,7 +122,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const cacheKey = `airtable_api:${table}:${days}`;
+  const cacheKey = `airtable_api:${table}:${range.from}:${range.to}`;
   if (forceRefresh) {
     bustCache(cacheKey);
   }
@@ -275,7 +276,7 @@ export async function GET(request: Request) {
 
       const inventory = mapped.filter((r) => Boolean(r.campaignId || r.campaignName));
       const filtered = inventory.filter((r) =>
-        isReportingDateInRange(String(r._performanceDate || ""), days),
+        isReportingDateInRange(String(r._performanceDate || ""), range),
       );
 
       // Keep complete valid inventory, but aggregate metrics only from Date.
@@ -395,7 +396,7 @@ export async function GET(request: Request) {
 
       const inventory = mapped.filter((r) => Boolean(r.adGroupId || r.adGroupName));
       const filtered = inventory.filter((r) =>
-        isReportingDateInRange(String(r._performanceDate || ""), days),
+        isReportingDateInRange(String(r._performanceDate || ""), range),
       );
       const data = mergeInventoryAndPerformance(inventory, filtered);
 
@@ -629,7 +630,7 @@ export async function GET(request: Request) {
       });
       const inventory = mapped.filter((r) => Boolean(r.adId));
       const filtered = inventory.filter((r) =>
-        isReportingDateInRange(String(r._performanceDate || ""), days),
+        isReportingDateInRange(String(r._performanceDate || ""), range),
       );
       const data = mergeInventoryAndPerformance(inventory, filtered);
 
@@ -772,7 +773,7 @@ export async function GET(request: Request) {
 
       const inventory = mapped.filter((r) => Boolean(r.criterionId || r.keywordText));
       const filtered = inventory.filter((r) =>
-        isReportingDateInRange(String(r._performanceDate || ""), days),
+        isReportingDateInRange(String(r._performanceDate || ""), range),
       );
       const data = mergeInventoryAndPerformance(inventory, filtered);
 

@@ -28,6 +28,8 @@ import {
   YAxis,
 } from "recharts";
 import { fetchWorkspaceSnapshot } from "../GoogleAdsAnalyticsClient";
+import { resolveAdsRange } from "@/lib/google/ads-range";
+import { formatRangeLabel } from "@/lib/date-range";
 import type {
   AdGroup,
   Campaign,
@@ -388,12 +390,12 @@ function entityStatus(selected: SelectedEntity) {
 
 function DetailHeader({
   selected,
-  days,
+  rangeLabel,
   onRefresh,
   refreshing,
 }: {
   selected: SelectedEntity;
-  days: number;
+  rangeLabel: string;
   onRefresh: () => void;
   refreshing: boolean;
 }) {
@@ -479,7 +481,7 @@ function DetailHeader({
             {entityId(selected)}
           </strong>
         </span>
-        <span>Range: last {days} days</span>
+        <span>Range: {rangeLabel}</span>
         {synchronizedAt && (
           <span>
             Last synchronized:{" "}
@@ -1301,9 +1303,9 @@ export default function EntityDetailClient({
   id: string;
 }) {
   const searchParams = useSearchParams();
-  const days = [7, 14, 30, 90].includes(Number(searchParams.get("days")))
-    ? Number(searchParams.get("days"))
-    : 30;
+  const rangeKey = searchParams.toString();
+  const range = useMemo(() => resolveAdsRange(new URLSearchParams(rangeKey)), [rangeKey]);
+  const days = range.days;
   const requestedView = searchParams.get("view") || "overview";
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
@@ -1324,9 +1326,9 @@ export default function EntityDetailClient({
       setError(null);
       try {
         const [workspace, historyResponse] = await Promise.all([
-          fetchWorkspaceSnapshot(days),
+          fetchWorkspaceSnapshot(range),
           fetch(
-            `/api/google-ads/history?entity=${kind}&id=${encodeURIComponent(id)}&days=${days}`,
+            `/api/google-ads/history?entity=${kind}&id=${encodeURIComponent(id)}&days=${days}&from=${range.from}&to=${range.to}`,
             { cache: "no-store" },
           ).then(async (response) => {
             const data = await response.json();
@@ -1350,6 +1352,7 @@ export default function EntityDetailClient({
     },
     [
       days,
+      range,
       id,
       kind,
       setError,
@@ -1452,7 +1455,7 @@ export default function EntityDetailClient({
     <div className="w-full min-w-0 max-w-full space-y-5 overflow-x-hidden">
       <DetailHeader
         selected={selected}
-        days={days}
+        rangeLabel={range.preset === "custom" || range.preset === "month" ? range.label : `${range.label} (${formatRangeLabel(range.from, range.to)})`}
         onRefresh={() => void load(true)}
         refreshing={refreshing}
       />

@@ -1,4 +1,5 @@
-export type OverviewPeriodKey = "7d" | "30d" | "90d" | "month";
+/** Canonical overview range query, e.g. "range=7d" or "range=month&month=2026-06". */
+export type OverviewPeriodKey = string;
 
 export type OverviewMetric = {
   value: number | null;

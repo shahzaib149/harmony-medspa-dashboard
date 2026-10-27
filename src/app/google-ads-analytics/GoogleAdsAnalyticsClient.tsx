@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
-  CalendarDays,
   Loader2,
   RefreshCw,
   Wifi,
@@ -21,6 +20,11 @@ import type {
   WorkspaceSnapshot,
 } from "./workspace-types";
 import { DASHBOARD_REFRESH_EVENT } from "@/lib/dashboard-refresh";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { dateRangeParams, formatRangeLabel, type DateRangeInput, type ResolvedDateRange } from "@/lib/date-range";
+import { ADS_DATE_PRESETS, ADS_MAX_DAYS, adsRangeQuery, adsSelection, resolveAdsRange } from "@/lib/google/ads-range";
+
+type AdsRange = Pick<ResolvedDateRange, "from" | "to" | "days">;
 
 export type { AdGroup, Campaign, Creative, Keyword } from "./workspace-types";
 
@@ -384,13 +388,14 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 async function loadWorkspaceSnapshot(
-  days: number,
+  range: AdsRange,
   force: boolean,
   view?: "ads",
 ): Promise<WorkspaceResult> {
+  const rangeQuery = adsRangeQuery(range);
   const viewQuery = view ? `&view=${view}&page=0&pageSize=25&sort=spend` : "";
   const livePromise = getJson<WorkspaceSnapshot>(
-    `/api/google-ads/workspace?days=${days}${viewQuery}${force ? "&refresh=1" : ""}`,
+    `/api/google-ads/workspace?${rangeQuery}${viewQuery}${force ? "&refresh=1" : ""}`,
   );
   const airtableCampaignsPromise = getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
     `/api/airtable/google-ads-campaigns`,
@@ -440,19 +445,19 @@ async function loadWorkspaceSnapshot(
   } catch (liveError) {
     const [campaigns, adGroups, ads, keywords, previews, campaignInventory] = await Promise.all([
       getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
-        `/api/airtable?table=campaigns&days=${days}`,
+        `/api/airtable?table=campaigns&${rangeQuery}`,
       ),
       getJson<{ adGroups?: AdGroup[]; data?: AdGroup[] }>(
-        `/api/airtable?table=ad-groups&days=${days}`,
+        `/api/airtable?table=ad-groups&${rangeQuery}`,
       ),
       getJson<{ data?: Creative[] }>(
-        `/api/airtable?table=creatives&days=${days}`,
+        `/api/airtable?table=creatives&${rangeQuery}`,
       ),
       getJson<{ data?: Keyword[] }>(
-        `/api/airtable?table=keywords&days=${days}`,
+        `/api/airtable?table=keywords&${rangeQuery}`,
       ),
       getJson<{ data?: AdPreviewRecord[] }>(
-        `/api/airtable?table=ad-preview&days=${days}`,
+        `/api/airtable?table=ad-preview&${rangeQuery}`,
       ),
       airtableCampaignsPromise,
     ]);
@@ -489,17 +494,17 @@ async function loadWorkspaceSnapshot(
 }
 
 export async function fetchWorkspaceSnapshot(
-  days: number,
+  range: AdsRange,
   force = false,
   view?: "ads",
 ): Promise<WorkspaceResult> {
-  const key = `${days}:${view || "full"}`;
+  const key = `${range.from}:${range.to}:${view || "full"}`;
   const cached = workspaceCache.get(key);
   if (!force && cached && cached.expiresAt > Date.now()) return cached;
   const pending = workspaceRequests.get(key);
   if (!force && pending) return pending;
 
-  const request = loadWorkspaceSnapshot(days, force, view).then((result) => {
+  const request = loadWorkspaceSnapshot(range, force, view).then((result) => {
     workspaceCache.set(key, {
       ...result,
       expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
@@ -524,8 +529,10 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
     (requestedTab && VALID_TABS.includes(requestedTab)
       ? requestedTab
       : "overview");
-  const requestedDays = Number(searchParams.get("days") ?? 30);
-  const days = [7, 14, 30, 90].includes(requestedDays) ? requestedDays : 30;
+  const rangeKey = searchParams.toString();
+  const range = useMemo(() => resolveAdsRange(new URLSearchParams(rangeKey)), [rangeKey]);
+  const rangeSelection = useMemo(() => adsSelection(new URLSearchParams(rangeKey)), [rangeKey]);
+  const days = range.days;
   const statusFilter = searchParams.get("status") || "";
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -539,7 +546,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
       setFatalError(null);
       try {
         const result = await fetchWorkspaceSnapshot(
-          days,
+          range,
           quiet,
           activeTab === "ads" ? activeTab : undefined,
         );
@@ -555,7 +562,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
         setRefreshing(false);
       }
     },
-    [activeTab, days],
+    [activeTab, range],
   );
 
   useEffect(() => {
@@ -569,13 +576,20 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
 
   const setTab = (tab: WorkspaceTab, status?: string) => {
     const params = new URLSearchParams();
-    params.set("days", String(days));
+    for (const key of ["range", "days", "month", "from", "to"]) {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    }
     if (status) params.set("status", status);
     router.push(`${TAB_ROUTES[tab]}?${params.toString()}`);
   };
-  const setDays = (value: number) => {
+  const setRange = (selection: DateRangeInput) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("days", String(value));
+    params.delete("days");
+    for (const [key, value] of Object.entries(dateRangeParams("range", selection))) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
   const counts = useMemo(
@@ -634,46 +648,19 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
           {snapshot && (
             <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
               {snapshot.accountName} · Last synchronized{" "}
-              {new Date(snapshot.fetchedAt).toLocaleString()} · Selected range {days} days
+              {new Date(snapshot.fetchedAt).toLocaleString()} · {range.preset === "custom" || range.preset === "month" ? range.label : `${range.label} (${formatRangeLabel(range.from, range.to)})`}
             </p>
           )}
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
-          <div
-            className="flex max-w-full flex-1 items-center rounded-xl border p-1 sm:flex-none"
-            style={{
-              borderColor: "var(--border-subtle)",
-              background: "var(--surface-1)",
-            }}
-            role="group"
-            aria-label="Google Ads date range"
-          >
-            <CalendarDays
-              size={14}
-              className="ml-2"
-              style={{ color: "var(--text-muted)" }}
-            />
-            {[7, 14, 30, 90].map((value) => (
-              <button
-                key={value}
-                onClick={() => setDays(value)}
-                aria-pressed={days === value}
-                className="min-h-11 min-w-11 flex-1 rounded-lg px-2 text-xs font-bold sm:flex-none"
-                style={{
-                  background:
-                    days === value
-                      ? "var(--brand-primary-soft)"
-                      : "transparent",
-                  color:
-                    days === value
-                      ? "var(--brand-primary-strong)"
-                      : "var(--text-muted)",
-                }}
-              >
-                {value}d
-              </button>
-            ))}
-          </div>
+          <DateRangeFilter
+            size="lg"
+            value={rangeSelection}
+            onChange={setRange}
+            presets={ADS_DATE_PRESETS}
+            maxDays={ADS_MAX_DAYS}
+            label="Google Ads date range"
+          />
           <button
             onClick={() => void load(true)}
             disabled={refreshing || loading}
