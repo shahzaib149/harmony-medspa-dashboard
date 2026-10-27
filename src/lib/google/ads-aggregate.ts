@@ -332,3 +332,170 @@ export function dailySeries(rows: AdsRow[], from: string, to: string): DailyPoin
   }
   return points;
 }
+
+// ---------------------------------------------------------------------------
+// Structure (current state) + range metrics, like the Google Ads entity tables:
+// every campaign / ad group / ad / keyword is listed with its live status, and
+// metrics come only from the selected range (zero when it had no impressions).
+
+const METRIC_KEYS = [
+  "impressions",
+  "clicks",
+  "cost",
+  "conversions",
+  "conversionValue",
+  "allConversions",
+  "ctrPct",
+  "avgCpc",
+  "cpa",
+  "conversionRatePct",
+  "roas",
+] as const;
+
+const zeroMetrics = () => ({ ...emptySums(), ...derived(emptySums()) });
+
+/** Newline-separated copy from Make → " | " joined, blanks removed. */
+function joinedLines(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" | ");
+}
+
+/**
+ * One entity per structure row with range metrics overlaid. Range entities
+ * missing from the structure tables (e.g. synced before the structure sync ran)
+ * are kept. Removed entities with no activity in the range are dropped.
+ */
+export function withStructure<T extends Record<string, unknown>>(
+  structure: T[],
+  ranged: T[],
+  keyOf: (item: T) => string,
+  statusOf: (item: T) => string,
+  extraMetricKeys: string[] = [],
+): T[] {
+  const byKey = new Map(ranged.map((item) => [keyOf(item), item]));
+  const merged = structure.map((item) => {
+    const period = byKey.get(keyOf(item));
+    byKey.delete(keyOf(item));
+    const metrics: Record<string, unknown> = period ? {} : zeroMetrics();
+    if (period) for (const key of [...METRIC_KEYS, ...extraMetricKeys]) metrics[key] = period[key];
+    else for (const key of extraMetricKeys) metrics[key] = 0;
+    // Range rows carry resource names; structure rows carry the current state.
+    return { ...(period ?? {}), ...item, ...metrics } as T;
+  });
+  return [...merged, ...byKey.values()].filter(
+    (item) => statusOf(item).toUpperCase() !== "REMOVED" || Number(item.impressions) > 0,
+  );
+}
+
+export function structureCampaigns(rows: AdsRow[], accountName: string): Campaign[] {
+  return rows
+    .filter((row) => text(row.fields, "Campaign ID"))
+    .map((row) => {
+      const f = row.fields;
+      const campaignId = text(f, "Campaign ID");
+      const budget = amount(f, "Daily Budget");
+      return {
+        id: campaignId,
+        accountName,
+        campaignId,
+        campaignName: text(f, "Campaign Name") || `Campaign ${campaignId}`,
+        campaignStatus: text(f, "Status") || "UNKNOWN",
+        channelType: text(f, "Channel Type") || "UNSPECIFIED",
+        biddingStrategy: text(f, "Bidding Strategy"),
+        budget: budget || undefined,
+        ...zeroMetrics(),
+        conversionValueAvailable: true,
+        optimizationScore: 0,
+        impressionShare: 0,
+        impressionShareLostBudget: 0,
+        impressionShareLostRank: 0,
+        pulledAt: text(f, "Pulled At"),
+      };
+    });
+}
+
+export function structureAdGroups(rows: AdsRow[]): AdGroup[] {
+  return rows
+    .filter((row) => text(row.fields, "Ad Group ID"))
+    .map((row) => {
+      const f = row.fields;
+      const adGroupId = text(f, "Ad Group ID");
+      return {
+        id: adGroupId,
+        campaignId: text(f, "Campaign ID"),
+        campaignName: text(f, "Campaign Name"),
+        adGroupId,
+        adGroupName: text(f, "Ad Group Name") || `Ad group ${adGroupId}`,
+        adGroupStatus: text(f, "Status") || "UNKNOWN",
+        ...zeroMetrics(),
+        conversionValueAvailable: true,
+        pulledAt: text(f, "Pulled At"),
+      };
+    });
+}
+
+export function structureAds(rows: AdsRow[]): Creative[] {
+  return rows
+    .filter((row) => text(row.fields, "Ad ID"))
+    .map((row) => {
+      const f = row.fields;
+      const adId = text(f, "Ad ID");
+      const adGroupId = text(f, "Ad Group ID");
+      const headlines = joinedLines(text(f, "Headlines"));
+      return {
+        id: `${adGroupId}~${adId}`,
+        adId,
+        adName: text(f, "Ad Name") || headlines.split(" | ")[0] || `Ad ${adId}`,
+        adType: text(f, "Ad Type") || "UNKNOWN",
+        campaignId: text(f, "Campaign ID"),
+        campaignName: text(f, "Campaign Name"),
+        adGroupId,
+        adGroupName: text(f, "Ad Group Name"),
+        status: text(f, "Status"),
+        primaryStatus: text(f, "Primary Status"),
+        approvalStatus: text(f, "Approval Status"),
+        reviewStatus: text(f, "Review Status"),
+        strength: text(f, "Ad Strength"),
+        ...zeroMetrics(),
+        conversionValueAvailable: true,
+        date: "",
+        lastSynced: text(f, "Pulled At"),
+        creativeTagSuggestions: "",
+        headlines,
+        descriptions: joinedLines(text(f, "Descriptions")),
+        finalUrl: text(f, "Final URL"),
+        displayUrl: text(f, "Final URL"),
+        path1: "",
+        path2: "",
+      };
+    });
+}
+
+export function structureKeywords(rows: AdsRow[]): Keyword[] {
+  return rows
+    .filter((row) => text(row.fields, "Keyword ID"))
+    .map((row) => {
+      const f = row.fields;
+      const criterionId = text(f, "Keyword ID");
+      const adGroupId = text(f, "Ad Group ID");
+      const qualityScore = amount(f, "Quality Score");
+      return {
+        id: `${adGroupId}~${criterionId}`,
+        criterionId,
+        keywordText: text(f, "Keyword Text") || "Unnamed keyword",
+        matchType: text(f, "Match Type") || "UNSPECIFIED",
+        status: text(f, "Status"),
+        campaignId: text(f, "Campaign ID"),
+        campaignName: text(f, "Campaign Name"),
+        adGroupId,
+        adGroupName: text(f, "Ad Group Name"),
+        ...zeroMetrics(),
+        conversionValueAvailable: true,
+        qualityScore: qualityScore || undefined,
+        pulledAt: text(f, "Pulled At"),
+      };
+    });
+}

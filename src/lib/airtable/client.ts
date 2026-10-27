@@ -12,7 +12,28 @@ const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 type AirtableCacheMode = "cached" | "no-store";
 
-async function fetchAirtablePage(url: string, cacheMode: AirtableCacheMode) {
+// Airtable allows 5 requests/second per base and answers bursts with a 30 s
+// 429 back-off, so queue requests instead of firing them all at once.
+const MAX_IN_FLIGHT = 4;
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+
+async function withSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => waiting.push(resolve));
+  inFlight += 1;
+  try {
+    return await run();
+  } finally {
+    inFlight -= 1;
+    waiting.shift()?.();
+  }
+}
+
+function fetchAirtablePage(url: string, cacheMode: AirtableCacheMode) {
+  return withSlot(() => fetchAirtablePageNow(url, cacheMode));
+}
+
+async function fetchAirtablePageNow(url: string, cacheMode: AirtableCacheMode) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const response = await fetch(url, {

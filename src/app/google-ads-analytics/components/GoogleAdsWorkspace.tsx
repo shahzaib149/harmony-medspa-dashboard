@@ -399,13 +399,13 @@ function FilterBar({
 }) {
   return (
     <div
-      className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border p-3 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1fr)_repeat(4,minmax(140px,auto))] lg:items-center"
+      className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border p-3 [&>*]:min-w-[150px] [&>*]:flex-1 sm:[&>*]:flex-none"
       style={{
         background: "var(--surface-1)",
         borderColor: "var(--border-subtle)",
       }}
     >
-      <label className="relative min-w-0 sm:col-span-2 lg:col-span-1">
+      <label className="relative min-w-0 basis-full sm:basis-auto sm:!flex-1">
         <Search
           size={15}
           className="absolute left-3 top-3.5"
@@ -463,7 +463,7 @@ function FilterBar({
         <button
           type="button"
           onClick={clearFilters}
-          className="min-h-11 rounded-xl border px-3 text-sm font-bold lg:col-start-1"
+          className="min-h-11 rounded-xl border px-3 text-sm font-bold"
           style={{
             borderColor: "var(--border-subtle)",
             color: "var(--brand-primary-strong)",
@@ -494,120 +494,45 @@ function exportRows(filename: string, rows: Array<Record<string, unknown>>) {
   URL.revokeObjectURL(anchor.href);
 }
 
-function RelationalRail({
+/** Account structure at a glance: how many of each level are live, paused or total. */
+function StructureSummary({
   snapshot,
-  onOpen,
+  setTab,
 }: {
   snapshot: WorkspaceSnapshot;
-  onOpen: (entity: SelectedEntity) => void;
+  setTab: (tab: WorkspaceTab, status?: string) => void;
 }) {
-  const topCampaign = [...snapshot.campaigns].sort(
-    (a, b) => b.cost - a.cost,
-  )[0];
-  const topGroup =
-    snapshot.adGroups
-      .filter(
-        (group) => !topCampaign || group.campaignId === topCampaign.campaignId,
-      )
-      .sort((a, b) => b.cost - a.cost)[0] ?? snapshot.adGroups[0];
-  const enabledAds = snapshot.ads.filter(
-    (ad) => ad.status?.toUpperCase() === "ENABLED",
-  );
-  const topAd =
-    enabledAds
-      .filter(
-        (ad) =>
-          !topGroup ||
-          ad.adGroupId === topGroup.adGroupId ||
-          ad.adGroupName === topGroup.adGroupName,
-      )
-      .sort((a, b) => b.clicks - a.clicks)[0] ?? enabledAds[0];
-  const entities: Array<{
-    label: string;
-    value?: string;
-    count: number;
-    entity?: SelectedEntity;
-  }> = [
-    {
-      label: "Campaign",
-      value: topCampaign?.campaignName,
-      count: snapshot.campaigns.length,
-      entity: topCampaign
-        ? { kind: "campaign", value: topCampaign }
-        : undefined,
-    },
-    {
-      label: "Ad group",
-      value: topGroup?.adGroupName,
-      count: snapshot.adGroups.length,
-      entity: topGroup ? { kind: "ad-group", value: topGroup } : undefined,
-    },
-    {
-      label: "Live ad",
-      value: topAd?.adName,
-      count: enabledAds.length,
-      entity: topAd ? { kind: "ad", value: topAd } : undefined,
-    },
-    {
-      label: "Keyword",
-      value: snapshot.keywords[0]?.keywordText,
-      count: snapshot.keywords.length,
-      entity: snapshot.keywords[0]
-        ? { kind: "keyword", value: snapshot.keywords[0] }
-        : undefined,
-    },
+  const levels: Array<{ label: string; tab: WorkspaceTab; statuses: string[] }> = [
+    { label: "Campaigns", tab: "campaigns", statuses: snapshot.campaigns.map((item) => item.campaignStatus) },
+    { label: "Ad groups", tab: "ad-groups", statuses: snapshot.adGroups.map((item) => item.adGroupStatus) },
+    { label: "Ads", tab: "ads", statuses: snapshot.ads.map((item) => item.status || "") },
+    { label: "Keywords", tab: "keywords", statuses: snapshot.keywords.map((item) => item.status || "") },
   ];
   return (
-    <div className="google-ads-relation-rail grid gap-2 md:grid-cols-4">
-      {entities.map((item, index) => (
-        <button
-          key={item.label}
-          disabled={!item.entity}
-          onClick={() => item.entity && onOpen(item.entity)}
-          className="relation-node group relative min-w-0 rounded-xl border p-3 text-left disabled:cursor-default"
-          style={{
-            borderColor: "var(--border-subtle)",
-            background: "var(--surface-1)",
-          }}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span
-              className="text-[9px] font-bold uppercase tracking-[.15em]"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {item.label}
-            </span>
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-              style={{
-                background: "var(--brand-primary-soft)",
-                color: "var(--brand-primary-strong)",
-              }}
-            >
-              {item.count}
-            </span>
-          </div>
-          <p
-            className="mt-2 truncate text-sm font-bold"
-            style={{ color: "var(--text-primary)" }}
+    <section aria-label="Account structure" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {levels.map((level) => {
+        const enabled = level.statuses.filter((value) => value.toUpperCase() === "ENABLED").length;
+        const paused = level.statuses.filter((value) => value.toUpperCase() === "PAUSED").length;
+        return (
+          <button
+            key={level.label}
+            onClick={() => setTab(level.tab)}
+            className="group min-w-0 rounded-2xl border p-4 text-left transition-transform hover:-translate-y-0.5"
+            style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }}
           >
-            {item.value || "No record"}
-          </p>
-          {index < entities.length - 1 && (
-            <span
-              className="relation-arrow absolute -right-3 top-1/2 z-10 hidden size-5 -translate-y-1/2 place-items-center rounded-full border md:grid"
-              style={{
-                background: "var(--background-subtle)",
-                borderColor: "var(--border-subtle)",
-                color: "var(--brand-primary)",
-              }}
-            >
-              <ChevronRight size={12} />
+            <span className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: "var(--text-muted)" }}>
+              {level.label}
+              <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
             </span>
-          )}
-        </button>
-      ))}
-    </div>
+            <span className="mt-2 block text-2xl font-bold tracking-tight">{level.statuses.length}</span>
+            <span className="mt-1 flex flex-wrap gap-x-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <span><strong style={{ color: "var(--success-text)" }}>{enabled}</strong> enabled</span>
+              <span><strong style={{ color: "var(--warning-text)" }}>{paused}</strong> paused</span>
+            </span>
+          </button>
+        );
+      })}
+    </section>
   );
 }
 
@@ -759,48 +684,7 @@ function Overview({
     .slice(0, 5);
   return (
     <div className="space-y-5">
-      <section
-        className="overflow-hidden rounded-3xl border"
-        style={{
-          borderColor: "var(--border-subtle)",
-          background:
-            "linear-gradient(118deg, var(--surface-1) 0%, var(--surface-1) 64%, var(--brand-primary-soft) 100%)",
-        }}
-      >
-        <div className="p-5 xl:p-6">
-          <div>
-            <p
-              className="text-[10px] font-bold uppercase tracking-[.18em]"
-              style={{ color: "var(--brand-primary-strong)" }}
-            >
-              Account command ledger
-            </p>
-            <h2
-              className="mt-2 max-w-3xl text-2xl font-bold tracking-tight sm:text-3xl"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Performance, policy and publishing in one traceable workspace.
-            </h2>
-            <p
-              className="mt-2 max-w-2xl text-sm leading-6"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              Every result stays linked to its Google campaign, ad group and
-              resource ID. Open any node to follow spend into the creative and
-              keyword decisions behind it.
-            </p>
-          </div>
-        </div>
-        <div
-          className="border-t p-4 sm:p-5"
-          style={{
-            borderColor: "var(--border-subtle)",
-            background: "var(--background-subtle)",
-          }}
-        >
-          <RelationalRail snapshot={snapshot} onOpen={onOpen} />
-        </div>
-      </section>
+      <StructureSummary snapshot={snapshot} setTab={setTab} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
         <MetricCard

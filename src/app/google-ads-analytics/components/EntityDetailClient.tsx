@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -28,8 +28,9 @@ import {
   YAxis,
 } from "recharts";
 import { fetchWorkspaceSnapshot } from "../GoogleAdsAnalyticsClient";
-import { resolveAdsRange } from "@/lib/google/ads-range";
-import { formatRangeLabel } from "@/lib/date-range";
+import { ADS_DATE_PRESETS, ADS_MAX_DAYS, adsSelection, resolveAdsRange } from "@/lib/google/ads-range";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { dateRangeParams, formatRangeLabel, type DateRangeInput } from "@/lib/date-range";
 import type {
   AdGroup,
   Campaign,
@@ -408,11 +409,13 @@ function entityStatus(selected: SelectedEntity) {
 function DetailHeader({
   selected,
   rangeLabel,
+  rangeControl,
   onRefresh,
   refreshing,
 }: {
   selected: SelectedEntity;
   rangeLabel: string;
+  rangeControl?: React.ReactNode;
   onRefresh: () => void;
   refreshing: boolean;
 }) {
@@ -451,6 +454,7 @@ function DetailHeader({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {rangeControl}
           <RangeLink
             href={
               selected.kind === "campaign"
@@ -1322,6 +1326,19 @@ export default function EntityDetailClient({
   const searchParams = useSearchParams();
   const rangeKey = searchParams.toString();
   const range = useMemo(() => resolveAdsRange(new URLSearchParams(rangeKey)), [rangeKey]);
+  const rangeSelection = useMemo(() => adsSelection(new URLSearchParams(rangeKey)), [rangeKey]);
+  const router = useRouter();
+  const pathname = usePathname();
+  // Change the period in place, keeping the current detail tab.
+  const setRange = (selection: DateRangeInput) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("days");
+    for (const [key, value] of Object.entries(dateRangeParams("range", selection))) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
   const days = range.days;
   const requestedView = searchParams.get("view") || "overview";
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
@@ -1473,6 +1490,16 @@ export default function EntityDetailClient({
       <DetailHeader
         selected={selected}
         rangeLabel={range.preset === "custom" || range.preset === "month" ? range.label : `${range.label} (${formatRangeLabel(range.from, range.to)})`}
+        rangeControl={
+          <DateRangeFilter
+            size="lg"
+            value={rangeSelection}
+            onChange={setRange}
+            presets={ADS_DATE_PRESETS}
+            maxDays={ADS_MAX_DAYS}
+            label="Google Ads date range"
+          />
+        }
         onRefresh={() => void load(true)}
         refreshing={refreshing}
       />

@@ -13,8 +13,14 @@ export const ADS_TABLES = {
   conversionAction:
     process.env.AIRTABLE_GA_CONVERSION_ACTION_TABLE || "tblMOrrofG25pih2u",
   syncLog: process.env.AIRTABLE_GA_SYNC_LOG_TABLE || "tblcBsY5RxEVdbT6I",
+  // Structure tables: current state of every entity (no metrics), from Make "Google Ads Structure Sync".
+  campaignStructure: process.env.AIRTABLE_GA_CAMPAIGNS_TABLE || "tblz9Zkj8A9HA3XXJ",
+  adGroupStructure: process.env.AIRTABLE_GA_AD_GROUPS_TABLE || "tblICgPCH81Qj87zg",
+  adStructure: process.env.AIRTABLE_GA_ADS_TABLE || "tblwsylvVlCV9XVIS",
+  keywordStructure: process.env.AIRTABLE_GA_KEYWORDS_TABLE || "tbln5U3ZlUi6vL6EL",
   /** "Google Ad Preview": ad copy lookup (headlines/descriptions), not time-series. */
   adPreview: "tblsokwqKQuj3rFSB",
 } as const;
 
-export type AdsDailyTable = Exclude<keyof typeof ADS_TABLES, "syncLog" | "adPreview">;
+export type AdsStructureTable = "campaignStructure" | "adGroupStructure" | "adStructure" | "keywordStructure";
+export type AdsDailyTable = Exclude<keyof typeof ADS_TABLES, "syncLog" | "adPreview" | AdsStructureTable>;

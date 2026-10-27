@@ -1,6 +1,6 @@
 import { fetchAllRecords, type RawRecord } from "@/lib/airtable/client";
 import { previousRange } from "@/lib/date-range";
-import { ADS_TABLES, type AdsDailyTable } from "@/lib/google/ads-tables";
+import { ADS_TABLES, type AdsDailyTable, type AdsStructureTable } from "@/lib/google/ads-tables";
 import {
   aggregateAdGroups,
   aggregateAds,
@@ -12,7 +12,12 @@ import {
   dedupeRows,
   inDayRange,
   rowDay,
+  structureAdGroups,
+  structureAds,
+  structureCampaigns,
+  structureKeywords,
   totalsOf,
+  withStructure,
 } from "@/lib/google/ads-aggregate";
 import type { WorkspaceSnapshot, WorkspaceSync } from "@/app/google-ads-analytics/workspace-types";
 
@@ -96,29 +101,12 @@ export async function fetchAdsSync(options: FetchOptions = {}): Promise<Workspac
   };
 }
 
-type AdCopy = { headlines: string; descriptions: string; finalUrl: string; adName: string };
-
-/** Ad copy from the "Google Ad Preview" table, keyed by Ad ID. */
-async function fetchAdCopy(options: FetchOptions): Promise<Map<string, AdCopy>> {
-  const rows = await fetchAllRecords(ADS_TABLES.adPreview, new URLSearchParams(), {
+/** Every row of a (small) structure table: the current state of each entity. */
+async function fetchStructure(table: AdsStructureTable, options: FetchOptions) {
+  return fetchAllRecords(ADS_TABLES[table], new URLSearchParams(), {
     cache: options.forceRefresh ? "no-store" : "cached",
     forceRefresh: options.forceRefresh,
   }).catch(() => [] as RawRecord[]);
-  const copy = new Map<string, AdCopy>();
-  for (const row of rows) {
-    const value = (key: string) => String(row.fields[key] ?? "").trim();
-    const adId = value("Ad ID");
-    if (!adId) continue;
-    const headlines = Array.from({ length: 15 }, (_, i) => value(`Headline ${i + 1}`)).filter(Boolean);
-    const descriptions = Array.from({ length: 4 }, (_, i) => value(`Description ${i + 1}`)).filter(Boolean);
-    copy.set(adId, {
-      headlines: headlines.join(" | "),
-      descriptions: descriptions.join(" | "),
-      finalUrl: value("Target URL"),
-      adName: value("Ad Name") || headlines[0] || "",
-    });
-  }
-  return copy;
 }
 
 /**
@@ -131,7 +119,20 @@ export async function buildAirtableWorkspace(
   options: WorkspaceOptions = {},
 ): Promise<WorkspaceSnapshot> {
   const previous = previousRange(range);
-  const [campaignRows, previousCampaignRows, adGroupRows, adRows, keywordRows, searchTermRows, conversionRows, sync, adCopy] =
+  const [
+    campaignRows,
+    previousCampaignRows,
+    adGroupRows,
+    adRows,
+    keywordRows,
+    searchTermRows,
+    conversionRows,
+    sync,
+    campaignStructure,
+    adGroupStructure,
+    adStructure,
+    keywordStructure,
+  ] =
     await Promise.all([
       fetchAdsDaily("campaign", range, options),
       fetchAdsDaily("campaign", previous, options),
@@ -142,24 +143,38 @@ export async function buildAirtableWorkspace(
       options.includeSearchTerms ? fetchAdsDaily("searchTerm", range, options) : Promise.resolve([]),
       fetchAdsDaily("conversionAction", range, options),
       fetchAdsSync(options),
-      fetchAdCopy(options),
+      fetchStructure("campaignStructure", options),
+      fetchStructure("adGroupStructure", options),
+      fetchStructure("adStructure", options),
+      fetchStructure("keywordStructure", options),
     ]);
 
-  const campaigns = aggregateCampaigns(campaignRows, ACCOUNT_NAME);
-  const adGroups = aggregateAdGroups(adGroupRows);
-  // Responsive search ads have no name in Google Ads; label them by their first headline.
-  const ads = aggregateAds(adRows).map((ad) => {
-    const copy = adCopy.get(ad.adId);
-    return {
-      ...ad,
-      adName: ad.adName || copy?.adName || `${ad.adGroupName || "Ad"} · ${ad.adId}`,
-      headlines: copy?.headlines ?? "",
-      descriptions: copy?.descriptions ?? "",
-      finalUrl: copy?.finalUrl ?? "",
-      displayUrl: copy?.finalUrl ?? "",
-    };
-  });
-  const keywords = aggregateKeywords(keywordRows);
+  const status = (key: string) => (item: Record<string, unknown>) => String(item[key] ?? "");
+  const campaigns = withStructure(
+    structureCampaigns(campaignStructure, ACCOUNT_NAME),
+    aggregateCampaigns(campaignRows, ACCOUNT_NAME),
+    (item) => item.campaignId,
+    status("campaignStatus"),
+    ["impressionShare", "impressionShareLostBudget", "impressionShareLostRank"],
+  );
+  const adGroups = withStructure(
+    structureAdGroups(adGroupStructure),
+    aggregateAdGroups(adGroupRows),
+    (item) => item.adGroupId,
+    status("adGroupStatus"),
+  );
+  const ads = withStructure(
+    structureAds(adStructure),
+    aggregateAds(adRows),
+    (item) => `${item.adGroupId}~${item.adId}`,
+    status("status"),
+  );
+  const keywords = withStructure(
+    structureKeywords(keywordStructure),
+    aggregateKeywords(keywordRows),
+    (item) => `${item.adGroupId}~${item.criterionId}`,
+    status("status"),
+  );
   const searchTerms = aggregateSearchTerms(searchTermRows);
 
   return {

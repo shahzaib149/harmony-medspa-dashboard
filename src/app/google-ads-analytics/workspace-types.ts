@@ -237,8 +237,6 @@ export type WorkspaceSnapshot = {
   daily?: DailyPoint[];
   conversionActions?: ConversionActionRow[];
   sync?: WorkspaceSync;
-  /** Set when live status overlay failed; metrics are unaffected. */
-  statusOverlayError?: string | null;
 };
 
 export type SelectedEntity =

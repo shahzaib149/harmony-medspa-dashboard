@@ -10,7 +10,10 @@ import {
   dedupeRows,
   inDayRange,
   rowDay,
+  structureAds,
+  structureCampaigns,
   totalsOf,
+  withStructure,
   type AdsRow,
 } from "../src/lib/google/ads-aggregate";
 
@@ -93,4 +96,49 @@ test("dailySeries zero-fills every day in the range", () => {
   assert.deepEqual(points.map((point) => point.date), ["2026-10-20", "2026-10-21", "2026-10-22"]);
   assert.equal(points[1].cost, 10);
   assert.equal(points[0].cost, 0);
+});
+
+test("structure rows list every entity with its current status; metrics come only from the range", () => {
+  const structure = structureCampaigns(
+    [
+      row("s1", { "Campaign ID": "9", "Campaign Name": "CS2", Status: "PAUSED", "Daily Budget": 20 }),
+      row("s2", { "Campaign ID": "8", "Campaign Name": "Roya", Status: "PAUSED", "Daily Budget": 50 }),
+      row("s3", { "Campaign ID": "7", "Campaign Name": "Old", Status: "REMOVED", "Daily Budget": 30 }),
+    ],
+    "Harmony MedSpa",
+  );
+  const ranged = aggregateCampaigns(
+    [row("1", { Date: "2026-10-20", "Campaign ID": "9", "Campaign Name": "CS2", "Campaign Status": "ENABLED", Impressions: 10, Clicks: 2, Cost: 5 })],
+    "Harmony MedSpa",
+  );
+  const merged = withStructure(structure, ranged, (item) => item.campaignId, (item) => item.campaignStatus);
+  // Removed campaigns with no activity are hidden; quiet ones stay with zero metrics.
+  assert.deepEqual(merged.map((item) => item.campaignId).sort(), ["8", "9"]);
+  const cs2 = merged.find((item) => item.campaignId === "9")!;
+  assert.equal(cs2.campaignStatus, "PAUSED");
+  assert.equal(cs2.budget, 20);
+  assert.equal(cs2.cost, 5);
+  const roya = merged.find((item) => item.campaignId === "8")!;
+  assert.equal(roya.campaignStatus, "PAUSED");
+  assert.equal(roya.cost, 0);
+  assert.equal(roya.budget, 50);
+});
+
+test("structure ads expose policy, strength and copy; the first headline names unnamed ads", () => {
+  const [ad] = structureAds([
+    row("a", {
+      "Ad ID": "1",
+      "Ad Group ID": "A",
+      Status: "ENABLED",
+      "Approval Status": "APPROVED",
+      "Ad Strength": "AVERAGE",
+      Headlines: "Weight Loss Consultation\nSarasota Clinic\n\n",
+      "Final URL": "https://example.com/landing",
+    }),
+  ]);
+  assert.equal(ad.adName, "Weight Loss Consultation");
+  assert.equal(ad.headlines, "Weight Loss Consultation | Sarasota Clinic");
+  assert.equal(ad.approvalStatus, "APPROVED");
+  assert.equal(ad.strength, "AVERAGE");
+  assert.equal(ad.finalUrl, "https://example.com/landing");
 });

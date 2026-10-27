@@ -29,19 +29,15 @@ test("Ads default to enabled and expose removed history", () => {
   assert.match(workspace, /<option value="REMOVED">Removed<\/option>/);
 });
 
-test("campaign fallback merges canonical inventory with range analytics", () => {
-  const client = read(
-    "src/app/google-ads-analytics/GoogleAdsAnalyticsClient.tsx",
-  );
-  const inventory = read("src/app/api/airtable/google-ads-campaigns/route.ts");
-  assert.match(client, /function mergeCampaignInventory/);
-  assert.match(client, /campaignInventory\?\.campaigns/);
-  assert.match(inventory, /budget: num\(f, "Daily Budget", "Budget"\)/);
-  assert.match(
-    inventory,
-    /biddingStrategy: str\(f, "Bidding Strategy", "Bidding"\)/,
-  );
-  assert.match(inventory, /campaign\.campaignStatus !== "REMOVED"/);
+test("workspace lists every entity from the structure tables with range metrics", () => {
+  const builder = read("src/lib/google/ads-airtable.ts");
+  const client = read("src/app/google-ads-analytics/GoogleAdsAnalyticsClient.tsx");
+  for (const level of ["Campaigns", "AdGroups", "Ads", "Keywords"]) {
+    assert.match(builder, new RegExp(`structure${level}\\(`));
+  }
+  assert.match(builder, /withStructure\(/);
+  // One source of truth: the client no longer mixes in live API numbers.
+  assert.doesNotMatch(client, /\/api\/google-ads\/workspace\?/);
 });
 
 test("campaign UI omits bidding and incomplete ads do not render fake previews", () => {
