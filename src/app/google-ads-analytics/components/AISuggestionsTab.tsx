@@ -1387,7 +1387,7 @@ export default function AISuggestionsTab({
             )}
           </div>
           <p style={{ fontSize: 12, color: MUTED, margin: "4px 0 0" }}>
-            Based on last {days} days · Powered by Claude
+            Based on the selected {days}-day range · Powered by Claude
             {todayEntry && !promoted ? " · Cached for today" : ""}
           </p>
         </div>

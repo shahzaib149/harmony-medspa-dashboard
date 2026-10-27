@@ -33,6 +33,8 @@ import {
   Workflow,
 } from "lucide-react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -44,10 +46,13 @@ import {
 import type {
   AdGroup,
   Campaign,
+  ConversionActionRow,
   Creative,
   Keyword,
+  SearchTerm,
   SelectedEntity,
   WorkspaceSnapshot,
+  WorkspaceTotals,
 } from "../workspace-types";
 
 const PendingAdsPanel = dynamic(
@@ -68,6 +73,8 @@ export type WorkspaceTab =
   | "ad-groups"
   | "ads"
   | "keywords"
+  | "search-terms"
+  | "conversions"
   | "workflow"
   | "ai-suggestions";
 
@@ -81,6 +88,8 @@ const TABS: Array<{
   { id: "ad-groups", label: "Ad groups", icon: Layers3 },
   { id: "ads", label: "Ads", icon: Sparkles },
   { id: "keywords", label: "Keywords", icon: KeyRound },
+  { id: "search-terms", label: "Search terms", icon: Search },
+  { id: "conversions", label: "Conversions", icon: BadgeCheck },
   { id: "workflow", label: "Publishing", icon: Workflow },
   { id: "ai-suggestions", label: "AI suggestions", icon: BrainCircuit },
 ];
@@ -111,6 +120,25 @@ const detailHref = (
   kind: "campaigns" | "ad-groups" | "ads" | "keywords",
   id: string,
 ) => `/google-ads-analytics/${kind}/${encodeURIComponent(id)}`;
+
+const RANGE_KEYS = ["range", "days", "month", "from", "to"];
+
+function withRange(href: string, params: URLSearchParams) {
+  const [path, existing = ""] = href.split("?");
+  const query = new URLSearchParams(existing);
+  for (const key of RANGE_KEYS) {
+    const value = params.get(key);
+    if (value && !query.has(key)) query.set(key, value);
+  }
+  const search = query.toString();
+  return search ? `${path}?${search}` : path;
+}
+
+/** Link that carries the selected Google Ads date range to the next page. */
+function RangeLink({ href, ...props }: React.ComponentProps<typeof Link> & { href: string }) {
+  const params = useSearchParams();
+  return <Link href={withRange(href, new URLSearchParams(params.toString()))} {...props} />;
+}
 
 function LoadingBlock({
   label = "Loading Google Ads workspace",
@@ -189,6 +217,29 @@ function ResourceName({ value }: { value?: string }) {
   );
 }
 
+/** Percent change vs the previous period; null when there is no baseline. */
+function percentChange(current: number, previous: number) {
+  if (!previous) return null;
+  return ((current - previous) / previous) * 100;
+}
+
+function DeltaChip({ delta, lowerIsBetter = false }: { delta: number | null; lowerIsBetter?: boolean }) {
+  if (delta === null || !Number.isFinite(delta)) return null;
+  const flat = Math.abs(delta) < 0.5;
+  const good = flat ? null : lowerIsBetter ? delta < 0 : delta > 0;
+  const color = good === null ? "var(--text-muted)" : good ? "var(--success-text)" : "var(--danger-text)";
+  const bg = good === null ? "var(--neutral-bg)" : good ? "var(--success-bg)" : "var(--danger-bg)";
+  return (
+    <span
+      className="rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
+      style={{ color, background: bg }}
+      title="Change vs previous period of equal length"
+    >
+      {flat ? "±0%" : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
+    </span>
+  );
+}
+
 function MetricCard({
   label,
   value,
@@ -196,6 +247,8 @@ function MetricCard({
   icon: Icon,
   onClick,
   tone = "brand",
+  delta = null,
+  lowerIsBetter = false,
 }: {
   label: string;
   value: string;
@@ -203,6 +256,8 @@ function MetricCard({
   icon: React.ElementType;
   onClick?: () => void;
   tone?: "brand" | "teal" | "blue" | "danger";
+  delta?: number | null;
+  lowerIsBetter?: boolean;
 }) {
   const color =
     tone === "teal"
@@ -240,10 +295,11 @@ function MetricCard({
             {label}
           </p>
           <p
-            className="mt-2 text-2xl font-bold tracking-tight"
+            className="mt-2 flex flex-wrap items-baseline gap-2 text-2xl font-bold tracking-tight"
             style={{ color: "var(--text-primary)" }}
           >
             {value}
+            <DeltaChip delta={delta} lowerIsBetter={lowerIsBetter} />
           </p>
         </div>
         <span
@@ -555,6 +611,83 @@ function RelationalRail({
   );
 }
 
+const TREND_METRICS = [
+  { key: "cost", label: "Cost", format: (v: number) => money(v) },
+  { key: "clicks", label: "Clicks", format: (v: number) => number(v) },
+  { key: "conversions", label: "Conversions", format: (v: number) => number(v) },
+  { key: "cpa", label: "Cost / conv.", format: (v: number) => money(v) },
+  { key: "ctrPct", label: "CTR", format: (v: number) => pct(v) },
+] as const;
+
+function TrendChart({ daily }: { daily: NonNullable<WorkspaceSnapshot["daily"]> }) {
+  const [metric, setMetric] = useState<(typeof TREND_METRICS)[number]["key"]>("cost");
+  const active = TREND_METRICS.find((item) => item.key === metric) ?? TREND_METRICS[0];
+  const data = daily.map((point) => ({
+    date: point.date,
+    label: new Date(`${point.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    value: point[metric],
+  }));
+  return (
+    <section
+      className="rounded-2xl border p-4 sm:p-5"
+      style={{ background: "var(--surface-1)", borderColor: "var(--border-subtle)" }}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="font-bold">Performance over time</h3>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+            Daily account totals for the selected range.
+          </p>
+        </div>
+        <div role="radiogroup" aria-label="Chart metric" className="flex flex-wrap gap-1">
+          {TREND_METRICS.map((item) => (
+            <button
+              key={item.key}
+              role="radio"
+              aria-checked={metric === item.key}
+              onClick={() => setMetric(item.key)}
+              className="min-h-9 rounded-lg border px-3 text-xs font-bold"
+              style={{
+                borderColor: metric === item.key ? "var(--brand-primary)" : "var(--border-subtle)",
+                color: metric === item.key ? "var(--brand-primary-strong)" : "var(--text-muted)",
+                background: metric === item.key ? "var(--brand-primary-soft)" : "transparent",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4 h-64">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+          <AreaChart data={data} margin={{ left: -8, right: 8, top: 6, bottom: 0 }}>
+            <defs>
+              <linearGradient id="ads-trend-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.28} />
+                <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={24} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={(value) => active.format(Number(value))} width={64} />
+            <Tooltip
+              formatter={(value) => [active.format(Number(value)), active.label]}
+              labelFormatter={(_, payload) => String(payload?.[0]?.payload?.date ?? "")}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke="var(--chart-1)"
+              strokeWidth={2}
+              fill="url(#ads-trend-fill)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
 function Overview({
   snapshot,
   setTab,
@@ -591,6 +724,10 @@ function Overview({
   const weightedCtr = totals.impressions
     ? (totals.clicks / totals.impressions) * 100
     : 0;
+  const current = snapshot.summary?.current;
+  const previous = snapshot.summary?.previous;
+  const change = (key: keyof WorkspaceTotals) =>
+    current && previous ? percentChange(current[key], previous[key]) : null;
   const pending = snapshot.ads.filter((ad) =>
     `${ad.reviewStatus} ${ad.primaryStatus}`.toUpperCase().includes("REVIEW"),
   ).length;
@@ -669,8 +806,9 @@ function Overview({
         <MetricCard
           label="Spend"
           value={money(totals.cost, true)}
-          note="Selected range"
+          note="vs previous period"
           icon={CircleDollarSign}
+          delta={change("cost")}
           onClick={() => setTab("campaigns")}
         />
         <MetricCard
@@ -679,6 +817,7 @@ function Overview({
           note={`${pct(weightedCtr)} CTR`}
           icon={Target}
           tone="blue"
+          delta={change("impressions")}
           onClick={() => setTab("campaigns")}
         />
         <MetricCard
@@ -689,6 +828,7 @@ function Overview({
           }
           icon={MousePointerClick}
           tone="blue"
+          delta={change("clicks")}
           onClick={() => setTab("ads")}
         />
         <MetricCard
@@ -700,7 +840,8 @@ function Overview({
           }
           icon={BadgeCheck}
           tone="teal"
-          onClick={() => setTab("keywords")}
+          delta={change("conversions")}
+          onClick={() => setTab("conversions")}
         />
         {totals.conversionValueAvailable && (
           <MetricCard
@@ -709,6 +850,7 @@ function Overview({
             note={money(totals.value, true) + " value"}
             icon={Gauge}
             tone="teal"
+            delta={change("roas")}
           />
         )}
         <MetricCard
@@ -735,6 +877,10 @@ function Overview({
           onClick={() => setTab("ads", "DISAPPROVED")}
         />
       </div>
+
+      {snapshot.daily && snapshot.daily.length > 0 && (
+        <TrendChart daily={snapshot.daily} />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.55fr)]">
         <section
@@ -1226,7 +1372,7 @@ function MobileEntityCard({
   actionLabel: string;
 }) {
   return (
-    <Link
+    <RangeLink
       href={href}
       aria-label={`${actionLabel}: ${title}`}
       className="group block min-w-0 rounded-2xl border p-4 focus-visible:ring-2"
@@ -1304,7 +1450,7 @@ function MobileEntityCard({
           />
         </span>
       </div>
-    </Link>
+    </RangeLink>
   );
 }
 
@@ -1317,12 +1463,14 @@ function CampaignsTable({
   ads,
   keywords,
   onOpen,
+  onScope,
 }: {
   rows: Campaign[];
   adGroups: AdGroup[];
   ads: Creative[];
   keywords: Keyword[];
   onOpen: (entity: SelectedEntity) => void;
+  onScope: (campaignId: string) => void;
 }) {
   const filters = useEntityFilters(
     "campaigns",
@@ -1396,7 +1544,7 @@ function CampaignsTable({
                 },
                 {
                   label: "Daily budget",
-                  value: item.budget == null ? "—" : money(item.budget),
+                  value: !item.budget ? "—" : money(item.budget),
                 },
               ]}
               synchronized={
@@ -1425,6 +1573,7 @@ function CampaignsTable({
           "Conv. value",
           "ROAS",
           "Inventory",
+          "Search IS",
           "Last synchronized",
         ]}
       >
@@ -1453,8 +1602,8 @@ function CampaignsTable({
                 <strong>{labelize(item.channelType)}</strong>
               </td>
               <MetricCell
-                value={item.budget == null ? "—" : money(item.budget)}
-                note={item.budget == null ? undefined : "Per day"}
+                value={!item.budget ? "—" : money(item.budget)}
+                note={!item.budget ? undefined : "Per day"}
               />
               <MetricCell value={money(item.cost)} />
               <MetricCell value={number(item.impressions)} />
@@ -1488,9 +1637,27 @@ function CampaignsTable({
               >
                 {roas(item.roas, item.conversionValueAvailable !== false)}
               </td>
+              <td className="text-right">
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onScope(item.campaignId);
+                  }}
+                  className="font-bold hover:underline"
+                  style={{ color: "var(--brand-primary-strong)" }}
+                  title="Show this campaign's ad groups, ads, keywords and search terms"
+                >
+                  {inventory.groups} / {inventory.ads} / {inventory.keywords}
+                </button>
+                <small>Groups / ads / keywords</small>
+              </td>
               <MetricCell
-                value={`${inventory.groups} / ${inventory.ads} / ${inventory.keywords}`}
-                note="Groups / ads / keywords"
+                value={item.impressionShare ? pct(item.impressionShare) : "—"}
+                note={
+                  item.impressionShare
+                    ? `Lost: ${pct(item.impressionShareLostBudget)} budget · ${pct(item.impressionShareLostRank)} rank`
+                    : undefined
+                }
               />
               <MetricCell
                 value={
@@ -2633,14 +2800,14 @@ function NameCell({
   return (
     <td className="max-w-64">
       {href ? (
-        <Link
+        <RangeLink
           href={href}
           onClick={(event) => event.stopPropagation()}
           className="block break-words text-sm font-bold leading-5 hover:underline"
           title={title}
         >
           {title || "Unnamed entity"}
-        </Link>
+        </RangeLink>
       ) : (
         <strong className="block break-words text-sm leading-5" title={title}>
           {title || "Unnamed entity"}
@@ -2662,20 +2829,134 @@ function MetricCell({ value, note }: { value: string; note?: string }) {
   );
 }
 
+/** Loads the (large) search-term report only when this tab is opened. */
+function useSearchTerms(campaignScope: string) {
+  const searchParams = useSearchParams();
+  const rangeKey = searchParams.toString();
+  const range = useMemo(() => resolveAdsRange(new URLSearchParams(rangeKey)), [rangeKey]);
+  const [state, setState] = useState<{ rows: SearchTerm[]; loading: boolean; error: string | null }>({ rows: [], loading: true, error: null });
+  useEffect(() => {
+    const controller = new AbortController();
+    setState((current) => ({ ...current, loading: true, error: null }));
+    void fetch(`/api/google-ads/airtable-workspace?days=${range.days}&from=${range.from}&to=${range.to}&view=search-terms`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as { searchTerms?: SearchTerm[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Search terms could not load");
+        setState({ rows: data.searchTerms ?? [], loading: false, error: null });
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setState({ rows: [], loading: false, error: error instanceof Error ? error.message : String(error) });
+      });
+    return () => controller.abort();
+  }, [range]);
+  const rows = useMemo(
+    () => (campaignScope ? state.rows.filter((row) => row.campaignId === campaignScope) : state.rows),
+    [campaignScope, state.rows],
+  );
+  return { ...state, rows };
+}
+
+function SearchTermsTable({ campaignScope }: { campaignScope: string }) {
+  const { rows, loading, error } = useSearchTerms(campaignScope);
+  const sorted = useMemo(() => [...rows].sort((a, b) => b.cost - a.cost), [rows]);
+  if (loading) return <LoadingBlock label="Loading search terms" />;
+  if (error) return <EmptyState title="Search terms could not load" body={error} />;
+  return (
+    <EntitySection
+      eyebrow="Query intelligence"
+      title="Search terms"
+      description="The real searches that triggered your ads. Rows with spend and no conversions are highlighted as possible negative keywords."
+    >
+      <DataTable columns={["Search term", "Matched keyword", "Match type", "Campaign / ad group", "Spend", "Impressions", "Clicks", "CTR", "Conversions"]}>
+        {sorted.map((item) => {
+          const wasted = item.cost > 0 && !item.conversions;
+          return (
+            <tr key={item.id} className="border-b" style={wasted ? { background: "var(--warning-bg)" } : undefined}>
+              <td className="max-w-64"><strong className="block break-words text-sm">{item.term}</strong>{item.status && item.status !== "NONE" && <small>{labelize(item.status)}</small>}</td>
+              <td>{item.matchedKeyword || "—"}</td>
+              <td className="text-center">{labelize(item.matchType)}</td>
+              <td><small>{item.campaignName} · {item.adGroupName}</small></td>
+              <MetricCell value={money(item.cost)} />
+              <MetricCell value={number(item.impressions)} />
+              <MetricCell value={number(item.clicks)} />
+              <MetricCell value={item.impressions ? pct((item.clicks / item.impressions) * 100) : "—"} />
+              <MetricCell value={number(item.conversions)} />
+            </tr>
+          );
+        })}
+      </DataTable>
+      {!rows.length && <EmptyState title="No search terms in this range" body="Run the Make 'Google Ads Search Terms' scenario for these dates to fill this view." />}
+    </EntitySection>
+  );
+}
+
+function ConversionsTab({ rows }: { rows: ConversionActionRow[] }) {
+  const byAction = useMemo(() => {
+    const map = new Map<string, ConversionActionRow>();
+    for (const row of rows) {
+      const current = map.get(row.actionId);
+      map.set(row.actionId, current ? { ...current, conversions: current.conversions + row.conversions, conversionValue: current.conversionValue + row.conversionValue, allConversions: current.allConversions + row.allConversions, allConversionValue: current.allConversionValue + row.allConversionValue } : { ...row });
+    }
+    return [...map.values()].sort((a, b) => b.allConversions - a.allConversions);
+  }, [rows]);
+  return (
+    <EntitySection
+      eyebrow="Measurement"
+      title="Conversions by action"
+      description="Which conversion actions Google Ads counted in this range. 'Conversions' are the ones used for bidding; 'All conversions' include secondary actions."
+    >
+      <DataTable columns={["Conversion action", "Category", "Conversions", "Conv. value", "All conversions", "All conv. value"]}>
+        {byAction.map((item) => (
+          <tr key={item.actionId} className="border-b">
+            <td><strong className="text-sm">{item.actionName}</strong><small>ID {item.actionId}</small></td>
+            <td className="text-center">{labelize(item.category)}</td>
+            <MetricCell value={number(item.conversions)} />
+            <MetricCell value={money(item.conversionValue)} />
+            <MetricCell value={number(item.allConversions)} />
+            <MetricCell value={money(item.allConversionValue)} />
+          </tr>
+        ))}
+      </DataTable>
+      {!rows.length && <EmptyState title="No conversions in this range" body="Run the Make 'Google Ads Conversion Actions' scenario for these dates to fill this view." />}
+    </EntitySection>
+  );
+}
+
 export default function GoogleAdsWorkspace({
   snapshot,
   activeTab,
   setTab,
   statusFilter,
+  campaignScope = "",
   days,
 }: {
   snapshot: WorkspaceSnapshot;
   activeTab: WorkspaceTab;
-  setTab: (tab: WorkspaceTab, status?: string) => void;
+  setTab: (tab: WorkspaceTab, status?: string, campaign?: string | null) => void;
   statusFilter?: string;
+  campaignScope?: string;
   days: number;
 }) {
+  const scopedCampaign = snapshot.campaigns.find((item) => item.campaignId === campaignScope);
+  // Child levels are limited to the scoped campaign, like the Google Ads left-hand tree.
+  const scoped = useMemo(() => {
+    if (!campaignScope) return snapshot;
+    const inScope = (item: { campaignId: string }) => item.campaignId === campaignScope;
+    return {
+      ...snapshot,
+      adGroups: snapshot.adGroups.filter(inScope),
+      ads: snapshot.ads.filter(inScope),
+      keywords: snapshot.keywords.filter(inScope),
+      searchTerms: snapshot.searchTerms.filter(inScope),
+      conversionActions: snapshot.conversionActions?.filter(inScope),
+    };
+  }, [campaignScope, snapshot]);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const tabScroller = useRef<HTMLDivElement>(null);
   const [tabOverflow, setTabOverflow] = useState({ left: false, right: false });
   const updateTabOverflow = useCallback(() => {
@@ -2718,7 +2999,7 @@ export default function GoogleAdsWorkspace({
           : entity.kind === "ad"
             ? "ads"
             : "keywords";
-    router.push(`/google-ads-analytics/${segment}/${encodeURIComponent(id)}`);
+    router.push(withRange(`/google-ads-analytics/${segment}/${encodeURIComponent(id)}`, new URLSearchParams(searchParams.toString())));
   };
   return (
     <div className="google-ads-workspace w-full min-w-0 max-w-full space-y-5">
@@ -2789,6 +3070,24 @@ export default function GoogleAdsWorkspace({
           }}
         />
       </div>
+      {campaignScope && activeTab !== "campaigns" && (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-xs"
+          style={{ borderColor: "var(--brand-primary)", background: "var(--brand-primary-soft)" }}
+        >
+          <span style={{ color: "var(--text-muted)" }}>Showing only</span>
+          <strong style={{ color: "var(--brand-primary-strong)" }}>
+            Campaign: {scopedCampaign?.campaignName ?? campaignScope}
+          </strong>
+          <button
+            onClick={() => setTab(activeTab, undefined, null)}
+            className="ml-auto min-h-9 rounded-lg border px-3 font-bold"
+            style={{ borderColor: "var(--border-subtle)", background: "var(--surface-1)" }}
+          >
+            Show all campaigns
+          </button>
+        </div>
+      )}
       {activeTab === "overview" && (
         <Overview snapshot={snapshot} setTab={setTab} onOpen={open} />
       )}
@@ -2799,20 +3098,21 @@ export default function GoogleAdsWorkspace({
           ads={snapshot.ads}
           keywords={snapshot.keywords}
           onOpen={open}
+          onScope={(campaignId) => setTab("ad-groups", undefined, campaignId)}
         />
       )}
       {activeTab === "ad-groups" && (
         <AdGroupsTable
-          rows={snapshot.adGroups}
+          rows={scoped.adGroups}
           campaigns={snapshot.campaigns}
-          ads={snapshot.ads}
-          keywords={snapshot.keywords}
+          ads={scoped.ads}
+          keywords={scoped.keywords}
           onOpen={open}
         />
       )}
       {activeTab === "ads" && (
         <AdsTable
-          rows={snapshot.ads}
+          rows={scoped.ads}
           campaigns={snapshot.campaigns}
           onOpen={open}
           initialStatus={statusFilter}
@@ -2823,11 +3123,13 @@ export default function GoogleAdsWorkspace({
       )}
       {activeTab === "keywords" && (
         <KeywordsTable
-          rows={snapshot.keywords}
+          rows={scoped.keywords}
           campaigns={snapshot.campaigns}
           onOpen={open}
         />
       )}
+      {activeTab === "search-terms" && <SearchTermsTable campaignScope={campaignScope} />}
+      {activeTab === "conversions" && <ConversionsTab rows={scoped.conversionActions ?? []} />}
       {activeTab === "workflow" && <PublishingWorkflow />}
       {activeTab === "ai-suggestions" && (
         <AISuggestionsTab

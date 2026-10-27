@@ -100,26 +100,6 @@ export default function Sidebar({
       );
     if (href === "/settings" && role === "admin")
       void preloadDashboardData(DATA_CACHE_KEYS.staff, "/api/auth/users");
-    if (href === "/google-ads-analytics") {
-      void Promise.all([
-        preloadDashboardData(
-          DATA_CACHE_KEYS.campaigns,
-          "/api/airtable?table=campaigns&days=30",
-        ),
-        preloadDashboardData(
-          DATA_CACHE_KEYS.adGroups,
-          "/api/airtable?table=ad-groups&days=30",
-        ),
-        preloadDashboardData(
-          DATA_CACHE_KEYS.creatives,
-          "/api/airtable?table=creatives&days=30",
-        ),
-        preloadDashboardData(
-          DATA_CACHE_KEYS.keywords,
-          "/api/airtable?table=keywords&days=30",
-        ),
-      ]);
-    }
   }
 
   return (

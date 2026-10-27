@@ -28,28 +28,14 @@ type AdsRange = Pick<ResolvedDateRange, "from" | "to" | "days">;
 
 export type { AdGroup, Campaign, Creative, Keyword } from "./workspace-types";
 
-type AdPreviewRecord = {
-  id: string;
-  adId: string;
-  resourceName?: string;
-  adGroupAdResourceName?: string;
-  adGroupId?: string;
-  adName?: string;
-  adType?: string;
-  status?: string;
-  headlines?: string;
-  descriptions?: string;
-  finalUrl?: string;
-  targetUrl?: string;
-  lastSynced?: string;
-};
-
 const VALID_TABS: WorkspaceTab[] = [
   "overview",
   "campaigns",
   "ad-groups",
   "ads",
   "keywords",
+  "search-terms",
+  "conversions",
   "workflow",
   "ai-suggestions",
 ];
@@ -60,6 +46,8 @@ const TAB_ROUTES: Record<WorkspaceTab, string> = {
   "ad-groups": "/google-ads-analytics/ad-groups",
   ads: "/google-ads-analytics/ads",
   keywords: "/google-ads-analytics/keywords",
+  "search-terms": "/google-ads-analytics/search-terms",
+  conversions: "/google-ads-analytics/conversions",
   workflow: "/google-ads-analytics/publishing",
   "ai-suggestions": "/google-ads-analytics/ai-suggestions",
 };
@@ -170,6 +158,12 @@ function mergeCampaignInventory(
     return normalizeCampaign({
       ...period,
       ...identity,
+      // Daily report rows are newer than the campaign list, so their status wins.
+      campaignStatus: period?.campaignStatus || identity.campaignStatus,
+      channelType: period?.channelType || identity.channelType,
+      biddingStrategy: period?.biddingStrategy || identity.biddingStrategy,
+      // An empty budget in the campaign list arrives as 0; treat it as unknown.
+      budget: identity.budget || period?.budget || undefined,
       accountName: period?.accountName || identity.accountName,
       pulledAt: period?.pulledAt || identity.pulledAt,
       cost: period?.cost ?? 0,
@@ -262,121 +256,6 @@ function normalizeKeyword(row: Keyword): Keyword {
   };
 }
 
-function canonicalAdKey(
-  ad: Pick<
-    Creative,
-    "resourceName" | "adGroupAdResourceName" | "adId" | "adGroupId"
-  >,
-) {
-  return (
-    ad.adGroupAdResourceName ||
-    ad.resourceName ||
-    (ad.adId && ad.adGroupId ? `${ad.adGroupId}~${ad.adId}` : ad.adId)
-  );
-}
-
-function mergeAdInventory(
-  analytics: Creative[],
-  previews: AdPreviewRecord[],
-  adGroups: AdGroup[],
-  campaigns: Campaign[],
-) {
-  const groupsById = new Map(adGroups.map((group) => [group.adGroupId, group]));
-  const ads = new Map<string, Creative>();
-  for (const raw of analytics) {
-    const ad = normalizeCreative(raw);
-    ads.set(canonicalAdKey(ad) || ad.id, ad);
-  }
-  for (const preview of previews) {
-    const relation = (
-      preview.adGroupAdResourceName ||
-      preview.resourceName ||
-      ""
-    ).match(/\/adGroupAds\/(\d+)~(\d+)$/);
-    const adGroupId = preview.adGroupId || relation?.[1] || "";
-    const adId = preview.adId || relation?.[2] || "";
-    const key =
-      preview.adGroupAdResourceName ||
-      preview.resourceName ||
-      (adGroupId && adId ? `${adGroupId}~${adId}` : adId || preview.id);
-    const current =
-      ads.get(key) ||
-      [...ads.values()].find(
-        (ad) => ad.adId === adId && (!adGroupId || ad.adGroupId === adGroupId),
-      );
-    const group = groupsById.get(adGroupId);
-    if (current) {
-      const merged = normalizeCreative({
-        ...current,
-        resourceName:
-          current.resourceName ||
-          preview.resourceName ||
-          preview.adGroupAdResourceName,
-        adGroupAdResourceName:
-          current.adGroupAdResourceName ||
-          preview.adGroupAdResourceName ||
-          preview.resourceName,
-        adGroupId: current.adGroupId || adGroupId,
-        adName: current.adName || preview.adName || `Ad ${adId}`,
-        adType: current.adType || preview.adType || "UNKNOWN",
-        status: current.status || preview.status,
-        headlines: current.headlines || preview.headlines || "",
-        descriptions: current.descriptions || preview.descriptions || "",
-        finalUrl:
-          current.finalUrl || preview.finalUrl || preview.targetUrl || "",
-        displayUrl:
-          current.displayUrl || preview.finalUrl || preview.targetUrl || "",
-        lastSynced: current.lastSynced || preview.lastSynced,
-      });
-      ads.delete(canonicalAdKey(current) || current.id);
-      ads.set(canonicalAdKey(merged) || merged.id, merged);
-      continue;
-    }
-    const campaign = group
-      ? campaigns.find((item) => item.campaignId === group.campaignId)
-      : undefined;
-    const resourceName =
-      preview.adGroupAdResourceName || preview.resourceName || "";
-    const inventoryAd = normalizeCreative({
-      id: resourceName || preview.id,
-      adId,
-      resourceName,
-      adGroupAdResourceName: resourceName,
-      adName: preview.adName || `Ad ${adId}`,
-      adType: preview.adType || "UNKNOWN",
-      campaignId: campaign?.campaignId || group?.campaignId || "",
-      campaignResourceName:
-        campaign?.resourceName || group?.campaignResourceName,
-      campaignName: campaign?.campaignName || group?.campaignName || "",
-      adGroupId,
-      adGroupResourceName: group?.resourceName,
-      adGroupName:
-        group?.adGroupName || (adGroupId ? `Ad group ${adGroupId}` : ""),
-      status: preview.status || "UNKNOWN",
-      cost: 0,
-      clicks: 0,
-      impressions: 0,
-      ctrPct: 0,
-      conversions: 0,
-      conversionValue: 0,
-      conversionValueAvailable: false,
-      roas: 0,
-      date: "",
-      creativeTagSuggestions: "",
-      headlines: preview.headlines || "",
-      descriptions: preview.descriptions || "",
-      finalUrl: preview.finalUrl || preview.targetUrl || "",
-      displayUrl: preview.finalUrl || preview.targetUrl || "",
-      path1: "",
-      path2: "",
-      lastSynced: preview.lastSynced,
-      publishSource: "Google Ad Preview inventory",
-    });
-    ads.set(canonicalAdKey(inventoryAd) || inventoryAd.id, inventoryAd);
-  }
-  return [...ads.values()];
-}
-
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: "no-store" });
   const data = (await response.json().catch(() => null)) as
@@ -387,110 +266,156 @@ async function getJson<T>(url: string): Promise<T> {
   return data;
 }
 
+const LIVE_STATUS_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number) {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Live Google Ads status timed out")), ms),
+    ),
+  ]);
+}
+
+/**
+ * Overlay live Google Ads *status* onto the Airtable snapshot. Metrics are
+ * never taken from the live API, so a page can't show two different totals.
+ * Live-only entities (no impressions in the range) are added with zero metrics
+ * so paused or quiet items stay visible.
+ */
+function overlayLiveStatus(snapshot: WorkspaceSnapshot, live: WorkspaceSnapshot): WorkspaceSnapshot {
+  const zero = {
+    cost: 0,
+    clicks: 0,
+    impressions: 0,
+    ctrPct: 0,
+    avgCpc: 0,
+    conversions: 0,
+    cpa: 0,
+    conversionValue: 0,
+    roas: 0,
+  };
+  const liveCampaigns = new Map(live.campaigns.map((item) => [String(item.campaignId), item]));
+  const campaigns = snapshot.campaigns.map((item) => {
+    const status = liveCampaigns.get(item.campaignId);
+    return status
+      ? {
+          ...item,
+          campaignStatus: status.campaignStatus || item.campaignStatus,
+          budget: status.budget ?? item.budget,
+          budgetResourceName: status.budgetResourceName,
+          optimizationScore: status.optimizationScore || item.optimizationScore,
+          startDate: status.startDate,
+          endDate: status.endDate,
+        }
+      : item;
+  });
+  const campaignIds = new Set(campaigns.map((item) => item.campaignId));
+  for (const item of live.campaigns) {
+    if (!campaignIds.has(String(item.campaignId))) campaigns.push(normalizeCampaign({ ...item, ...zero, impressionShare: 0, impressionShareLostBudget: 0, impressionShareLostRank: 0 }));
+  }
+
+  const liveGroups = new Map(live.adGroups.map((item) => [String(item.adGroupId), item]));
+  const adGroups = snapshot.adGroups.map((item) => {
+    const status = liveGroups.get(item.adGroupId);
+    return status ? { ...item, adGroupStatus: status.adGroupStatus || item.adGroupStatus, adGroupType: status.adGroupType } : item;
+  });
+  const groupIds = new Set(adGroups.map((item) => item.adGroupId));
+  for (const item of live.adGroups) {
+    if (!groupIds.has(String(item.adGroupId))) adGroups.push(normalizeAdGroup({ ...item, ...zero }));
+  }
+
+  const liveAds = new Map(live.ads.map((item) => [`${item.adGroupId}~${item.adId}`, item]));
+  const ads = snapshot.ads.map((item) => {
+    const status = liveAds.get(`${item.adGroupId}~${item.adId}`);
+    return status
+      ? {
+          ...item,
+          status: status.status || item.status,
+          primaryStatus: status.primaryStatus,
+          primaryStatusReasons: status.primaryStatusReasons,
+          approvalStatus: status.approvalStatus,
+          reviewStatus: status.reviewStatus,
+          policyTopics: status.policyTopics,
+          strength: status.strength,
+          headlines: item.headlines || status.headlines,
+          descriptions: item.descriptions || status.descriptions,
+          headlineAssets: status.headlineAssets,
+          descriptionAssets: status.descriptionAssets,
+          finalUrl: item.finalUrl || status.finalUrl,
+          finalUrls: status.finalUrls,
+          path1: status.path1 || item.path1,
+          path2: status.path2 || item.path2,
+        }
+      : item;
+  });
+
+  const liveKeywords = new Map(live.keywords.map((item) => [`${item.adGroupId}~${item.criterionId}`, item]));
+  const keywords = snapshot.keywords.map((item) => {
+    const status = liveKeywords.get(`${item.adGroupId}~${item.criterionId}`);
+    return status
+      ? {
+          ...item,
+          status: status.status || item.status,
+          qualityScore: status.qualityScore ?? item.qualityScore,
+          creativeQuality: status.creativeQuality,
+          landingPageQuality: status.landingPageQuality,
+        }
+      : item;
+  });
+
+  return { ...snapshot, campaigns, adGroups, ads, keywords, assets: live.assets?.length ? live.assets : snapshot.assets };
+}
+
 async function loadWorkspaceSnapshot(
   range: AdsRange,
   force: boolean,
-  view?: "ads",
 ): Promise<WorkspaceResult> {
   const rangeQuery = adsRangeQuery(range);
-  const viewQuery = view ? `&view=${view}&page=0&pageSize=25&sort=spend` : "";
-  const livePromise = getJson<WorkspaceSnapshot>(
-    `/api/google-ads/workspace?${rangeQuery}${viewQuery}${force ? "&refresh=1" : ""}`,
+  const refresh = force ? "&refresh=1" : "";
+  // Metrics: Airtable only. Live API: status / approvals overlay, best effort.
+  const livePromise = withTimeout(
+    getJson<WorkspaceSnapshot>(`/api/google-ads/workspace?${rangeQuery}${refresh}`),
+    LIVE_STATUS_TIMEOUT_MS,
   );
-  const airtableCampaignsPromise = getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
+  const inventoryPromise = getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
     `/api/airtable/google-ads-campaigns`,
   ).catch(() => null);
-  const airtableAdGroupsPromise = getJson<{ adGroups?: AdGroup[]; data?: AdGroup[] }>(
-    `/api/airtable/ad-groups`,
-  ).catch(() => null);
+  // Settle the optional requests now so a live-API failure is never an unhandled rejection.
+  const optional = Promise.allSettled([livePromise, inventoryPromise]);
+  const airtable = await getJson<WorkspaceSnapshot>(
+    `/api/google-ads/airtable-workspace?${rangeQuery}${refresh}`,
+  );
 
-  try {
-    const [live, airtableCamps, airtableGroups] = await Promise.all([
-      livePromise,
-      airtableCampaignsPromise,
-      airtableAdGroupsPromise,
-    ]);
-
-    const campaigns = (
-      (live.campaigns && live.campaigns.length > 0 ? live.campaigns : null) ||
-      airtableCamps?.campaigns ||
-      airtableCamps?.data ||
-      []
-    ).map(normalizeCampaign);
-
-    const adGroups = (
-      (live.adGroups && live.adGroups.length > 0 ? live.adGroups : null) ||
-      airtableGroups?.adGroups ||
-      airtableGroups?.data ||
-      []
-    ).map(normalizeAdGroup);
-
-    return {
-      snapshot: {
-        ...live,
-        campaigns,
-        adGroups,
-        ads: mergeAdInventory(
-          live.ads || [],
-          [],
-          adGroups,
-          campaigns,
-        ),
-        keywords: (live.keywords || []).map(normalizeKeyword),
-        searchTerms: live.searchTerms || [],
-        assets: live.assets || [],
-      },
-      syncError: null,
-    };
-  } catch (liveError) {
-    const [campaigns, adGroups, ads, keywords, previews, campaignInventory] = await Promise.all([
-      getJson<{ campaigns?: Campaign[]; data?: Campaign[] }>(
-        `/api/airtable?table=campaigns&${rangeQuery}`,
-      ),
-      getJson<{ adGroups?: AdGroup[]; data?: AdGroup[] }>(
-        `/api/airtable?table=ad-groups&${rangeQuery}`,
-      ),
-      getJson<{ data?: Creative[] }>(
-        `/api/airtable?table=creatives&${rangeQuery}`,
-      ),
-      getJson<{ data?: Keyword[] }>(
-        `/api/airtable?table=keywords&${rangeQuery}`,
-      ),
-      getJson<{ data?: AdPreviewRecord[] }>(
-        `/api/airtable?table=ad-preview&${rangeQuery}`,
-      ),
-      airtableCampaignsPromise,
-    ]);
-    const campaignRows = mergeCampaignInventory(
-      campaigns.campaigns || campaigns.data || [],
+  const [live, inventory] = await optional;
+  const campaignInventory = inventory.status === "fulfilled" ? inventory.value : null;
+  let snapshot: WorkspaceSnapshot = {
+    ...airtable,
+    campaigns: mergeCampaignInventory(
+      airtable.campaigns,
       campaignInventory?.campaigns || campaignInventory?.data || [],
-    );
-    const adGroupRows = (
-      adGroups.adGroups ||
-      adGroups.data ||
-      []
-    ).map(normalizeAdGroup);
-    return {
-      snapshot: {
-        source: "airtable",
-        accountName: campaignRows[0]?.accountName || "Harmony MedSpa",
-        fetchedAt: new Date().toISOString(),
-        campaigns: campaignRows,
-        adGroups: adGroupRows,
-        ads: mergeAdInventory(
-          ads.data || [],
-          previews.data || [],
-          adGroupRows,
-          campaignRows,
-        ),
-        keywords: (keywords.data || []).map(normalizeKeyword),
-        searchTerms: [],
-        assets: [],
-      },
-      syncError:
-        liveError instanceof Error ? liveError.message : String(liveError),
-    };
-  }
+    ),
+    adGroups: airtable.adGroups.map(normalizeAdGroup),
+    ads: airtable.ads.map(normalizeCreative),
+    keywords: airtable.keywords.map(normalizeKeyword),
+  };
+  let statusError: string | null = null;
+  if (live.status === "fulfilled") snapshot = overlayLiveStatus(snapshot, live.value);
+  else statusError = live.reason instanceof Error ? live.reason.message : String(live.reason);
+  // Inventory and live status can add zero-spend entities; count what is shown.
+  snapshot.totals = {
+    campaigns: snapshot.campaigns.length,
+    adGroups: snapshot.adGroups.length,
+    ads: snapshot.ads.length,
+    keywords: snapshot.keywords.length,
+    searchTerms: snapshot.searchTerms.length,
+    assets: snapshot.assets.length,
+  };
+
+  return {
+    snapshot: { ...snapshot, statusOverlayError: statusError },
+    syncError: statusError,
+  };
 }
 
 export async function fetchWorkspaceSnapshot(
@@ -504,7 +429,7 @@ export async function fetchWorkspaceSnapshot(
   const pending = workspaceRequests.get(key);
   if (!force && pending) return pending;
 
-  const request = loadWorkspaceSnapshot(range, force, view).then((result) => {
+  const request = loadWorkspaceSnapshot(range, force).then((result) => {
     workspaceCache.set(key, {
       ...result,
       expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
@@ -517,6 +442,43 @@ export async function fetchWorkspaceSnapshot(
   } finally {
     if (workspaceRequests.get(key) === request) workspaceRequests.delete(key);
   }
+}
+
+/** Where the numbers come from and how fresh they are. */
+function SyncBadge({ snapshot, rangeTo }: { snapshot: WorkspaceSnapshot; rangeTo: string }) {
+  const through = snapshot.sync?.dataThrough ?? null;
+  const stale = !through || rangeTo > through;
+  const label = through
+    ? `Airtable · data through ${new Date(`${through}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+    : "Airtable · no Make sync recorded";
+  return (
+    <>
+      <span
+        className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
+        style={{
+          color: stale ? "var(--warning-text)" : "var(--success-text)",
+          background: stale ? "var(--warning-bg)" : "var(--success-bg)",
+        }}
+        title={
+          stale
+            ? "The selected range goes past the last day Make imported. Run the Google Ads scenarios in Make for the missing days."
+            : "Every number on this page comes from the Make to Airtable Google Ads tables."
+        }
+      >
+        {stale ? <WifiOff size={11} /> : <Wifi size={11} />}
+        {label}
+      </span>
+      {snapshot.statusOverlayError && (
+        <span
+          className="rounded-full px-2 py-1 text-[10px] font-bold"
+          style={{ color: "var(--text-muted)", background: "var(--neutral-bg)" }}
+          title={snapshot.statusOverlayError}
+        >
+          Live status unavailable
+        </span>
+      )}
+    </>
+  );
 }
 
 function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
@@ -545,11 +507,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
       else setLoading(true);
       setFatalError(null);
       try {
-        const result = await fetchWorkspaceSnapshot(
-          range,
-          quiet,
-          activeTab === "ads" ? activeTab : undefined,
-        );
+        const result = await fetchWorkspaceSnapshot(range, quiet);
         setSnapshot(result.snapshot);
       } catch (error) {
         setFatalError(
@@ -562,7 +520,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
         setRefreshing(false);
       }
     },
-    [activeTab, range],
+    [range],
   );
 
   useEffect(() => {
@@ -574,13 +532,16 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
     return () => window.removeEventListener(DASHBOARD_REFRESH_EVENT, refresh);
   }, [load]);
 
-  const setTab = (tab: WorkspaceTab, status?: string) => {
+  // `campaign` scopes child tabs to one campaign (like Google Ads); undefined keeps the current scope.
+  const setTab = (tab: WorkspaceTab, status?: string, campaign?: string | null) => {
     const params = new URLSearchParams();
     for (const key of ["range", "days", "month", "from", "to"]) {
       const value = searchParams.get(key);
       if (value) params.set(key, value);
     }
     if (status) params.set("status", status);
+    const scope = campaign === undefined ? searchParams.get("campaign") : campaign;
+    if (scope) params.set("campaign", scope);
     router.push(`${TAB_ROUTES[tab]}?${params.toString()}`);
   };
   const setRange = (selection: DateRangeInput) => {
@@ -614,30 +575,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
             >
               Harmony acquisition operations
             </p>
-            {snapshot && (
-              <span
-                className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
-                style={{
-                  color:
-                    snapshot.source === "live"
-                      ? "var(--success-text)"
-                      : "var(--warning-text)",
-                  background:
-                    snapshot.source === "live"
-                      ? "var(--success-bg)"
-                      : "var(--warning-bg)",
-                }}
-              >
-                {snapshot.source === "live" ? (
-                  <Wifi size={11} />
-                ) : (
-                  <WifiOff size={11} />
-                )}
-                {snapshot.source === "live"
-                  ? "Live Google Ads"
-                  : "Airtable fallback"}
-              </span>
-            )}
+            {snapshot && <SyncBadge snapshot={snapshot} rangeTo={range.to} />}
           </div>
           <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
             Google Ads workspace
@@ -647,8 +585,8 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
           </p>
           {snapshot && (
             <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-              {snapshot.accountName} · Last synchronized{" "}
-              {new Date(snapshot.fetchedAt).toLocaleString()} · {range.preset === "custom" || range.preset === "month" ? range.label : `${range.label} (${formatRangeLabel(range.from, range.to)})`}
+              {snapshot.accountName} · Last Make run{" "}
+              {snapshot.sync?.lastRunAt ? new Date(snapshot.sync.lastRunAt).toLocaleString() : "unknown"} · {range.preset === "custom" || range.preset === "month" ? range.label : `${range.label} (${formatRangeLabel(range.from, range.to)})`}
             </p>
           )}
         </div>
@@ -711,6 +649,7 @@ function AnalyticsInner({ routeTab }: { routeTab?: WorkspaceTab }) {
             activeTab={activeTab}
             setTab={setTab}
             statusFilter={statusFilter}
+            campaignScope={searchParams.get("campaign") || ""}
             days={days}
           />
         )

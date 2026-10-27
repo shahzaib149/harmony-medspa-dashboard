@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 import type { ResolvedDateRange } from "@/lib/date-range";
-import { fetchAllRecords, num, str } from "@/lib/airtable/client";
+import { num, str, type RawRecord } from "@/lib/airtable/client";
+import { fetchAdsDaily, fetchAdsSync } from "@/lib/google/ads-airtable";
 import {
   linkedIds,
   listRecords,
@@ -618,68 +619,46 @@ function mapClinicMetric(record: AirtableRecord): ClinicMetric | null {
   };
 }
 
-function adsDate(fields: Record<string, unknown>, createdTime: string) {
-  return (
-    str(fields, "Date", "date", "Day", "day", "Segment Date", "Reporting Date") ||
-    str(fields, "pulledAt", "Pulled At", "Last Updated", "Updated At", "Synced At") ||
-    createdTime
-  );
-}
-
+/**
+ * Overview Google Ads card from the Make → Airtable daily tables. Rows arrive
+ * already limited to the selected period and de-duplicated by Unique Key; the
+ * reporting day is a plain clinic-day string, so it is bucketed as-is.
+ */
 function googleAdsFor(
-  campaignRecords: Awaited<ReturnType<typeof fetchAllRecords>>,
-  creativeRecords: Awaited<ReturnType<typeof fetchAllRecords>>,
+  campaignRows: RawRecord[],
+  adRows: RawRecord[],
   period: Period,
   periodLeads: Lead[],
+  lastRunAt: string | null,
 ): GoogleAdsSummary {
-  if (campaignRecords.length === 0) {
-    console.warn("[googleAdsFor] WARNING: Google Ads Campaign Analytics returned 0 records.");
-  }
-  if (creativeRecords.length === 0) {
-    console.warn("[googleAdsFor] WARNING: Google Ads Ad Creative Analytics returned 0 records.");
-  }
-  const campaigns = campaignRecords
-    .map((record) => ({
-      name: str(record.fields, "campaignName", "Campaign Name", "Campaign") || "Unnamed campaign",
-      spend: num(record.fields, "cost", "Cost", "Spend"),
-      impressions: num(record.fields, "impressions", "Impressions"),
-      clicks: num(record.fields, "clicks", "Clicks"),
-      conversions: num(record.fields, "conversions", "Conversions"),
-      conversionValue: num(
-        record.fields,
-        "conversionValue",
-        "Conversion Value",
-        "Revenue",
-        "All Conversion Value",
-      ),
-      syncedAt: adsDate(record.fields, record.createdTime),
-    }));
- 
-  const creatives = creativeRecords
-    .map((record) => ({
-      name: str(record.fields, "adName", "Ad Name", "Ad", "Name") || "Unnamed creative",
-      clicks: num(record.fields, "clicks", "Clicks"),
-      conversions: num(record.fields, "conversions", "Conversions"),
-      spend: num(record.fields, "cost", "Cost", "Spend"),
-      date: adsDate(record.fields, record.createdTime),
-    }))
-    .filter((record) => inWindow(record.date, period.from, period.to));
-  const groupedCampaigns = new Map<string, { spend: number; conversions: number; clicks: number }>();
-  campaigns.forEach((campaign) => {
-    const current = groupedCampaigns.get(campaign.name) ?? { spend: 0, conversions: 0, clicks: 0 };
-    current.spend += campaign.spend;
-    current.conversions += campaign.conversions;
-    current.clicks += campaign.clicks;
-    groupedCampaigns.set(campaign.name, current);
-  });
-  const groupedCreatives = new Map<string, { spend: number; conversions: number; clicks: number }>();
-  creatives.forEach((creative) => {
-    const current = groupedCreatives.get(creative.name) ?? { spend: 0, conversions: 0, clicks: 0 };
-    current.spend += creative.spend;
-    current.conversions += creative.conversions;
-    current.clicks += creative.clicks;
-    groupedCreatives.set(creative.name, current);
-  });
+  const campaigns = campaignRows.map((record) => ({
+    name: str(record.fields, "Campaign Name") || "Unnamed campaign",
+    day: str(record.fields, "Date").slice(0, 10),
+    spend: num(record.fields, "Cost"),
+    impressions: num(record.fields, "Impressions"),
+    clicks: num(record.fields, "Clicks"),
+    conversions: num(record.fields, "Conversions"),
+    conversionValue: num(record.fields, "Conversion Value"),
+  }));
+  const creatives = adRows.map((record) => ({
+    name:
+      str(record.fields, "Ad Name") ||
+      `${str(record.fields, "Ad Group Name") || "Ad"} · ${str(record.fields, "Ad ID")}`,
+    clicks: num(record.fields, "Clicks"),
+    conversions: num(record.fields, "Conversions"),
+    spend: num(record.fields, "Cost"),
+  }));
+  const grouped = (rows: Array<{ name: string; spend: number; conversions: number; clicks: number }>) => {
+    const map = new Map<string, { spend: number; conversions: number; clicks: number }>();
+    rows.forEach((row) => {
+      const current = map.get(row.name) ?? { spend: 0, conversions: 0, clicks: 0 };
+      current.spend += row.spend;
+      current.conversions += row.conversions;
+      current.clicks += row.clicks;
+      map.set(row.name, current);
+    });
+    return [...map.entries()];
+  };
   const spend = campaigns.reduce((sum, campaign) => sum + campaign.spend, 0);
   const impressions = campaigns.reduce((sum, campaign) => sum + campaign.impressions, 0);
   const clicks = campaigns.reduce((sum, campaign) => sum + campaign.clicks, 0);
@@ -700,10 +679,6 @@ function googleAdsFor(
         b[1].clicks - a[1].clicks ||
         b[1].spend - a[1].spend,
     )[0]?.[0] ?? null;
-  const latestSync = campaigns
-    .map((campaign) => campaign.syncedAt)
-    .filter((value) => validTime(value) !== null)
-    .sort((a, b) => (validTime(b) ?? 0) - (validTime(a) ?? 0))[0] ?? null;
   const daily = new Map<string, GoogleAdsSummary["daily"][number]>();
   let cursor = period.from.startOf("day");
   while (cursor <= period.to) {
@@ -720,7 +695,7 @@ function googleAdsFor(
     cursor = cursor.plus({ days: 1 });
   }
   campaigns.forEach((campaign) => {
-    const point = daily.get(bucketDate(campaign.syncedAt) ?? "");
+    const point = daily.get(campaign.day);
     if (!point) return;
     point.spend += campaign.spend;
     point.impressions += campaign.impressions;
@@ -743,13 +718,13 @@ function googleAdsFor(
     attributedLeads,
     costPerLead: attributedLeads ? spend / attributedLeads : null,
     roas: conversionValue > 0 && spend > 0 ? conversionValue / spend : null,
-    topCampaign: ranking([...groupedCampaigns.entries()]),
-    topCreative: ranking([...groupedCreatives.entries()]),
+    topCampaign: ranking(grouped(campaigns)),
+    topCreative: ranking(grouped(creatives)),
     attentionMessage:
       spend > 0 && conversions === 0
         ? `${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(spend)} spent with no recorded conversions`
         : null,
-    latestSyncAt: latestSync,
+    latestSyncAt: lastRunAt,
     daily: [...daily.values()],
   };
 }
@@ -946,6 +921,10 @@ export async function getOverviewData(
   range: ResolvedDateRange,
 ): Promise<OverviewResponse> {
   const period = periodFor(key, range);
+  const adsRange = { from: period.from.toISODate()!, to: period.to.toISODate()! };
+  const adsSyncPromise = isAirtableConfigured() && process.env.AIRTABLE_BASE_ID
+    ? fetchAdsSync().catch(() => null)
+    : Promise.resolve(null);
   const unavailable = () => Promise.reject(new Error("Airtable is not configured"));
   const airtable = isAirtableConfigured();
   const auditPromise = auditActivity(request, period);
@@ -966,10 +945,10 @@ export async function getOverviewData(
           )
         : unavailable(),
       airtable && process.env.AIRTABLE_BASE_ID
-        ? fetchAllRecords("Google Ads Campaign Analytics", undefined, { cache: "no-store" })
+        ? fetchAdsDaily("campaign", adsRange)
         : unavailable(),
       airtable && process.env.AIRTABLE_BASE_ID
-        ? fetchAllRecords("Google Ads Ad Creative Analytics", undefined, { cache: "no-store" })
+        ? fetchAdsDaily("ad", adsRange)
         : unavailable(),
       airtable ? listCalls() : unavailable(),
     ]);
@@ -1058,7 +1037,8 @@ export async function getOverviewData(
           adsResult.value,
           creativeResult.status === "fulfilled" ? creativeResult.value : [],
           period,
-          periodLeads
+          periodLeads,
+          (await adsSyncPromise)?.lastRunAt ?? null,
         )
       : null;
   const audit = await auditPromise;

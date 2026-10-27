@@ -26,6 +26,14 @@ const META: Record<WorkspaceTab, { title: string; subtitle: string }> = {
     title: "Google Ads Keywords",
     subtitle: "Unique keyword criteria grouped by campaign and ad group",
   },
+  "search-terms": {
+    title: "Google Ads Search Terms",
+    subtitle: "The searches that triggered your ads, with wasted-spend highlights",
+  },
+  conversions: {
+    title: "Google Ads Conversions",
+    subtitle: "Conversions and value by conversion action",
+  },
   workflow: {
     title: "Google Ads Publishing",
     subtitle:
@@ -52,6 +60,8 @@ const TAB_PATHS: Record<WorkspaceTab, string> = {
   "ad-groups": "/google-ads-analytics/ad-groups",
   ads: "/google-ads-analytics/ads",
   keywords: "/google-ads-analytics/keywords",
+  "search-terms": "/google-ads-analytics/search-terms",
+  conversions: "/google-ads-analytics/conversions",
   workflow: "/google-ads-analytics/publishing",
   "ai-suggestions": "/google-ads-analytics/ai-suggestions",
 };

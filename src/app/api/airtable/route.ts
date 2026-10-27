@@ -1,6 +1,6 @@
 import { fetchAllRecords, num, str } from "@/lib/airtable/client";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
-import { withCache, bustCache } from "@/lib/server-cache";
+import { bustCache } from "@/lib/server-cache";
 import {
   canonicalAdKey,
   canonicalKeywordKey,
@@ -9,13 +9,15 @@ import {
   type SnapshotMetric as Summable,
 } from "@/lib/google/ads-normalization";
 import { adsReportingRange } from "@/lib/google/ads-range";
+import { ADS_TABLES } from "@/lib/google/ads-tables";
+import { dedupeRows } from "@/lib/google/ads-aggregate";
 
 const TABLE_NAMES = {
-  campaigns: "Google Ads Campaign Analytics",
-  "ad-groups": "Google Ads Ad Group Analytics",
-  creatives: "Google Ads Ad Creative Analytics",
-  keywords: "Google Ads Keyword Performance",
-  "ad-preview": "tblsokwqKQuj3rFSB", // "Google Ad Preview" table — ad copy (headlines/descriptions)
+  campaigns: ADS_TABLES.campaign,
+  "ad-groups": ADS_TABLES.adGroup,
+  creatives: ADS_TABLES.ad,
+  keywords: ADS_TABLES.keyword,
+  "ad-preview": ADS_TABLES.adPreview, // "Google Ad Preview" table — ad copy (headlines/descriptions)
 };
 
 /**
@@ -98,8 +100,6 @@ function googleResource(accountId: string, collection: string, id: string) {
     : "";
 }
 
-const AIRTABLE_ROUTE_TTL = 60; // 60s cache
-
 export async function GET(request: Request) {
   try {
     await requireRole(request, "viewer");
@@ -128,10 +128,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const raw = await fetchAllRecords(
-      TABLE_NAMES[table],
-      new URLSearchParams(),
-      { cache: forceRefresh ? "no-store" : "cached", forceRefresh },
+    // One row per Unique Key, so a re-pulled day is never summed twice.
+    const raw = dedupeRows(
+      await fetchAllRecords(
+        TABLE_NAMES[table],
+        new URLSearchParams(),
+        { cache: forceRefresh ? "no-store" : "cached", forceRefresh },
+      ),
     );
 
     if (table === "campaigns") {

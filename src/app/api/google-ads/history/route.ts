@@ -1,64 +1,61 @@
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
-import { fetchAllRecords, num, str } from "@/lib/airtable/client";
-import { isClinicDay } from "@/lib/date-range";
+import { num, str } from "@/lib/airtable/client";
+import { fetchAdsDaily } from "@/lib/google/ads-airtable";
+import { adsReportingRange } from "@/lib/google/ads-range";
+import type { AdsDailyTable } from "@/lib/google/ads-tables";
 
-const TABLES = {
-  campaign: "Google Ads Campaign Analytics",
-  "ad-group": "Google Ads Ad Group Analytics",
-  ad: "Google Ads Ad Creative Analytics",
-  keyword: "Google Ads Keyword Performance",
-} as const;
+const TABLES: Record<string, AdsDailyTable> = {
+  campaign: "campaign",
+  "ad-group": "adGroup",
+  ad: "ad",
+  keyword: "keyword",
+};
 
-type EntityKind = keyof typeof TABLES;
+const ID_FIELD: Record<AdsDailyTable, string> = {
+  campaign: "Campaign ID",
+  adGroup: "Ad Group ID",
+  ad: "Ad ID",
+  keyword: "Keyword ID",
+  searchTerm: "Search Term",
+  conversionAction: "Conversion Action ID",
+};
 
-function rowIdentity(kind: EntityKind, fields: Record<string, unknown>) {
-  if (kind === "campaign") return str(fields, "Campaign ID", "campaignId", "Campaign Id");
-  if (kind === "ad-group") return str(fields, "Ad Group ID", "adGroupId", "Ad Group Id");
-  if (kind === "ad") return str(fields, "Ad ID", "adId", "Ad Id");
-  return str(fields, "Keyword ID", "Criterion ID", "criterionId", "Keyword Criterion ID");
-}
-
-function hasConversionValue(fields: Record<string, unknown>) {
-  return ["Conversion Value", "conversionValue", "Conv Value", "Revenue", "All Conversion Value"]
-    .some((key) => fields[key] !== undefined && fields[key] !== null && fields[key] !== "");
-}
-
+/** Daily metrics for one entity, from the de-duplicated Airtable daily tables. */
 export async function GET(request: Request) {
   try { await requireRole(request, "viewer"); } catch (error) { return authErrorResponse(error); }
   const { searchParams } = new URL(request.url);
-  const kind = searchParams.get("entity") as EntityKind | null;
+  const kind = searchParams.get("entity") ?? "";
   const id = searchParams.get("id")?.trim() || "";
-  const days = Math.min(365, Math.max(1, Number(searchParams.get("days") || 30)));
-  const from = searchParams.get("from") ?? "";
-  const to = searchParams.get("to") ?? "";
-  const explicitRange = isClinicDay(from) && isClinicDay(to) && from <= to;
-  if (!kind || !TABLES[kind] || !id) return Response.json({ error: "A valid entity and ID are required." }, { status: 400 });
+  // Ad and keyword IDs are only unique within an ad group; narrow by it when known.
+  const adGroupId = searchParams.get("adGroupId")?.trim() || "";
+  const table = TABLES[kind];
+  if (!table || !id) return Response.json({ error: "A valid entity and ID are required." }, { status: 400 });
 
   try {
-    const cutoff = new Date(Date.now() - days * 86_400_000);
-    const rows = await fetchAllRecords(TABLES[kind], new URLSearchParams(), { cache: "no-store" });
-    const daily = new Map<string, { date: string; cost: number; impressions: number; clicks: number; conversions: number; conversionValue: number; conversionValueAvailable: boolean }>();
+    const range = adsReportingRange(searchParams);
+    const rows = await fetchAdsDaily(table, range);
+    const daily = new Map<string, { date: string; cost: number; impressions: number; clicks: number; conversions: number; conversionValue: number }>();
     for (const row of rows) {
-      if (rowIdentity(kind, row.fields) !== id) continue;
-      const date = str(row.fields, "Date", "date", "Day") || row.createdTime.slice(0, 10);
-      if (explicitRange ? date.slice(0, 10) < from || date.slice(0, 10) > to : new Date(date) < cutoff) continue;
-      const current = daily.get(date) ?? { date, cost: 0, impressions: 0, clicks: 0, conversions: 0, conversionValue: 0, conversionValueAvailable: false };
-      current.cost += num(row.fields, "Cost", "cost", "Spend");
-      current.impressions += num(row.fields, "Impressions", "impressions");
-      current.clicks += num(row.fields, "Clicks", "clicks");
-      current.conversions += num(row.fields, "Conversions", "conversions");
-      current.conversionValue += num(row.fields, "Conversion Value", "conversionValue", "Conv Value", "Revenue", "All Conversion Value");
-      current.conversionValueAvailable ||= hasConversionValue(row.fields);
+      if (str(row.fields, ID_FIELD[table]) !== id) continue;
+      if (adGroupId && (table === "ad" || table === "keyword") && str(row.fields, "Ad Group ID") !== adGroupId) continue;
+      const date = str(row.fields, "Date").slice(0, 10);
+      const current = daily.get(date) ?? { date, cost: 0, impressions: 0, clicks: 0, conversions: 0, conversionValue: 0 };
+      current.cost += num(row.fields, "Cost");
+      current.impressions += num(row.fields, "Impressions");
+      current.clicks += num(row.fields, "Clicks");
+      current.conversions += num(row.fields, "Conversions");
+      current.conversionValue += num(row.fields, "Conversion Value");
       daily.set(date, current);
     }
     const data = [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)).map((item) => ({
       ...item,
+      conversionValueAvailable: true,
       ctrPct: item.impressions ? item.clicks / item.impressions * 100 : 0,
       avgCpc: item.clicks ? item.cost / item.clicks : 0,
       cpa: item.conversions ? item.cost / item.conversions : 0,
-      roas: item.conversionValueAvailable && item.cost ? item.conversionValue / item.cost : null,
+      roas: item.cost ? item.conversionValue / item.cost : null,
     }));
-    return Response.json({ source: "airtable-performance-snapshots", entity: kind, id, count: data.length, data });
+    return Response.json({ source: "airtable-daily", entity: kind, id, count: data.length, data });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "History could not be loaded." }, { status: 500 });
   }

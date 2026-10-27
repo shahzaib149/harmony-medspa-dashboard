@@ -134,6 +134,8 @@ export type SearchTerm = {
   resourceName?: string;
   term: string;
   status?: string;
+  matchedKeyword?: string;
+  matchType?: string;
   campaignId: string;
   campaignName: string;
   adGroupId: string;
@@ -142,7 +144,56 @@ export type SearchTerm = {
   clicks: number;
   impressions: number;
   ctrPct: number;
+  avgCpc?: number;
   conversions: number;
+  conversionValue?: number;
+  cpa?: number;
+};
+
+export type ConversionActionRow = {
+  id: string;
+  actionId: string;
+  actionName: string;
+  category: string;
+  campaignId: string;
+  campaignName: string;
+  conversions: number;
+  conversionValue: number;
+  allConversions: number;
+  allConversionValue: number;
+};
+
+/** Summed metrics plus ratios derived from the sums. */
+export type WorkspaceTotals = {
+  impressions: number;
+  clicks: number;
+  cost: number;
+  conversions: number;
+  conversionValue: number;
+  allConversions: number;
+  ctrPct: number;
+  avgCpc: number;
+  cpa: number;
+  conversionRatePct: number;
+  roas: number;
+};
+
+export type DailyPoint = WorkspaceTotals & { date: string };
+
+export type SyncReport = {
+  report: string;
+  dateFrom: string;
+  dateTo: string;
+  rows: number;
+  ranAt: string;
+};
+
+export type WorkspaceSync = {
+  /** Most recent Make run of any report. */
+  lastRunAt: string | null;
+  /** Latest reporting day covered by the campaign report (the dashboard's "data through"). */
+  dataThrough: string | null;
+  reports: SyncReport[];
 };
 
 export type GoogleAsset = {
@@ -181,6 +232,13 @@ export type WorkspaceSnapshot = {
     pageSize: 25 | 50 | 100;
     total: number;
   };
+  /** Airtable snapshot extras: account totals, previous-period totals, daily trend. */
+  summary?: { current: WorkspaceTotals; previous: WorkspaceTotals; previousRange: { from: string; to: string } };
+  daily?: DailyPoint[];
+  conversionActions?: ConversionActionRow[];
+  sync?: WorkspaceSync;
+  /** Set when live status overlay failed; metrics are unaffected. */
+  statusOverlayError?: string | null;
 };
 
 export type SelectedEntity =

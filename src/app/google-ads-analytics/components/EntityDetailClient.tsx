@@ -83,6 +83,23 @@ const entityId = (selected: SelectedEntity) =>
 const entityHref = (selected: SelectedEntity) =>
   `/google-ads-analytics/${selected.kind === "campaign" ? "campaigns" : selected.kind === "ad-group" ? "ad-groups" : selected.kind === "ad" ? "ads" : "keywords"}/${encodeURIComponent(entityId(selected))}`;
 
+
+const RANGE_KEYS = ["range", "days", "month", "from", "to"];
+
+/** Link that carries the selected Google Ads date range to the next page. */
+function RangeLink({ href, ...props }: React.ComponentProps<typeof Link> & { href: string }) {
+  const params = useSearchParams();
+  if (/^https?:/i.test(href)) return <Link href={href} {...props} />;
+  const [path, existing = ""] = href.split("?");
+  const query = new URLSearchParams(existing);
+  for (const key of RANGE_KEYS) {
+    const value = params.get(key);
+    if (value && !query.has(key)) query.set(key, value);
+  }
+  const search = query.toString();
+  return <Link href={search ? `${path}?${search}` : path} {...props} />;
+}
+
 function canonicalStatusTone(value?: string) {
   const status = (value || "").toUpperCase();
   if (
@@ -355,9 +372,9 @@ function Breadcrumbs({ selected }: { selected: SelectedEntity }) {
         >
           {index > 0 && <ChevronRight size={12} />}
           {crumb.href ? (
-            <Link href={crumb.href} className="font-semibold hover:underline">
+            <RangeLink href={crumb.href} className="font-semibold hover:underline">
               {crumb.label}
-            </Link>
+            </RangeLink>
           ) : (
             <span aria-current="page">{crumb.label}</span>
           )}
@@ -434,7 +451,7 @@ function DetailHeader({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
+          <RangeLink
             href={
               selected.kind === "campaign"
                 ? "/google-ads-analytics/campaigns"
@@ -452,7 +469,7 @@ function DetailHeader({
           >
             <ArrowLeft size={14} />
             Back to list
-          </Link>
+          </RangeLink>
           <button
             onClick={onRefresh}
             disabled={refreshing}
@@ -507,7 +524,7 @@ function DetailTabs({ tabs, active }: { tabs: string[]; active: string }) {
       style={{ borderColor: "var(--border-subtle)" }}
     >
       {tabs.map((tab) => (
-        <Link
+        <RangeLink
           key={tab}
           href={`?view=${tab}`}
           scroll={false}
@@ -523,7 +540,7 @@ function DetailTabs({ tabs, active }: { tabs: string[]; active: string }) {
           }}
         >
           {labelize(tab)}
-        </Link>
+        </RangeLink>
       ))}
     </nav>
   );
@@ -726,7 +743,7 @@ function InventoryList({
         style={{ borderColor: "var(--border-subtle)" }}
       >
         {items.map((item) => (
-          <Link
+          <RangeLink
             key={`${item.kind}-${entityId(item)}`}
             href={entityHref(item)}
             className="group flex items-center gap-3 py-3"
@@ -756,7 +773,7 @@ function InventoryList({
               </span>
             </span>
             <ChevronRight size={15} />
-          </Link>
+          </RangeLink>
         ))}
       </div>
     </section>
@@ -978,7 +995,7 @@ function Field({
         {label}
       </p>
       {link ? (
-        <Link
+        <RangeLink
           href={value}
           target="_blank"
           className="mt-1 flex items-center gap-1 break-all text-sm font-bold"
@@ -986,7 +1003,7 @@ function Field({
         >
           {value}
           <ExternalLink size={12} />
-        </Link>
+        </RangeLink>
       ) : (
         <p className="mt-1 text-sm font-bold">{value}</p>
       )}
@@ -1259,29 +1276,29 @@ function TabContent({
         >
           <h2 className="font-bold">Parent relationships</h2>
           <div className="mt-3 space-y-2">
-            <Link
+            <RangeLink
               href={`/google-ads-analytics/campaigns/${selected.value.campaignId}`}
               className="block rounded-xl border p-3 text-sm font-bold"
               style={{ borderColor: "var(--border-subtle)" }}
             >
               Campaign · {selected.value.campaignName}
-            </Link>
+            </RangeLink>
             {selected.value.adGroupId && (
-              <Link
+              <RangeLink
                 href={`/google-ads-analytics/ad-groups/${selected.value.adGroupId}`}
                 className="block rounded-xl border p-3 text-sm font-bold"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
                 Ad group · {selected.value.adGroupName}
-              </Link>
+              </RangeLink>
             )}
-            <Link
+            <RangeLink
               href={`/google-ads-analytics/publishing?adId=${selected.value.adId}`}
               className="block rounded-xl border p-3 text-sm font-bold"
               style={{ borderColor: "var(--border-subtle)" }}
             >
               Publishing records
-            </Link>
+            </RangeLink>
           </div>
         </section>
       </div>
@@ -1439,7 +1456,7 @@ export default function EntityDetailClient({
           The requested ID is not present in live Google Ads or the normalized
           Airtable fallback.
         </p>
-        <Link
+        <RangeLink
           href="/google-ads-analytics"
           className="mt-4 inline-flex rounded-xl px-4 py-2 text-sm font-bold"
           style={{
@@ -1448,7 +1465,7 @@ export default function EntityDetailClient({
           }}
         >
           Back to Google Ads
-        </Link>
+        </RangeLink>
       </div>
     );
   return (
