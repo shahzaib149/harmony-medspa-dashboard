@@ -46,7 +46,6 @@ import { Alert } from "@/components/ui/Alert";
 import { Toast } from "@/components/ui/Toast";
 import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
 import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
-import LeadExportButtons from "@/components/leads/LeadExportButtons";
 import { downloadLeadExport } from "@/lib/leads/download-export";
 import { callWindowForRange } from "@/lib/leads/call-filter";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
@@ -755,6 +754,7 @@ type LeadSummaryApiResponse = {
   summary?: LeadSummaryMetrics | null;
   viewCounts?: LeadViewCounts | null;
   latestLead?: LatestLead | null;
+  sources?: string[];
   configured?: boolean;
   error?: string;
 };
@@ -1791,6 +1791,7 @@ export default function LeadsClient() {
   const [leadSummary, setLeadSummary] = useState<LeadSummaryMetrics | null>(null);
   const [viewCounts, setViewCounts] = useState<LeadViewCounts | null>(null);
   const [latestLeadOverall, setLatestLeadOverall] = useState<LatestLead | null>(null);
+  const [allSources, setAllSources] = useState<string[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryRefreshing, setSummaryRefreshing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -1866,10 +1867,10 @@ export default function LeadsClient() {
     if (key === "source" && value === "Call Leads") {
       setSearch("");
       setFiltersOpen(false);
+      // Patient-only filters don't apply to calls; the date range does, so it stays.
       updateQuery({ source: value, view: "all", search: null, status: null,
         campaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
-        emailStatus: null, leadType: null, tags: null, lead: null,
-        date: null, month: null, from: null, to: null });
+        emailStatus: null, leadType: null, tags: null, lead: null });
       return;
     }
     updateQuery({ [key]: value });
@@ -2020,6 +2021,7 @@ export default function LeadsClient() {
       setLeadSummary(data.summary);
       setViewCounts(data.viewCounts);
       setLatestLeadOverall(data.latestLead ?? null);
+      if (data.sources?.length) setAllSources(data.sources);
       return true;
     } catch (event) {
       if (event instanceof DOMException && event.name === "AbortError") return false;
@@ -2094,6 +2096,7 @@ export default function LeadsClient() {
     const values = Array.from(
       new Set([
         "Call Leads",
+        ...allSources,
         ...leads.map((lead) => sourceLabel(lead.source)).filter(Boolean),
         ...(sourceFilter !== "all" ? [sourceFilter] : []),
       ]),
@@ -2102,7 +2105,7 @@ export default function LeadsClient() {
       { label: "All sources", value: "all" },
       ...values.map((source) => ({ label: source, value: source })),
     ];
-  }, [leads, sourceFilter]);
+  }, [allSources, leads, sourceFilter]);
 
   const filtered = leads;
   const filterChips = [
@@ -2463,20 +2466,7 @@ export default function LeadsClient() {
     updateQuery({ pageSize: String(nextSize), lead: null });
   }
 
-  if (sourceFilter === "Call Leads") {
-    const callWindow = callWindowForRange(dateRange);
-    return (
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ backgroundColor: PANEL, borderColor: BORDER }}>
-          <SelectControl label="Filter by source" value={sourceFilter} onChange={(value) => setFilterParam("source", value)} options={sources} />
-          <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
-          <button type="button" onClick={() => setFilterParam("source", "all")} className="min-h-11 rounded-xl border px-4 text-xs font-bold" style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}>Back to lead list</button>
-          <LeadExportButtons />
-        </div>
-        <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} onLeadCreated={() => void refreshLeads()} />
-      </div>
-    );
-  }
+  const callWindow = sourceFilter === "Call Leads" ? callWindowForRange(dateRange) : null;
 
   return (
     <div className="space-y-5">
@@ -2927,7 +2917,10 @@ export default function LeadsClient() {
         </div>
       )}
 
-      {loading ? (
+      {callWindow ? (
+        // Call opportunities replace the lead table; the header and filters above stay in place.
+        <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} onLeadCreated={() => void refreshLeads()} />
+      ) : loading ? (
         <LoadingRegion label="Loading leads" className="overflow-hidden rounded-2xl border" ><SkeletonRows rows={8} /></LoadingRegion>
       ) : error ? (
         <div

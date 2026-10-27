@@ -10,6 +10,7 @@ import {
 import { isAirtableConfigured } from "@/lib/airtable/config";
 import { countsAsRealLead } from "@/lib/leads/classification";
 import { withCallOpportunities } from "@/lib/leads/call-overview";
+import { listCalls } from "@/lib/leads/call-store";
 import { requireRole } from "@/lib/auth/requireRole";
 import { createServiceClient } from "@/lib/supabase/server";
 import type {
@@ -948,7 +949,7 @@ export async function getOverviewData(
   const unavailable = () => Promise.reject(new Error("Airtable is not configured"));
   const airtable = isAirtableConfigured();
   const auditPromise = auditActivity(request, period);
-  const [leadResult, enrollmentResult, messageResult, clinicResult, adsResult, creativeResult] =
+  const [leadResult, enrollmentResult, messageResult, clinicResult, adsResult, creativeResult, callResult] =
     await Promise.allSettled([
       airtable ? listRecords("Leads", selectFields([...OVERVIEW_FIELDS.leads])) : unavailable(),
       airtable
@@ -970,10 +971,13 @@ export async function getOverviewData(
       airtable && process.env.AIRTABLE_BASE_ID
         ? fetchAllRecords("Google Ads Ad Creative Analytics", undefined, { cache: "no-store" })
         : unavailable(),
+      airtable ? listCalls() : unavailable(),
     ]);
 
   const errors: OverviewResponse["errors"] = {};
   if (leadResult.status === "rejected") errors.leads = safeError("Lead");
+  // Lead totals include call opportunities, so missing calls would undercount silently.
+  else if (callResult.status === "rejected") errors.leads = safeError("Call lead");
   if (enrollmentResult.status === "rejected") errors.campaigns = safeError("Campaign");
   if (messageResult.status === "rejected") errors.delivery = safeError("Message delivery");
   if (clinicResult.status === "rejected") errors.clinic = safeError("Clinic metrics");
@@ -983,6 +987,7 @@ export async function getOverviewData(
   const leads = leadResult.status === "fulfilled" ? leadResult.value.map(mapLead) : [];
   const reportingLeads = withCallOpportunities(
     leadResult.status === "fulfilled" ? leadResult.value : [],
+    callResult.status === "fulfilled" ? callResult.value : [],
   ).map(mapLead);
   const enrollments =
     enrollmentResult.status === "fulfilled"

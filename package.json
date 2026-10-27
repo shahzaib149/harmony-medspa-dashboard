@@ -14,7 +14,8 @@
     "test": "tsx --test tests/*.test.ts",
     "seed:wellness-pending-ad": "tsx scripts/seed-wellness-pending-ad.ts",
     "seed:med-spa-pending-ads": "tsx scripts/seed-med-spa-pending-ads.ts",
-    "import:blog-drafts": "tsx scripts/import-blog-drafts.ts"
+    "import:blog-drafts": "tsx scripts/import-blog-drafts.ts",
+    "setup:calls-table": "tsx scripts/setup-calls-table.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

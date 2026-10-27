@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DateTime } from "luxon";
 import { callDateWindow, filterCalls } from "../src/lib/leads/call-filter";
-import { ALL_CALLS, CALL_SOURCES } from "../src/lib/leads/call-records";
+import { ALL_CALLS, CALL_SOURCES } from "./fixtures/call-history";
 
 test("Call Leads source filter can show the complete Overview history", () => {
   const window = callDateWindow("all", DateTime.fromISO("2026-10-08T12:00:00Z"));

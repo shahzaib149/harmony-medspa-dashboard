@@ -3,7 +3,8 @@ import test from "node:test";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
 import { mapLead } from "../src/lib/leads/map-lead";
-import { ALL_CALLS, callMarker } from "../src/lib/leads/call-records";
+import { callMarker } from "../src/lib/leads/call-records";
+import { ALL_CALLS } from "./fixtures/call-history";
 import { allLeadExportParams } from "../src/lib/leads/export";
 import { EXPORT_HEADERS, organizedLeadCsv, organizedLeadRows } from "../src/lib/leads/organized-export";
 import { leadExportWorkbook } from "../src/lib/leads/export-workbook";
@@ -13,7 +14,7 @@ const fixture = (id: string, source: string, extras = {}) => mapLead({ id, creat
 test("all history includes non-leads and manual marketing while merging a saved call", () => {
   const call = ALL_CALLS[0];
   const leads = [fixture("website", "Website Contact Form", { "Lead Type": "Solicitor" }), fixture("marketing", "Manual Campaign Entry"), fixture("linked", "Call Leads", { Message: callMarker(call.id) }), fixture("unlinked", "Call Leads")];
-  const rows = organizedLeadRows(leads);
+  const rows = organizedLeadRows(leads, ALL_CALLS);
   assert.equal(rows.length, ALL_CALLS.length + 3);
   assert.equal(rows.filter((row) => row[0] === "Marketing Leads").length, 1);
   assert.equal(rows.filter((row) => row[4] === call.id).length, 1);
@@ -28,13 +29,13 @@ test("all history includes non-leads and manual marketing while merging a saved 
 test("full-history query cannot inherit source, date, search, or real-lead filters", () => {
   assert.equal(allLeadExportParams().toString(), "view=all&pageSize=50");
   const records = [fixture("future", "Website", { "Lead Created At": "2027-01-01T00:00:00Z" }), fixture("spam", "Website", { "Lead Type": "Spam", Status: "Not a Lead" }), fixture("duplicate", "Manual Entry", { "Duplicate Flag": true }), fixture("invalid-date", "Website", { "Lead Created At": "unknown" })];
-  const rows = organizedLeadRows(records);
+  const rows = organizedLeadRows(records, ALL_CALLS);
   assert.deepEqual(new Set(rows.filter((row) => row[3]).map((row) => row[3])), new Set(records.map((lead) => lead.id)));
   assert.equal(rows.filter((row) => row[4]).length, ALL_CALLS.length);
 });
 
 test("CSV and Excel preserve every call, including missed calls and hangups", async () => {
-  const rows = organizedLeadRows([]);
+  const rows = organizedLeadRows([], ALL_CALLS);
   const csv = Papa.parse<string[]>(organizedLeadCsv(rows), { skipEmptyLines: true }).data.slice(1);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await leadExportWorkbook(rows));
@@ -52,7 +53,7 @@ test("CSV and Excel preserve every call, including missed calls and hangups", as
 });
 
 test("CSV roundtrip preserves multiline data and categorizes pending calls safely", () => {
-  const rows = organizedLeadRows([fixture("website", "Website Contact Form", { Message: 'Message, "quoted"\nsecond line' })]);
+  const rows = organizedLeadRows([fixture("website", "Website Contact Form", { Message: 'Message, "quoted"\nsecond line' })], ALL_CALLS);
   const parsed = Papa.parse<string[]>(organizedLeadCsv(rows), { skipEmptyLines: true });
   assert.equal(parsed.errors.length, 0);
   assert.equal(parsed.data.length, rows.length + 1);
@@ -65,7 +66,7 @@ test("CSV roundtrip preserves multiline data and categorizes pending calls safel
 });
 
 test("Excel download is a valid four-sheet workbook with identical overall records", async () => {
-  const rows = organizedLeadRows([fixture("website", "Website Contact Form"), fixture("marketing", "Manual Campaign Entry")]);
+  const rows = organizedLeadRows([fixture("website", "Website Contact Form"), fixture("marketing", "Manual Campaign Entry")], ALL_CALLS);
   const bytes = await leadExportWorkbook(rows);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(bytes);

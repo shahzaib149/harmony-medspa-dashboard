@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import type { Lead } from "./map-lead";
-import { CALL_SOURCES, callMarker } from "./call-records";
+import { callMarker, groupCallSources, type CallRecord } from "./call-records";
 import { csvCell } from "./export";
 
 export const EXPORT_CATEGORIES = ["Leads", "Marketing Leads", "Call Leads"] as const;
@@ -12,10 +12,10 @@ function leadRow(lead: Lead): ExportRow {
 }
 
 // Export events/records, not unique patients. Keep manual marketing imports explicit.
-export function organizedLeadRows(leads: Lead[]): ExportRow[] {
+export function organizedLeadRows(leads: Lead[], calls: CallRecord[]): ExportRow[] {
   // All saved records are included, even if their timestamps need correction.
   const rows = leads.map(leadRow);
-  for (const source of CALL_SOURCES) {
+  for (const source of groupCallSources(calls)) {
     for (const call of source.calls) {
       const linked = leads.filter((lead) => lead.source === "Call Leads" && `${lead.message}\n${lead.notes}`.includes(callMarker(call.id)));
       const linkedRows = rows.filter((row) => linked.some((lead) => lead.id === row[3]));

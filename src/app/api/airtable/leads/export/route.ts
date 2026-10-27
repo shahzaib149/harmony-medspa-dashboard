@@ -2,6 +2,7 @@ import { GET as getLeadPage, type Lead } from "../route";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { allLeadExportParams, leadExportPageRequest } from "@/lib/leads/export";
+import { listCalls } from "@/lib/leads/call-store";
 import { organizedLeadCsv, organizedLeadRows } from "@/lib/leads/organized-export";
 import { DateTime } from "luxon";
 
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     } while (cursor);
 
     const today = DateTime.now().setZone("America/New_York").toISODate()!;
-    const rows = organizedLeadRows(leads);
+    const rows = organizedLeadRows(leads, await listCalls());
     const data = format === "csv" ? organizedLeadCsv(rows) : new Uint8Array(await (await import("@/lib/leads/export-workbook")).leadExportWorkbook(rows));
     await logAuditEvent({ actor, action: "leads_exported", category: "exports", resource: { type: "lead_export", label: `All Leads ${format.toUpperCase()}` }, summary: `Exported ${rows.length} lead records and call events to ${format.toUpperCase()}`, metadata: { exported_rows: rows.length, scope: "all_history", format }, request });
     return new Response(data, { headers: { "Content-Type": format === "csv" ? "text/csv; charset=utf-8" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="harmony-all-leads-${today}.${format}"`, "Cache-Control": "no-store" } });

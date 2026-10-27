@@ -1,4 +1,5 @@
-const API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? "v21";
+// v21 and earlier are shut down; an env value of v21 still has to be raised in Vercel.
+const API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? "v23";
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
 let accessTokenCache: { value: string; expiresAt: number } | null = null;
@@ -644,6 +645,40 @@ export async function fetchHourlyPerformance(from: string, to: string) {
       clicks: num(m.clicks),
       conversions: num(m.conversions),
       spend: micros(m.costMicros),
+    };
+  });
+}
+
+// ─── Call details (call assets with Google forwarding numbers) ────────────────
+
+export async function fetchAccountTimeZone() {
+  const rows = await adsQuery(`SELECT customer.time_zone FROM customer`);
+  return text((rows[0]?.customer as Record<string, unknown> | undefined)?.timeZone);
+}
+
+/** Every call Google Ads still retains; the importer skips ones it already has. */
+export async function fetchCallDetails() {
+  const rows = await adsQuery(`
+    SELECT
+      call_view.resource_name, call_view.start_call_date_time,
+      call_view.call_duration_seconds, call_view.call_status,
+      call_view.caller_area_code, call_view.caller_country_code,
+      campaign.id, campaign.name
+    FROM call_view
+  `);
+
+  return rows.map((r) => {
+    const c = r.callView as Record<string, unknown>;
+    const campaign = (r.campaign ?? {}) as Record<string, unknown>;
+    return {
+      resourceName: text(c.resourceName),
+      startCallDateTime: text(c.startCallDateTime),
+      durationSeconds: num(c.callDurationSeconds),
+      status: text(c.callStatus),
+      areaCode: text(c.callerAreaCode),
+      countryCode: text(c.callerCountryCode),
+      campaignId: text(campaign.id),
+      campaignName: text(campaign.name),
     };
   });
 }

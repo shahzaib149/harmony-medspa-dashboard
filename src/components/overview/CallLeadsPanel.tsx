@@ -15,7 +15,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ALL_CALLS, CALL_SOURCES, callMarker as marker, type CallRecord, type CallSourceId } from "@/lib/leads/call-records";
+import {
+  callMarker as marker,
+  describeCallLines,
+  formatCallRange,
+  groupCallSources,
+  type CallRecord,
+  type CallSourceId,
+} from "@/lib/leads/call-records";
 import { filterCalls } from "@/lib/leads/call-filter";
 
 type CallLeadForm = {
@@ -63,7 +70,10 @@ export default function CallLeadsPanel({
   const [sourceId, setSourceId] = useState<CallSourceId | "all">("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<CallRecord | null>(null);
-  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [allRecords, setAllRecords] = useState<CallRecord[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [linkedText, setLinkedText] = useState("");
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [checking, setChecking] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -86,20 +96,35 @@ export default function CallLeadsPanel({
         items.push(...body.items ?? []);
         cursor = body.nextCursor ?? null;
       } while (cursor);
-      const text = items
+      setLinkedText(items
         .map((lead) => (lead.message ?? "") + "\n" + (lead.notes ?? ""))
-        .join("\n");
-      setAddedIds(new Set(
-        ALL_CALLS.filter((call) => text.includes(marker(call.id))).map((call) => call.id),
-      ));
+        .join("\n"));
     } finally {
       setChecking(false);
     }
   }, []);
 
+  const loadCalls = useCallback(async () => {
+    setLoadError("");
+    try {
+      const response = await fetch("/api/calls", { cache: "no-store", credentials: "same-origin" });
+      const body = await response.json().catch(() => ({})) as { calls?: CallRecord[]; error?: string };
+      if (!response.ok || !Array.isArray(body.calls)) throw new Error(body.error || "Call history is temporarily unavailable.");
+      setAllRecords(body.calls);
+    } catch (event) {
+      setLoadError(event instanceof Error ? event.message : "Call history is temporarily unavailable.");
+    }
+  }, []);
+
   useEffect(() => {
     void loadAddedCalls();
-  }, [loadAddedCalls]);
+    void loadCalls();
+  }, [loadAddedCalls, loadCalls]);
+
+  const addedIds = useMemo(() => new Set([
+    ...(allRecords ?? []).filter((call) => linkedText.includes(marker(call.id))).map((call) => call.id),
+    ...savedIds,
+  ]), [allRecords, linkedText, savedIds]);
 
   useEffect(() => {
     if (!selected) return;
@@ -115,15 +140,16 @@ export default function CallLeadsPanel({
     };
   }, [saving, selected]);
 
-  const availableSources = useMemo(() => CALL_SOURCES.map((item) => ({
+  const availableSources = useMemo(() => groupCallSources(allRecords ?? []).map((item) => ({
     ...item,
     calls: filterCalls(item.calls, fromDate, toDate),
     range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : item.range,
-  })), [fromDate, toDate]);
+  })), [allRecords, fromDate, toDate]);
   const allCalls = useMemo(() => availableSources.flatMap((item) => item.calls), [availableSources]);
-  const source = useMemo(() => sourceId === "all"
-    ? { label: "All", line: "Website and CS2", range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : "Aug 3–Oct 21, 2026", calls: allCalls }
-    : availableSources.find((item) => item.id === sourceId) ?? availableSources[0], [sourceId, availableSources, allCalls, fromDate, toDate]);
+  const source = useMemo(() => sourceId === "all" || !availableSources.some((item) => item.id === sourceId)
+    ? { label: "All", line: describeCallLines(availableSources), range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : formatCallRange(allRecords ?? []), calls: allCalls }
+    : availableSources.find((item) => item.id === sourceId)!, [sourceId, availableSources, allCalls, allRecords, fromDate, toDate]);
+  const loadingCalls = allRecords === null && !loadError;
   const calls = useMemo(() => [...source.calls].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)), [source]);
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(calls.length / pageSize));
@@ -138,10 +164,6 @@ export default function CallLeadsPanel({
       averageDuration: answered.length ? Math.round(answered.reduce((sum, call) => sum + call.duration, 0) / answered.length) : 0,
     };
   }, [calls]);
-
-  function sourceFor(call: CallRecord) {
-    return CALL_SOURCES.find((item) => item.calls.includes(call)) ?? source;
-  }
 
   function openForm(call: CallRecord) {
     setForm(EMPTY_FORM);
@@ -160,7 +182,7 @@ export default function CallLeadsPanel({
     setError("");
     const callContext = [
       marker(selected.id),
-      "Inbound " + sourceFor(selected).line + " call: " + selected.date + ", 2026 at " + selected.time + " ET",
+      "Inbound " + selected.line + " call: " + selected.date + ", " + selected.occurredAt.slice(0, 4) + " at " + selected.time + " ET",
       "Area code: " + selected.areaCode,
       "Duration: " + selected.duration + "s",
       "Call assessment: " + selected.assessment,
@@ -185,7 +207,7 @@ export default function CallLeadsPanel({
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not add this call lead");
       const savedName = form.name.trim();
-      setAddedIds((current) => new Set(current).add(selected.id));
+      setSavedIds((current) => new Set(current).add(selected.id));
       setSelected(null);
       setNotice(savedName + " was added as a Call Lead.");
       window.setTimeout(() => setNotice(""), 4500);
@@ -219,16 +241,16 @@ export default function CallLeadsPanel({
                       onClick={() => { setSourceId(item.id); setPage(1); }}
                       className={"rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.1em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " + (active ? "bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]")}
                     >
-                      {item.label} <span className="tabular-nums opacity-70">{item.calls.length}</span>
+                      {item.label} {allRecords && <span className="tabular-nums opacity-70">{item.calls.length}</span>}
                     </button>
                   );
                 })}
               </div>
             </div>
-            <p className="mt-0.5 text-xs text-[var(--text-muted)]">Inbound call opportunities · {source.line} · {source.range}</p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">Inbound call opportunities · {allRecords ? `${source.line} · ${source.range}` : loadError ? "unavailable" : "loading call history…"}</p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
+        <div className={"flex flex-wrap gap-2 text-xs " + (allRecords ? "" : "invisible")} aria-hidden={!allRecords}>
           <SummaryChip value={calls.length} label="calls" />
           <SummaryChip value={summary.conversations} label="conversations" />
           <SummaryChip value={summary.averageDuration + "s"} label="avg. duration" />
@@ -255,7 +277,16 @@ export default function CallLeadsPanel({
             </tr>
           </thead>
           <tbody role="rowgroup" className="divide-y divide-[var(--border-subtle)]">
-            {!calls.length && (
+            {loadingCalls && Array.from({ length: 4 }, (_, index) => (
+              <tr key={"loading-" + index} aria-hidden="true"><td colSpan={6} className="px-5 py-3"><Skeleton className="h-9 w-full rounded-lg" /></td></tr>
+            ))}
+            {loadError && (
+              <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-[var(--text-muted)]">
+                {loadError}{" "}
+                <button type="button" onClick={() => void loadCalls()} className="font-bold text-[var(--brand-primary)] underline-offset-2 hover:underline">Try again</button>
+              </td></tr>
+            )}
+            {!loadingCalls && !loadError && !calls.length && (
               <tr><td colSpan={6} className="px-5 py-8 text-center text-sm text-[var(--text-muted)]">No calls in the selected date range.</td></tr>
             )}
             {visibleCalls.map((call) => {
@@ -266,7 +297,7 @@ export default function CallLeadsPanel({
                     <p className="text-sm font-bold text-[var(--text-primary)]">{call.date}</p>
                     <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{call.time} ET</p>
                   </td>
-                  <td role="cell" data-label="Source" className="px-4 py-3 text-xs font-semibold text-[var(--text-secondary)]">{sourceFor(call).label}</td>
+                  <td role="cell" data-label="Source" className="px-4 py-3 text-xs font-semibold text-[var(--text-secondary)]">{call.source}</td>
                   <td role="cell" data-label="Caller region" className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]"><MapPin size={13} />{call.areaCode}</span>
                   </td>

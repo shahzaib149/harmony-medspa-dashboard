@@ -102,13 +102,16 @@ export async function GET(request: Request) {
   if (formula) filteredParams.set("filterByFormula", formula);
 
   try {
-    const [records, latestLead] = await Promise.all([
+    const [records, latestLead, sourceRecords] = await Promise.all([
       listRecords(TABLE_NAME, filteredParams),
       latestAirtableLead(),
+      // Unfiltered, so the source picker never shrinks to the current selection.
+      listRecords(TABLE_NAME, new URLSearchParams([["fields[]", "Source"]])),
     ]);
     const aggregate = aggregateLeadSummary(records.map(mapSummaryRecord), view);
+    const sources = [...new Set(sourceRecords.map((record) => textField(record.fields, "Source")).filter(Boolean))].sort();
     return Response.json(
-      { ...aggregate, latestLead, configured: true },
+      { ...aggregate, latestLead, sources, configured: true },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },
     );
   } catch (error) {

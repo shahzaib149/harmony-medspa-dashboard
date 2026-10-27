@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ALL_CALLS, CALL_SOURCES, callMarker } from "../src/lib/leads/call-records";
+import { callMarker } from "../src/lib/leads/call-records";
+import { ALL_CALLS, CALL_SOURCES } from "./fixtures/call-history";
 import { withCallOpportunities } from "../src/lib/leads/call-overview";
 import { countsAsRealLead } from "../src/lib/leads/classification";
 
 function totalBetween(from: string, to: string) {
-  return withCallOpportunities([]).filter((record) => {
+  return withCallOpportunities([], ALL_CALLS).filter((record) => {
     const time = Date.parse(String(record.fields["Lead Created At"]));
     return time >= Date.parse(from) && time <= Date.parse(to);
   }).length;
@@ -35,7 +36,7 @@ test("saving caller details preserves totals and recorded follow-up status", () 
       id: "recSaved", createdTime: "2026-10-08T16:00:00Z",
       fields: { Source: "Call Leads", Status: "Booked", Replied: true,
         "Lead Created At": "2026-10-08T16:00:00Z", [field]: callMarker(call.id) },
-    }]);
+    }], ALL_CALLS);
     assert.equal(records.length, 53);
     assert.equal(records.some((record) => record.id === call.id), false);
     const saved = records.find((record) => record.id === "recSaved")!;
@@ -46,7 +47,7 @@ test("saving caller details preserves totals and recorded follow-up status", () 
 });
 
 test("call opportunities count as unverified leads without invented contact activity", () => {
-  for (const record of withCallOpportunities([])) {
+  for (const record of withCallOpportunities([], ALL_CALLS)) {
     assert.equal(countsAsRealLead({ leadType: String(record.fields["Lead Type"]) }), true);
     assert.equal(record.fields.Status, "New");
     assert.equal(record.fields.Replied, undefined);
@@ -60,7 +61,7 @@ test("a saved call classified as spam stays excluded rather than reappearing as 
   const records = withCallOpportunities([{
     id: "recSpam", createdTime: call.occurredAt,
     fields: { Source: "Call Leads", Message: callMarker(call.id), "Lead Type": "Spam" },
-  }]);
+  }], ALL_CALLS);
   assert.equal(records.length, 53);
   assert.equal(records.filter((record) => countsAsRealLead({ leadType: String(record.fields["Lead Type"]) })).length, 52);
 });
