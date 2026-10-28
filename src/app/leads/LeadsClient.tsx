@@ -2919,7 +2919,7 @@ export default function LeadsClient() {
 
       {callWindow ? (
         // Call opportunities replace the lead table; the header and filters above stay in place.
-        <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} onLeadCreated={() => void refreshLeads()} />
+        <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} focusCallId={searchParams.get("call")} onLeadCreated={() => void refreshLeads()} />
       ) : loading ? (
         <LoadingRegion label="Loading leads" className="overflow-hidden rounded-2xl border" ><SkeletonRows rows={8} /></LoadingRegion>
       ) : error ? (

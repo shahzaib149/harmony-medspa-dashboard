@@ -111,6 +111,14 @@ export function groupCallSources(calls: CallRecord[]): CallSource[] {
     .sort((a, b) => rank(a.id) - rank(b.id) || a.label.localeCompare(b.label));
 }
 
+/** 1-based page holding the call when listed newest first, or null if it isn't listed. */
+export function pageOfCall(calls: CallRecord[], id: string, pageSize: number) {
+  const index = [...calls]
+    .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))
+    .findIndex((call) => call.id === id);
+  return index < 0 ? null : Math.floor(index / pageSize) + 1;
+}
+
 /** "Website and CS2", "Website, CS2 and Weight Loss". */
 export function describeCallLines(sources: CallSource[]) {
   const labels = sources.map((source) => source.label);

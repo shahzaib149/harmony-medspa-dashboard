@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Harmony call lead</title>
+  </head>
+  <body style="margin:0;padding:0;background:#fffdf9;color:#182126;font-family:Segoe UI,Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;">{{2.source}} call on {{2.display_et}} ET · {{3.assessment}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fffdf9;">
+      <tr>
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;background:#fff;border:1px solid #e5dece;border-radius:16px;overflow:hidden;">
+            <tr><td style="height:4px;background:#a97813;font-size:0;">&nbsp;</td></tr>
+            <tr>
+              <td style="padding:21px 28px;border-bottom:1px solid #eee8dc;">
+                <p style="margin:0 0 5px;color:#9b6b0b;font-size:10px;font-weight:700;letter-spacing:2px;">NEW CALL LEAD</p>
+                <h1 style="margin:0;color:#172027;font-family:Georgia,serif;font-size:26px;line-height:32px;font-weight:400;">A caller reached Harmony from {{2.line}}</h1>
+                <p style="margin:6px 0 0;color:#738089;font-size:12px;">{{2.display_et}} ET</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:17px 28px;background:#faf8f2;color:#4f5c64;font-size:14px;line-height:22px;">
+                Google Ads recorded this call. Google shares the caller's area code but not the full number,
+                so please match it against the clinic's call log and add the caller's details in the dashboard.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:21px 28px 8px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fcfbf8;border:1px solid #e7e1d5;border-radius:11px;">
+                  <tr><td colspan="2" style="padding:14px 16px 7px;color:#9b6b0b;font-size:10px;font-weight:700;letter-spacing:1.7px;">CALL DETAILS</td></tr>
+                  <tr>
+                    <td width="38%" style="padding:7px 7px 7px 16px;color:#78848b;font-size:12px;">Date &amp; time</td>
+                    <td style="padding:7px 16px 7px 0;font-size:13px;font-weight:700;">{{2.display_et}} ET</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 7px 7px 16px;color:#78848b;font-size:12px;">Source</td>
+                    <td style="padding:7px 16px 7px 0;font-size:13px;">{{2.source}} · {{2.line}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 7px 7px 16px;color:#78848b;font-size:12px;">Caller region</td>
+                    <td style="padding:7px 16px 7px 0;font-size:13px;">{{3.area_label}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 7px 7px 16px;color:#78848b;font-size:12px;">Result</td>
+                    <td style="padding:7px 16px 7px 0;font-size:13px;">{{3.result_label}} · {{3.duration_label}}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:7px 7px 14px 16px;color:#78848b;font-size:12px;">Assessment</td>
+                    <td style="padding:7px 16px 14px 0;">
+                      <span style="padding:4px 8px;border:1px solid #e3bb5f;border-radius:20px;background:#fff8e6;color:#835900;font-size:11px;font-weight:700;">{{3.assessment}}</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 24px;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td bgcolor="#a57412" style="border-radius:8px;">
+                      <a href="{{10.dashboard_url}}" target="_blank" style="display:inline-block;padding:12px 20px;color:#fff;font-size:12px;font-weight:700;text-decoration:none;">Add caller details &nbsp;&rarr;</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:10px 0 0;color:#8a949a;font-size:11px;">Call ID {{10.final_id}}. Opens the call in the Harmony dashboard (sign-in required).</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:15px 28px;background:#faf8f2;border-top:1px solid #d8c28f;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="color:#737d82;font-size:10px;">Harmony Med Spa · Call Leads</td>
+                    <td align="right" style="color:#858b8e;font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;">MANAGED BY&nbsp;&nbsp; <a href="https://codesquad.ai" target="_blank" style="color:#a57412;font-size:15px;font-weight:700;letter-spacing:0;text-decoration:none;">CodeSquad</a></td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

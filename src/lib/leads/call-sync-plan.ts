@@ -39,6 +39,8 @@ export type CallSyncPlan = {
   unchanged: number;
 };
 
+// The Make "Daily Call Import" scenario repeats these rules in its Classification
+// module (automation/make/README-daily-call-import.md); change both together.
 export function classifyCall(call: Pick<IncomingCall, "durationSeconds" | "missed" | "areaCode" | "countryCode">): {
   kind: CallKind;
   assessment: string;

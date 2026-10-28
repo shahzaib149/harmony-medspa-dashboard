@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { CALL_FIELDS, describeCallLines, formatCallRange, mapCallRecord } from "../src/lib/leads/call-records";
+import { CALL_FIELDS, describeCallLines, formatCallRange, mapCallRecord, pageOfCall } from "../src/lib/leads/call-records";
 import { classifyCall, googleCallTime, planCallSync, type ExistingCall, type IncomingCall } from "../src/lib/leads/call-sync-plan";
 import { ALL_CALLS, CALL_SOURCES } from "./fixtures/call-history";
 
@@ -99,4 +99,11 @@ test("one hand-entered call is claimed by at most one imported call", () => {
   ], "2026-10-27T00:00:00Z");
   assert.equal(plan.link.length, 1);
   assert.equal(plan.create.length, 1);
+});
+
+test("a call alert's deep link finds the page holding that call, newest first", () => {
+  assert.equal(pageOfCall(ALL_CALLS, "cs2-2026-10-21-0952", 10), 1);
+  assert.equal(pageOfCall(ALL_CALLS, "cs2-2026-09-11-1559", 10), 3);
+  assert.equal(pageOfCall(ALL_CALLS, "web-2026-08-03-0925", 10), 6);
+  assert.equal(pageOfCall(ALL_CALLS, "missing", 10), null);
 });

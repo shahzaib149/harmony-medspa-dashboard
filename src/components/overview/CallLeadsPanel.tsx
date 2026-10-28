@@ -13,13 +13,14 @@ import {
   UserRoundPlus,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   callMarker as marker,
   describeCallLines,
   formatCallRange,
   groupCallSources,
+  pageOfCall,
   type CallRecord,
   type CallSourceId,
 } from "@/lib/leads/call-records";
@@ -60,10 +61,13 @@ export default function CallLeadsPanel({
   onLeadCreated,
   fromDate,
   toDate,
+  focusCallId,
 }: {
   onLeadCreated: () => void;
   fromDate?: string;
   toDate?: string;
+  /** Opens this call, e.g. from a call alert email's "Add caller details" link. */
+  focusCallId?: string | null;
 }) {
   const { can } = useAuth();
   const canAddLead = can("update:leads");
@@ -79,6 +83,8 @@ export default function CallLeadsPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState<CallLeadForm>(EMPTY_FORM);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const focusHandled = useRef(false);
 
   const loadAddedCalls = useCallback(async () => {
     try {
@@ -170,6 +176,25 @@ export default function CallLeadsPanel({
     setError("");
     setSelected(call);
   }
+
+  // Deep link: show the call's page, highlight it, and open the form if details are still missing.
+  useEffect(() => {
+    if (!focusCallId || focusHandled.current || !allRecords || checking) return;
+    focusHandled.current = true;
+    const call = allCalls.find((item) => item.id === focusCallId);
+    if (!call) {
+      setNotice("That call isn't in the selected date range. Choose All dates to find it.");
+      return;
+    }
+    setSourceId("all");
+    setPage(pageOfCall(allCalls, call.id, pageSize) ?? 1);
+    setHighlightedId(call.id);
+    if (canAddLead && !addedIds.has(call.id)) openForm(call);
+  }, [focusCallId, allRecords, allCalls, checking, canAddLead, addedIds]);
+
+  useEffect(() => {
+    if (highlightedId) document.getElementById("call-row-" + highlightedId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlightedId, currentPage]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -292,7 +317,7 @@ export default function CallLeadsPanel({
             {visibleCalls.map((call) => {
               const added = addedIds.has(call.id);
               return (
-                <tr key={call.id} role="row" className="transition-colors hover:bg-[var(--surface-hover)]">
+                <tr key={call.id} id={"call-row-" + call.id} role="row" className={"transition-colors hover:bg-[var(--surface-hover)] " + (call.id === highlightedId ? "bg-[var(--brand-primary-soft)]" : "")}>
                   <td role="cell" data-label="Date & time" className="px-5 py-3">
                     <p className="text-sm font-bold text-[var(--text-primary)]">{call.date}</p>
                     <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{call.time} ET</p>

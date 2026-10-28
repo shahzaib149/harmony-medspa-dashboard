@@ -1,0 +1,407 @@
+{
+  "name": "Harmony – Daily Call Import (Google Ads → Calls)",
+  "flow": [
+    {
+      "id": 1,
+      "module": "google-ads-reports:runCustomReport",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": 9624908
+      },
+      "mapper": {
+        "accountId": "7080113749",
+        "limit": 500,
+        "query": "SELECT call_view.resource_name, call_view.start_call_date_time, call_view.call_duration_seconds, call_view.call_status, call_view.caller_area_code, call_view.caller_country_code, campaign.id, campaign.name FROM call_view WHERE call_view.start_call_date_time >= '{{formatDate(addDays(now; -3); \"YYYY-MM-DD\"; \"America/New_York\")}} 00:00:00'"
+      },
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0,
+          "name": "Google Ads calls (last 3 days)"
+        },
+        "restore": {
+          "expect": {
+            "accountId": {
+              "mode": "chose",
+              "label": "Harmonymedspafl.com (Client-Owned) (708-011-3749)"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "scope": "roundtrip",
+        "variables": [
+          {
+            "name": "google_call",
+            "value": "{{1.callView_resourceName}}"
+          },
+          {
+            "name": "occurred_utc",
+            "value": "{{formatDate(parseDate(1.callView_startCallDateTime; \"YYYY-MM-DD HH:mm:ss\"; \"America/New_York\"); \"YYYY-MM-DDTHH:mm:ss.SSS[Z]\"; \"UTC\")}}"
+          },
+          {
+            "name": "stamp_et",
+            "value": "{{formatDate(parseDate(1.callView_startCallDateTime; \"YYYY-MM-DD HH:mm:ss\"; \"America/New_York\"); \"YYYY-MM-DD-HHmm\"; \"America/New_York\")}}"
+          },
+          {
+            "name": "display_et",
+            "value": "{{formatDate(parseDate(1.callView_startCallDateTime; \"YYYY-MM-DD HH:mm:ss\"; \"America/New_York\"); \"MMM D, YYYY h:mm A\"; \"America/New_York\")}}"
+          },
+          {
+            "name": "duration",
+            "value": "{{parseNumber(ifempty(1.callView_callDurationSeconds; \"0\"); \".\")}}"
+          },
+          {
+            "name": "missed",
+            "value": "{{if(1.callView_callStatus = \"MISSED\"; true; false)}}"
+          },
+          {
+            "name": "area",
+            "value": "{{trim(ifempty(1.callView_callerAreaCode; \"\"))}}"
+          },
+          {
+            "name": "country",
+            "value": "{{ifempty(1.callView_callerCountryCode; \"US\")}}"
+          },
+          {
+            "name": "in_state",
+            "value": "{{if(ifempty(1.callView_callerCountryCode; \"US\") = \"US\"; contains(split(\"239,305,321,324,352,386,407,448,561,645,656,689,727,728,754,772,786,813,850,863,904,941,954\"; \",\"); trim(ifempty(1.callView_callerAreaCode; \"\"))); false)}}"
+          },
+          {
+            "name": "source",
+            "value": "{{switch(1.campaign_id; \"24134330302\"; \"CS2\"; \"24080482948\"; \"Website\"; 1.campaign_name)}}"
+          },
+          {
+            "name": "line",
+            "value": "{{switch(1.campaign_id; \"24134330302\"; \"CS2\"; \"24080482948\"; \"Website new\"; 1.campaign_name)}}"
+          },
+          {
+            "name": "prefix",
+            "value": "{{switch(1.campaign_id; \"24134330302\"; \"cs2\"; \"24080482948\"; \"web\"; lower(replace(1.campaign_name; /[^A-Za-z0-9]+/g; \"-\")))}}"
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0,
+          "name": "Call values"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "scope": "roundtrip",
+        "variables": [
+          {
+            "name": "call_id",
+            "value": "{{2.prefix}}-{{2.stamp_et}}"
+          },
+          {
+            "name": "area_label",
+            "value": "{{ifempty(2.area; \"Unknown\")}}{{if(2.area = \"\" or 2.area = \"941\"; \"\"; if(2.in_state; \" · Florida\"; if(2.country = \"US\"; \"\"; \" · \")))}}{{if(2.area = \"\" or 2.country = \"US\"; \"\"; 2.country)}}"
+          },
+          {
+            "name": "kind",
+            "value": "{{if(2.missed; \"hangup\"; if(2.area != \"\" and 2.in_state = false; \"out-of-state\"; if(2.duration < 15; \"hangup\"; if(2.duration < 30; \"brief\"; \"conversation\"))))}}"
+          },
+          {
+            "name": "assessment",
+            "value": "{{if(2.missed; \"Missed call\"; if(2.area != \"\" and 2.in_state = false; if(2.duration >= 60; \"Out of state, but long\"; \"Out of state\"); if(2.duration < 15; \"Hangup\"; if(2.duration < 30; \"Brief\"; if(2.duration < 45; \"Short but real\"; if(2.duration < 180; \"Real conversation\"; \"Long conversation\"))))))}}"
+          },
+          {
+            "name": "result_label",
+            "value": "{{if(2.missed; \"Missed\"; \"Answered\")}}"
+          },
+          {
+            "name": "duration_label",
+            "value": "{{floor(2.duration / 60)}}m {{2.duration % 60}}s"
+          },
+          {
+            "name": "match_formula",
+            "value": "OR({Google Call} = \"{{2.google_call}}\", AND({Google Call} = BLANK(), ABS(DATETIME_DIFF({Occurred At}, DATETIME_PARSE(\"{{2.occurred_utc}}\"), \"seconds\")) <= 60, ABS({Duration} - {{2.duration}}) <= 2))"
+          },
+          {
+            "name": "id_formula",
+            "value": "{Call ID} = \"{{2.prefix}}-{{2.stamp_et}}\""
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0,
+          "name": "Classification"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "airtable:ActionSearchRecords",
+      "version": 3,
+      "parameters": {
+        "__IMTCONN__": 9625252
+      },
+      "mapper": {
+        "base": "appNL010pW9LUpgST",
+        "table": "tbl81JwtzjS2wFRLD",
+        "formulaField": "formula",
+        "formula": "{{3.match_formula}}",
+        "maxRecords": 1,
+        "useColumnId": false
+      },
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0,
+          "name": "Find this call in Calls"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "builtin:BasicAggregator",
+      "version": 1,
+      "parameters": {
+        "feeder": 4
+      },
+      "mapper": {
+        "id": "{{4.id}}",
+        "gc": "{{4.`Google Call`}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": 0,
+          "name": "Matches"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "mapper": null,
+      "metadata": {
+        "designer": {
+          "x": 1500,
+          "y": 0
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "filter": {
+                "name": "Hand-entered match",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{length(5.array)}}",
+                      "o": "number:greater",
+                      "b": "0"
+                    },
+                    {
+                      "a": "{{first(map(5.array; \"gc\"))}}",
+                      "o": "notexist"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "id": "{{first(map(5.array; \"id\"))}}",
+                "base": "appNL010pW9LUpgST",
+                "table": "tbl81JwtzjS2wFRLD",
+                "record": {
+                  "fldeisZELrQJ4Iif9": "{{2.google_call}}"
+                },
+                "typecast": false,
+                "useColumnId": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": -300,
+                  "name": "Link Google id (no email)"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 8,
+              "module": "airtable:ActionSearchRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tbl81JwtzjS2wFRLD",
+                "formulaField": "formula",
+                "formula": "{{3.id_formula}}",
+                "maxRecords": 1,
+                "useColumnId": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": 150,
+                  "name": "Call ID taken?"
+                }
+              },
+              "filter": {
+                "name": "New call",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{length(5.array)}}",
+                      "o": "number:equal",
+                      "b": "0"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 9,
+              "module": "builtin:BasicAggregator",
+              "version": 1,
+              "parameters": {
+                "feeder": 8
+              },
+              "mapper": {
+                "id": "{{8.id}}"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2100,
+                  "y": 150,
+                  "name": "Same-minute calls"
+                }
+              }
+            },
+            {
+              "id": 10,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "scope": "roundtrip",
+                "variables": [
+                  {
+                    "name": "final_id",
+                    "value": "{{3.call_id}}{{if(length(9.array) > 0; \"-2\"; \"\")}}"
+                  },
+                  {
+                    "name": "dashboard_url",
+                    "value": "https://crm.harmonymedspafl.com/leads?view=all&source=Call+Leads&call={{3.call_id}}{{if(length(9.array) > 0; \"-2\"; \"\")}}"
+                  }
+                ]
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2400,
+                  "y": 150,
+                  "name": "Final id and link"
+                }
+              }
+            },
+            {
+              "id": 11,
+              "module": "airtable:ActionCreateRecord",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tbl81JwtzjS2wFRLD",
+                "typecast": true,
+                "useColumnId": false,
+                "record": {
+                  "fldiR4DsJLI00r9AV": "{{10.final_id}}",
+                  "fldkuyapMJjIewLev": "{{2.occurred_utc}}",
+                  "flda5cEIhYeze1u1Z": "{{2.source}}",
+                  "fldjMxTJmQVvGwLQB": "{{2.line}}",
+                  "fldCpgu5m88FRgclT": "{{1.campaign_id}}",
+                  "fld13bPALQhyM7ZdL": "{{3.area_label}}",
+                  "fldXkQ7WtDQyeLbBA": "{{2.duration}}",
+                  "fldroN8dAKYkxzKKz": "{{2.missed}}",
+                  "fldN0Oprn9BXMTw3y": "{{3.kind}}",
+                  "fld9s0MCaqEQOUEO2": "{{3.assessment}}",
+                  "fldeisZELrQJ4Iif9": "{{2.google_call}}",
+                  "fld4p3U2mDNKLnraW": "Google Ads sync",
+                  "fldpRmnr3DsODGYac": "{{now}}"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2700,
+                  "y": 150,
+                  "name": "Save call"
+                }
+              }
+            },
+            {
+              "id": 12,
+              "module": "google-email:sendAnEmail",
+              "version": 4,
+              "parameters": {
+                "__IMTCONN__": 11267570
+              },
+              "mapper": {
+                "to": [
+                  "abdulqayyum3116@gmail.com"
+                ],
+                "subject": "New call lead · {{2.source}} · {{2.display_et}} · {{3.duration_label}}",
+                "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />\n    <title>Harmony call lead</title>\n  </head>\n  <body style=\"margin:0;padding:0;background:#fffdf9;color:#182126;font-family:Segoe UI,Arial,sans-serif;\">\n    <div style=\"display:none;max-height:0;overflow:hidden;\">{{2.source}} call on {{2.display_et}} ET · {{3.assessment}}</div>\n    <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background:#fffdf9;\">\n      <tr>\n        <td align=\"center\" style=\"padding:24px 12px;\">\n          <table role=\"presentation\" width=\"640\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;max-width:640px;background:#fff;border:1px solid #e5dece;border-radius:16px;overflow:hidden;\">\n            <tr><td style=\"height:4px;background:#a97813;font-size:0;\">&nbsp;</td></tr>\n            <tr>\n              <td style=\"padding:21px 28px;border-bottom:1px solid #eee8dc;\">\n                <p style=\"margin:0 0 5px;color:#9b6b0b;font-size:10px;font-weight:700;letter-spacing:2px;\">NEW CALL LEAD</p>\n                <h1 style=\"margin:0;color:#172027;font-family:Georgia,serif;font-size:26px;line-height:32px;font-weight:400;\">A caller reached Harmony from {{2.line}}</h1>\n                <p style=\"margin:6px 0 0;color:#738089;font-size:12px;\">{{2.display_et}} ET</p>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:17px 28px;background:#faf8f2;color:#4f5c64;font-size:14px;line-height:22px;\">\n                Google Ads recorded this call. Google shares the caller's area code but not the full number,\n                so please match it against the clinic's call log and add the caller's details in the dashboard.\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:21px 28px 8px;\">\n                <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#fcfbf8;border:1px solid #e7e1d5;border-radius:11px;\">\n                  <tr><td colspan=\"2\" style=\"padding:14px 16px 7px;color:#9b6b0b;font-size:10px;font-weight:700;letter-spacing:1.7px;\">CALL DETAILS</td></tr>\n                  <tr>\n                    <td width=\"38%\" style=\"padding:7px 7px 7px 16px;color:#78848b;font-size:12px;\">Date &amp; time</td>\n                    <td style=\"padding:7px 16px 7px 0;font-size:13px;font-weight:700;\">{{2.display_et}} ET</td>\n                  </tr>\n                  <tr>\n                    <td style=\"padding:7px 7px 7px 16px;color:#78848b;font-size:12px;\">Source</td>\n                    <td style=\"padding:7px 16px 7px 0;font-size:13px;\">{{2.source}} · {{2.line}}</td>\n                  </tr>\n                  <tr>\n                    <td style=\"padding:7px 7px 7px 16px;color:#78848b;font-size:12px;\">Caller region</td>\n                    <td style=\"padding:7px 16px 7px 0;font-size:13px;\">{{3.area_label}}</td>\n                  </tr>\n                  <tr>\n                    <td style=\"padding:7px 7px 7px 16px;color:#78848b;font-size:12px;\">Result</td>\n                    <td style=\"padding:7px 16px 7px 0;font-size:13px;\">{{3.result_label}} · {{3.duration_label}}</td>\n                  </tr>\n                  <tr>\n                    <td style=\"padding:7px 7px 14px 16px;color:#78848b;font-size:12px;\">Assessment</td>\n                    <td style=\"padding:7px 16px 14px 0;\">\n                      <span style=\"padding:4px 8px;border:1px solid #e3bb5f;border-radius:20px;background:#fff8e6;color:#835900;font-size:11px;font-weight:700;\">{{3.assessment}}</span>\n                    </td>\n                  </tr>\n                </table>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:14px 28px 24px;\">\n                <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\">\n                  <tr>\n                    <td bgcolor=\"#a57412\" style=\"border-radius:8px;\">\n                      <a href=\"{{10.dashboard_url}}\" target=\"_blank\" style=\"display:inline-block;padding:12px 20px;color:#fff;font-size:12px;font-weight:700;text-decoration:none;\">Add caller details &nbsp;&rarr;</a>\n                    </td>\n                  </tr>\n                </table>\n                <p style=\"margin:10px 0 0;color:#8a949a;font-size:11px;\">Call ID {{10.final_id}}. Opens the call in the Harmony dashboard (sign-in required).</p>\n              </td>\n            </tr>\n            <tr>\n              <td style=\"padding:15px 28px;background:#faf8f2;border-top:1px solid #d8c28f;\">\n                <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n                  <tr>\n                    <td style=\"color:#737d82;font-size:10px;\">Harmony Med Spa · Call Leads</td>\n                    <td align=\"right\" style=\"color:#858b8e;font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;\">MANAGED BY&nbsp;&nbsp; <a href=\"https://codesquad.ai\" target=\"_blank\" style=\"color:#a57412;font-size:15px;font-weight:700;letter-spacing:0;text-decoration:none;\">CodeSquad</a></td>\n                  </tr>\n                </table>\n              </td>\n            </tr>\n          </table>\n        </td>\n      </tr>\n    </table>\n  </body>\n</html>\n",
+                "bodyType": "rawHtml"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 3000,
+                  "y": 150,
+                  "name": "Email call alert"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "instant": false,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": true,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": true,
+      "freshVariables": false
+    }
+  }
+}

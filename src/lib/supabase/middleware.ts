@@ -18,13 +18,16 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isProtected = protectedRoutePattern.test(pathname);
+  // Keep the query so deep links (e.g. a call alert's ?call=) survive sign-in.
+  const next = pathname + request.nextUrl.search;
 
   // If Supabase is not configured, redirect protected routes to login
   if (!isSupabaseConfigured()) {
     if (isProtected) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
-      redirectUrl.searchParams.set("next", pathname);
+      redirectUrl.search = "";
+      redirectUrl.searchParams.set("next", next);
       return NextResponse.redirect(redirectUrl);
     }
     return response;
@@ -34,7 +37,8 @@ export async function updateSession(request: NextRequest) {
   if (isProtected && !hasSupabaseAuthCookie(request)) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    redirectUrl.searchParams.set("next", pathname);
+    redirectUrl.search = "";
+    redirectUrl.searchParams.set("next", next);
     return NextResponse.redirect(redirectUrl);
   }
 
