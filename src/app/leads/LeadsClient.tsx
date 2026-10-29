@@ -145,6 +145,9 @@ const STATUS_OPTIONS = [
   "Not a Lead",
 ];
 
+// Filter-only: "Replied" matches the Replied checkbox, so it is never offered as a status to set.
+const STATUS_FILTER_OPTIONS = ["New", "Contacted", "Replied", ...STATUS_OPTIONS.slice(2)];
+
 type Tone = { color: string; bg: string; border: string };
 const TONES: Record<"success" | "warning" | "info" | "neutral" | "danger", Tone> = {
   success: { color: "var(--success-text)", bg: "var(--success-bg)", border: "var(--success-border)" },
@@ -632,18 +635,25 @@ function StatCard({
   value,
   meta,
   color = GOLD,
+  active = false,
+  onClick,
 }: {
   label: string;
   value: number | string;
   meta: string;
   color?: string;
+  active?: boolean;
+  /** Makes the card a shortcut to the matching status filter. */
+  onClick?: () => void;
 }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div
-      className="min-w-0 rounded-2xl border px-4 py-3"
+    <Tag
+      {...(onClick ? { type: "button" as const, onClick, "aria-pressed": active, title: active ? `Clear the ${label} filter` : `Show ${label.toLowerCase()} leads` } : {})}
+      className={"min-w-0 rounded-2xl border px-4 py-3 text-left" + (onClick ? " transition hover:border-[var(--brand-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]" : "")}
       style={{
-        backgroundColor: CARD,
-        borderColor: BORDER,
+        backgroundColor: active ? "var(--brand-primary-soft)" : CARD,
+        borderColor: active ? "var(--brand-primary)" : BORDER,
       }}
     >
       <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -667,7 +677,7 @@ function StatCard({
       >
         {value}
       </p>
-    </div>
+    </Tag>
   );
 }
 
@@ -695,6 +705,8 @@ type SummaryCardData = {
   value: number | string;
   meta: string;
   color: string;
+  /** Status filter the card opens when clicked. */
+  status?: string;
 };
 
 function summaryCardsFor(
@@ -741,9 +753,9 @@ function summaryCardsFor(
     view === "all"
       ? { label: "Leads", value: summary.realLeads, meta: "real leads", color: "var(--info)" }
       : { label: "New Today", value: summary.newToday, meta: "received today", color: "var(--info)" },
-    { label: "Contacted", value: summary.contacted, meta: "status: Contacted", color: "var(--warning)" },
-    { label: "Replied", value: summary.replied, meta: "marked replied", color: "var(--chart-replied)" },
-    { label: "Booked", value: summary.booked, meta: "shown in Booked", color: "var(--success)" },
+    { label: "Contacted", value: summary.contacted, meta: "status: Contacted", color: "var(--warning)", status: "Contacted" },
+    { label: "Replied", value: summary.replied, meta: "marked replied", color: "var(--chart-replied)", status: "Replied" },
+    { label: "Booked", value: summary.booked, meta: "shown in Booked", color: "var(--success)", status: "Booked" },
     { label: "Not a Lead", value: summary.notALead, meta: "not counted", color: "var(--neutral-text)" },
   ];
 }
@@ -2595,9 +2607,17 @@ export default function LeadsClient() {
             <SummarySkeleton />
           ) : (
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {summaryCardsFor(activeView, leadSummary).map((card) => (
-                <StatCard key={card.label} {...card} />
-              ))}
+              {summaryCardsFor(activeView, leadSummary).map((card) => {
+                const { status, ...stat } = card;
+                return (
+                  <StatCard
+                    key={card.label}
+                    {...stat}
+                    active={Boolean(status) && statusFilter === status}
+                    onClick={status ? () => setFilterParam("status", statusFilter === status ? "all" : status) : undefined}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
@@ -2732,7 +2752,7 @@ export default function LeadsClient() {
               onChange={(value) => setFilterParam("status", value)}
               options={[
                 { label: "All statuses", value: "all" },
-                ...STATUS_OPTIONS.map((status) => ({
+                ...STATUS_FILTER_OPTIONS.map((status) => ({
                   label: status,
                   value: status,
                 })),
@@ -2839,7 +2859,7 @@ export default function LeadsClient() {
                   onChange={(value) => setFilterParam("status", value)}
                   options={[
                     { label: "All statuses", value: "all" },
-                    ...STATUS_OPTIONS.map((status) => ({ label: status, value: status })),
+                    ...STATUS_FILTER_OPTIONS.map((status) => ({ label: status, value: status })),
                   ]}
                 />
                 <SelectControl label="Filter by source" value={sourceFilter} onChange={(value) => setFilterParam("source", value)} options={sources} />

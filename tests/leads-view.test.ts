@@ -74,3 +74,10 @@ test("leadType=not-lead filters every non-lead type", () => {
   assert.match(formula, /\{Lead Type\}!="Real Lead"/);
   assert.doesNotMatch(formula, /\{Lead Type\}="not-lead"/);
 });
+
+test("the Replied status filter uses the Replied checkbox, not a Status value", () => {
+  const formula = buildLeadFormula(new URLSearchParams({ view: "all", status: "Replied" }));
+  assert.match(formula, /\{Replied\}=TRUE\(\)/);
+  assert.doesNotMatch(formula, /\{Status\}="Replied"/);
+  assert.match(buildLeadFormula(new URLSearchParams({ view: "all", status: "Contacted" })), /\{Status\}="Contacted"/);
+});

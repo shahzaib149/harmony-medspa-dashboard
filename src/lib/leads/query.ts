@@ -45,10 +45,13 @@ export function buildLeadFormula(
   const status =
     searchParams.get("leadStatus")?.trim() || searchParams.get("status")?.trim();
   if (status && status.toLowerCase() !== "all") {
+    // "Replied" is the Replied checkbox, not a Status value: a replied lead keeps its status.
     filters.push(
       status === "Duplicate"
         ? 'OR({Status}="Duplicate",{Duplicate Flag}=TRUE())'
-        : `{Status}="${formulaString(status)}"`,
+        : status === "Replied"
+          ? "{Replied}=TRUE()"
+          : `{Status}="${formulaString(status)}"`,
     );
   }
 
