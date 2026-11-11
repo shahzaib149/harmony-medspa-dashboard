@@ -139,7 +139,8 @@ test("Website Analytics route preserves auth, URL filters, and responsive tables
   assert.match(client, /searchParams\.get\("days"\)/);
   assert.match(client, /const HARMONY_HOSTNAME = "www\.harmonymedspafl\.com"/);
   assert.match(client, /md:hidden/);
-  assert.match(client, /hidden overflow-x-auto md:block/);
+  // Desktop tables reflow into stacked rows when they no longer fit, instead of scrolling.
+  assert.match(client, /<StackedTable[^\n]+className="hidden md:block"/);
   assert.doesNotMatch(client, /harmony-medspa\.vercel\.app/);
   assert.match(client, /www\.harmonymedspafl\.com/);
   assert.match(client, /Harmony Med Spa FL/);

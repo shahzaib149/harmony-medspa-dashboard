@@ -13,7 +13,8 @@ const styles = read("src/app/globals.css");
 
 test("Google Ads shell contains horizontal overflow at the table, not page, level", () => {
   assert.match(dashboard, /min-w-0 max-w-full flex-1 overflow-x-hidden/);
-  assert.match(workspace, /google-ads-table-shell[^\n]+overflow-auto/);
+  // overflow-y-auto also makes overflow-x auto, so wide tables scroll inside the shell.
+  assert.match(workspace, /google-ads-table-shell[^\n]+overflow-y-auto/);
   assert.doesNotMatch(workspace, /\b(?:w-screen|100vw)\b/);
   assert.match(styles, /overscroll-behavior: contain/);
 });
@@ -28,7 +29,7 @@ test("primary entity lists render mobile cards and desktop tables", () => {
     assert.match(workspace, new RegExp(`actionLabel="${label}"`));
   }
   assert.match(workspace, /space-y-3 md:hidden/);
-  assert.match(workspace, /google-ads-table-shell hidden[^\n]+md:block/);
+  assert.match(workspace, /google-ads-table-shell[^\n]+"hidden md:block"/);
 });
 
 test("workspace navigation and filters retain responsive interaction contracts", () => {
