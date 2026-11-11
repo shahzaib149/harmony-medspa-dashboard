@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { callMarker } from "../src/lib/leads/call-records";
+import { NEEDS_DETAILS_FROM, callMarker } from "../src/lib/leads/call-records";
+import { callNeedsDetails } from "../src/lib/leads/call-filter";
 import { ALL_CALLS, CALL_SOURCES } from "./fixtures/call-history";
-import { withCallOpportunities } from "../src/lib/leads/call-overview";
+import { callsNeedingDetails, withCallOpportunities } from "../src/lib/leads/call-overview";
 import { countsAsRealLead } from "../src/lib/leads/classification";
 
 function totalBetween(from: string, to: string) {
@@ -64,4 +65,27 @@ test("a saved call classified as spam stays excluded rather than reappearing as 
   }], ALL_CALLS);
   assert.equal(records.length, 53);
   assert.equal(records.filter((record) => countsAsRealLead({ leadType: String(record.fields["Lead Type"]) })).length, 52);
+});
+
+test("calls needing details: since NEEDS_DETAILS_FROM, without a saved Call Lead marker", () => {
+  const [base] = ALL_CALLS;
+  const november = (id: string, occurredAt: string) => ({ ...base, id, occurredAt });
+  const saved = november("cs2-2026-11-05-1547", "2026-11-05T15:47:00-05:00");
+  const open = november("cs2-2026-11-09-1022", "2026-11-09T10:22:00-05:00");
+  const lastDayBefore = november("cs2-2026-10-31-2300", "2026-10-31T23:00:00-04:00");
+  const records = [
+    // Marked "Not a lead" later: still a saved lead, so its call never needs details again.
+    { id: "rec1", createdTime: saved.occurredAt, fields: { Source: "Call Leads", "Lead Type": "Spam", Message: callMarker(saved.id) } },
+    { id: "rec2", createdTime: saved.occurredAt, fields: { Source: "Website", Message: callMarker(open.id) } },
+  ];
+  assert.equal(NEEDS_DETAILS_FROM, "2026-11-01");
+  assert.deepEqual(callsNeedingDetails(records, [saved, open, lastDayBefore, base]).map((call) => call.id), [open.id]);
+});
+
+test("the Needs details chip and counts use the same window and skip saved calls", () => {
+  const [base] = ALL_CALLS;
+  const recent = { ...base, id: "x", occurredAt: "2026-11-01T00:30:00-04:00" };
+  assert.equal(callNeedsDetails(recent, new Set()), true);
+  assert.equal(callNeedsDetails(recent, new Set(["x"])), false);
+  assert.equal(callNeedsDetails(base, new Set()), false, "calls before Nov 1 keep Add details but are not flagged");
 });

@@ -20,6 +20,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   Phone,
+  PhoneCall,
   Plus,
   RefreshCw,
   Search,
@@ -47,7 +48,9 @@ import { Toast } from "@/components/ui/Toast";
 import UpdateClinicMetricsModal from "@/components/leads/UpdateClinicMetricsModal";
 import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
 import { downloadLeadExport } from "@/lib/leads/download-export";
-import { callWindowForRange } from "@/lib/leads/call-filter";
+import { callMetrics, callWindowForRange, filterCallLeads, type CallStatusFilter } from "@/lib/leads/call-filter";
+import { groupCallSources } from "@/lib/leads/call-records";
+import { useCallLeads } from "@/lib/leads/use-call-leads";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { dateRangeParams, resolveDateRange } from "@/lib/date-range";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
@@ -186,6 +189,15 @@ const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string; hint:
   { value: "leads", label: "Real Leads", empty: "No real Leads yet", hint: "Prospective patients only. Filter by Lead type → Not a lead to review everything else." },
   { value: "booked", label: "Booked", empty: "No booked Leads yet", hint: "" },
 ];
+
+// "Call Leads" is a client-only tab. The leads APIs keep their three views; this
+// tab shows the Calls table instead. Call alert emails still link to
+// ?source=Call+Leads&call=<id>, which lands here.
+const CALLS_VIEW = "calls";
+const CALLS_TAB = {
+  label: "Call Leads",
+  hint: "Inbound Google Ads calls. Use Add details to log the caller; the call then shows in All and Real Leads like any other lead.",
+};
 
 function normalize(value: string) {
   return value.trim().toLowerCase();
@@ -599,14 +611,16 @@ function SelectControl({
   value,
   onChange,
   options,
+  className = "min-w-[138px] flex-1 sm:flex-none",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { label: string; value: string }[];
+  className?: string;
 }) {
   return (
-    <label className="relative min-w-[138px] flex-1 sm:flex-none">
+    <label className={`relative ${className}`}>
       <span className="sr-only">{label}</span>
       <select
         value={value}
@@ -1754,6 +1768,12 @@ export default function LeadsClient() {
   const searchQuery = searchParams.get("search")?.trim() || "";
   const statusFilter = searchParams.get("status")?.trim() || "all";
   const sourceFilter = searchParams.get("source")?.trim() || "all";
+  const callsTab = searchParams.get("view") === CALLS_VIEW || sourceFilter === "Call Leads";
+  const viewParam = callsTab ? CALLS_VIEW : activeView;
+  const callSourceFilter = searchParams.get("callSource")?.trim() || "all";
+  const callStatusParam = searchParams.get("callStatus");
+  const callStatusFilter: CallStatusFilter = callStatusParam === "answered" || callStatusParam === "missed" ? callStatusParam : "all";
+  const needsDetailsFilter = searchParams.get("needs") === "1";
   const dateParam = searchParams.get("date");
   const dateSelection = useMemo(
     () => ({ preset: dateParam, month: searchParams.get("month"), from: searchParams.get("from"), to: searchParams.get("to") }),
@@ -1848,10 +1868,11 @@ export default function LeadsClient() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
+  const callData = useCallLeads();
 
   const updateQuery = useCallback((updates: Record<string, string | null>, options: { push?: boolean; resetPagination?: boolean } = {}) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("view", activeView);
+    params.set("view", viewParam);
     for (const [key, value] of Object.entries(updates)) {
       if (!value || (value === "all" && key !== "view")) params.delete(key);
       else params.set(key, value);
@@ -1863,7 +1884,7 @@ export default function LeadsClient() {
     const href = `/leads?${params.toString()}`;
     if (options.push) router.push(href, { scroll: false });
     else router.replace(href, { scroll: false });
-  }, [activeView, router, searchParams]);
+  }, [viewParam, router, searchParams]);
 
   function setDateRange(selection: Parameters<typeof dateRangeParams>[1]) {
     setCursorHistory([null]);
@@ -1877,15 +1898,20 @@ export default function LeadsClient() {
       return;
     }
     if (key === "source" && value === "Call Leads") {
-      setSearch("");
-      setFiltersOpen(false);
-      // Patient-only filters don't apply to calls; the date range does, so it stays.
-      updateQuery({ source: value, view: "all", search: null, status: null,
-        campaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
-        emailStatus: null, leadType: null, tags: null, lead: null });
+      openCallsTab();
       return;
     }
     updateQuery({ [key]: value });
+  }
+
+  function openCallsTab(push = false) {
+    setCursorHistory([null]);
+    setSearch("");
+    setFiltersOpen(false);
+    // Patient-only filters don't apply to calls; the date range does, so it stays.
+    updateQuery({ view: CALLS_VIEW, source: null, search: null, status: null,
+      campaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
+      emailStatus: null, leadType: null, tags: null, lead: null }, { push });
   }
 
   function clearFilters(clearSearch = false) {
@@ -1904,14 +1930,19 @@ export default function LeadsClient() {
       emailStatus: null,
       leadType: null,
       tags: null,
+      callSource: null,
+      callStatus: null,
+      needs: null,
       ...(clearSearch ? { search: null } : {}),
     });
     if (clearSearch) setSearch("");
   }
 
   useEffect(() => {
-    if (searchParams.get("view") !== activeView) updateQuery({}, { resetPagination: false });
-  }, [activeView, searchParams, updateQuery]);
+    // Old call links (?source=Call+Leads) open the Call Leads tab; ?call= is kept.
+    if (sourceFilter === "Call Leads") updateQuery({ view: CALLS_VIEW, source: null }, { resetPagination: false });
+    else if (searchParams.get("view") !== viewParam) updateQuery({}, { resetPagination: false });
+  }, [viewParam, searchParams, sourceFilter, updateQuery]);
 
   useEffect(() => setSearch(searchQuery), [searchQuery]);
 
@@ -2478,7 +2509,51 @@ export default function LeadsClient() {
     updateQuery({ pageSize: String(nextSize), lead: null });
   }
 
-  const callWindow = sourceFilter === "Call Leads" ? callWindowForRange(dateRange) : null;
+  const callFromDate = dateRange?.from;
+  const callToDate = callWindowForRange(dateRange).toDate;
+  const allCallRecords = callData.calls;
+  const callFilters = useMemo(() => ({
+    fromDate: callFromDate,
+    toDate: callToDate,
+    source: callSourceFilter,
+    status: callStatusFilter,
+    needsDetails: needsDetailsFilter,
+  }), [callFromDate, callToDate, callSourceFilter, callStatusFilter, needsDetailsFilter]);
+  // Badge: every call in the date range, like the other tabs' counts.
+  const callTabCount = allCallRecords ? filterCallLeads(allCallRecords, { fromDate: callFromDate, toDate: callToDate }, callData.addedIds).length : null;
+  // Cards: source and date filters only, so Answered / Missed / Needs details stay usable as toggles.
+  const callCardMetrics = callMetrics(
+    filterCallLeads(allCallRecords ?? [], { fromDate: callFromDate, toDate: callToDate, source: callSourceFilter }, callData.addedIds),
+    callData.addedIds,
+  );
+  const callSourceOptions = [
+    { label: "All sources", value: "all" },
+    ...groupCallSources(allCallRecords ?? []).map((item) => ({ label: item.label, value: item.id })),
+    ...(callSourceFilter !== "all" && !groupCallSources(allCallRecords ?? []).some((item) => item.id === callSourceFilter)
+      ? [{ label: callSourceFilter, value: callSourceFilter }] : []),
+  ];
+  const callCards: Array<{ label: string; value: number | string; meta: string; color: string; active?: boolean; onClick?: () => void }> = [
+    { label: "Total calls", value: callCardMetrics.total, meta: "source & date", color: "var(--brand-primary)" },
+    { label: "Answered", value: callCardMetrics.answered, meta: "picked up", color: "var(--success)", active: callStatusFilter === "answered",
+      onClick: () => setFilterParam("callStatus", callStatusFilter === "answered" ? "all" : "answered") },
+    { label: "Missed", value: callCardMetrics.missed, meta: "not answered", color: "var(--danger)", active: callStatusFilter === "missed",
+      onClick: () => setFilterParam("callStatus", callStatusFilter === "missed" ? "all" : "missed") },
+    { label: "Needs details", value: callCardMetrics.needsDetails, meta: "no lead yet", color: "var(--warning)", active: needsDetailsFilter,
+      onClick: () => setFilterParam("needs", needsDetailsFilter ? "all" : "1") },
+    { label: "Avg duration", value: `${callCardMetrics.averageDuration}s`, meta: "answered calls", color: "var(--info)" },
+  ];
+  const callChips = [
+    callSourceFilter !== "all" ? { key: "callSource", label: `Source: ${callSourceOptions.find((option) => option.value === callSourceFilter)?.label ?? callSourceFilter}` } : null,
+    callStatusFilter !== "all" ? { key: "callStatus", label: callStatusFilter === "missed" ? "Missed" : "Answered" } : null,
+    needsDetailsFilter ? { key: "needs", label: "Needs details" } : null,
+    dateRange ? { key: "date", label: dateRange.label } : null,
+  ].filter((chip): chip is { key: string; label: string } => Boolean(chip));
+  const visibleChips = callsTab ? callChips : filterChips;
+
+  function refreshAll() {
+    void refreshLeads();
+    if (callsTab) void callData.reload();
+  }
 
   return (
     <div className="space-y-5">
@@ -2537,11 +2612,11 @@ export default function LeadsClient() {
           <div
             role="tablist"
             aria-label="Lead views"
-            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1"
+            className="grid w-full grid-cols-2 gap-1 rounded-xl border p-1 sm:grid-cols-4"
             style={{ borderColor: BORDER, backgroundColor: CARD }}
           >
             {VIEW_OPTIONS.map((option) => {
-              const active = option.value === activeView;
+              const active = !callsTab && option.value === activeView;
               return (
                 <button
                   key={option.value}
@@ -2551,7 +2626,7 @@ export default function LeadsClient() {
                   onClick={() => {
                     if (active) return;
                     setCursorHistory([null]);
-                    updateQuery({ view: option.value }, { push: true });
+                    updateQuery({ view: option.value, callSource: null, callStatus: null, needs: null, call: null }, { push: true });
                   }}
                   className="relative min-h-10 rounded-lg px-1.5 text-xs font-bold outline-none transition focus-visible:ring-2 sm:px-3 sm:text-sm"
                   style={{
@@ -2577,16 +2652,43 @@ export default function LeadsClient() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={callsTab}
+              onClick={() => { if (!callsTab) openCallsTab(true); }}
+              className="relative min-h-10 rounded-lg px-1.5 text-xs font-bold outline-none transition focus-visible:ring-2 sm:px-3 sm:text-sm"
+              style={{
+                color: callsTab ? "var(--brand-primary-strong)" : MUTED,
+                backgroundColor: callsTab ? "var(--brand-primary-soft)" : "transparent",
+              }}
+            >
+              <span className="inline-flex max-w-full items-center gap-1 sm:gap-2">
+                <span
+                  className="hidden size-1.5 rounded-full sm:inline-block"
+                  style={{ backgroundColor: callsTab ? GOLD : "var(--border-strong)" }}
+                />
+                <span className="truncate">{CALLS_TAB.label}</span>
+                {callTabCount !== null && (
+                  <span
+                    className="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums"
+                    style={{ backgroundColor: "var(--surface-2)", color: MUTED }}
+                  >
+                    {callTabCount}
+                  </span>
+                )}
+              </span>
+            </button>
           </div>
-          {activeViewOption.hint && (
+          {(callsTab ? CALLS_TAB.hint : activeViewOption.hint) && (
             <p className="mt-2 text-[11px] leading-4" style={{ color: MUTED }}>
-              {activeViewOption.hint}
+              {callsTab ? CALLS_TAB.hint : activeViewOption.hint}
             </p>
           )}
         </div>
 
-        <div className="mt-3" aria-busy={summaryLoading || summaryRefreshing}>
-          {summaryError && (
+        <div className="mt-3" aria-busy={callsTab ? allCallRecords === null && !callData.loadError : summaryLoading || summaryRefreshing}>
+          {!callsTab && summaryError && (
             <div
               className="mb-3 flex items-start gap-2 rounded-xl border p-3 text-xs"
               role="alert"
@@ -2603,7 +2705,17 @@ export default function LeadsClient() {
               </div>
             </div>
           )}
-          {summaryLoading ? (
+          {callsTab ? (
+            allCallRecords === null && !callData.loadError ? (
+              <SummarySkeleton />
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 2xl:grid-cols-5">
+                {callCards.map(({ active, onClick, ...card }) => (
+                  <StatCard key={card.label} {...card} value={allCallRecords ? card.value : "—"} active={active} onClick={onClick} />
+                ))}
+              </div>
+            )
+          ) : summaryLoading ? (
             <SummarySkeleton />
           ) : (
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 2xl:grid-cols-6">
@@ -2622,7 +2734,44 @@ export default function LeadsClient() {
           )}
         </div>
 
-        <div className="mt-3 flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center">
+        {/* On the Call Leads tab the filters and the action buttons share one wrapping
+            row, so the "…" menu sits beside the last filter on mobile. */}
+        <div className={callsTab ? "mt-3 flex min-w-0 flex-wrap items-center gap-2" : "mt-3 flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center"}>
+          {callsTab ? (
+          <div className="contents" role="group" aria-label="Call filters">
+            <SelectControl label="Filter calls by source" value={callSourceFilter} onChange={(value) => setFilterParam("callSource", value)} options={callSourceOptions} />
+            <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
+            <SelectControl
+              label="Filter calls by status"
+              className="min-w-[112px] flex-1 sm:flex-none"
+              value={callStatusFilter}
+              onChange={(value) => setFilterParam("callStatus", value)}
+              options={[
+                { label: "All statuses", value: "all" },
+                { label: "Answered", value: "answered" },
+                { label: "Missed", value: "missed" },
+              ]}
+            />
+            <button
+              type="button"
+              aria-pressed={needsDetailsFilter}
+              onClick={() => setFilterParam("needs", needsDetailsFilter ? "all" : "1")}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold"
+              style={{
+                borderColor: needsDetailsFilter ? "var(--warning-text)" : "var(--warning-border)",
+                backgroundColor: "var(--warning-bg)",
+                color: "var(--warning-text)",
+              }}
+              title={needsDetailsFilter ? "Show every call" : "Show only calls nobody has logged yet"}
+            >
+              {needsDetailsFilter ? <Check size={14} /> : <PhoneCall size={14} />}
+              Needs details
+              <span className="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums" style={{ backgroundColor: "var(--surface-1)" }}>
+                {allCallRecords && !callData.checking ? callCardMetrics.needsDetails : "…"}
+              </span>
+            </button>
+          </div>
+          ) : (
           <div className="relative min-w-0 flex-1 xl:basis-[420px]">
             <Search
               size={15}
@@ -2653,8 +2802,10 @@ export default function LeadsClient() {
               </button>
             )}
           </div>
+          )}
 
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:flex-nowrap">
+            {!callsTab && (
             <button
               type="button"
               onClick={() => setFiltersOpen(true)}
@@ -2669,7 +2820,8 @@ export default function LeadsClient() {
                 </span>
               )}
             </button>
-            {canUpdateLeads && (
+            )}
+            {!callsTab && canUpdateLeads && (
               <button
                 type="button"
                 onClick={() => {
@@ -2685,7 +2837,7 @@ export default function LeadsClient() {
             )}
             <button
               type="button"
-              onClick={() => void refreshLeads()}
+              onClick={refreshAll}
               disabled={loading || refreshing}
               className="hidden min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold md:inline-flex"
               style={{ backgroundColor: CARD, borderColor: BORDER, color: TEXT }}
@@ -2711,7 +2863,7 @@ export default function LeadsClient() {
                   className="absolute right-0 top-[calc(100%+8px)] z-50 w-48 rounded-xl border p-1 shadow-2xl"
                   style={{ backgroundColor: CARD, borderColor: BORDER }}
                 >
-                  <button type="button" role="menuitem" onClick={() => { setActionsOpen(false); void refreshLeads(); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold md:hidden" style={{ color: TEXT }}>
+                  <button type="button" role="menuitem" onClick={() => { setActionsOpen(false); refreshAll(); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold md:hidden" style={{ color: TEXT }}>
                     <RefreshCw size={14} /> Refresh
                   </button>
                   <button type="button" role="menuitem" onClick={() => { setActionsOpen(false); exportCsv(); }} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold" style={{ color: TEXT }}>
@@ -2734,6 +2886,7 @@ export default function LeadsClient() {
           </div>
         </div>
 
+        {!callsTab && (
         <div className="mt-3 hidden flex-wrap gap-2 xl:flex">
             <SelectControl
               label="Filter by campaign"
@@ -2776,10 +2929,11 @@ export default function LeadsClient() {
               ]}
             />
         </div>
+        )}
 
-        {filterChips.length > 0 && (
+        {visibleChips.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Active filters">
-            {filterChips.map((chip) => (
+            {visibleChips.map((chip) => (
               <button
                 key={chip.key}
                 type="button"
@@ -2937,9 +3091,9 @@ export default function LeadsClient() {
         </div>
       )}
 
-      {callWindow ? (
+      {callsTab ? (
         // Call opportunities replace the lead table; the header and filters above stay in place.
-        <CallLeadsPanel key={`${callWindow.fromDate ?? "all"}:${callWindow.toDate}`} {...callWindow} focusCallId={searchParams.get("call")} onLeadCreated={() => void refreshLeads()} />
+        <CallLeadsPanel data={callData} filters={callFilters} focusCallId={searchParams.get("call")} onLeadCreated={() => void refreshLeads()} />
       ) : loading ? (
         <LoadingRegion label="Loading leads" className="overflow-hidden rounded-2xl border" ><SkeletonRows rows={8} /></LoadingRegion>
       ) : error ? (
@@ -3487,7 +3641,7 @@ export default function LeadsClient() {
         </>
       )}
 
-      {!loading && !error && (
+      {!callsTab && !loading && !error && (
         <nav
           aria-label="Leads pagination"
           className="flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"

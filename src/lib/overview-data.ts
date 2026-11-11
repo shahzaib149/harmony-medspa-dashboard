@@ -10,7 +10,7 @@ import {
 } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
 import { countsAsRealLead } from "@/lib/leads/classification";
-import { withCallOpportunities } from "@/lib/leads/call-overview";
+import { callsNeedingDetails, withCallOpportunities } from "@/lib/leads/call-overview";
 import { listCalls } from "@/lib/leads/call-store";
 import { requireRole } from "@/lib/auth/requireRole";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -734,6 +734,7 @@ function attentionFor(
   enrollments: Enrollment[],
   messages: Message[],
   unresolvedFailedSms: number,
+  callsNeedDetails = 0,
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   // Failed SMS is an operational alert: driven by the unresolved count (unscoped
@@ -775,6 +776,7 @@ function attentionFor(
   add("overdue-lead", overdueLeads, "warning", `${overdueLeads} new ${overdueLeads === 1 ? "lead needs" : "leads need"} contact`, "No contact signal was recorded within 15 minutes.", "Review leads", "/leads?status=New");
   add("missing-phone", withoutPhone, "warning", `${withoutPhone} ${withoutPhone === 1 ? "lead has" : "leads have"} no phone`, "SMS follow-up is unavailable for these leads.", "Review leads", "/leads");
   add("missing-email", withoutEmail, "warning", `${withoutEmail} ${withoutEmail === 1 ? "lead has" : "leads have"} no email`, "Email follow-up is unavailable for these leads.", "Review leads", "/leads");
+  add("calls-need-details", callsNeedDetails, "warning", `Calls needing details: ${callsNeedDetails}`, "Inbound calls with no caller details logged yet.", "Open Call Leads", "/leads?view=calls&needs=1");
   add("duplicates", duplicates, "warning", `${duplicates} duplicate ${duplicates === 1 ? "lead needs" : "leads need"} review`, "These records are marked Duplicate.", "Review duplicates", "/leads?status=Duplicate");
   return items.sort((a, b) => (a.severity === b.severity ? b.count - a.count : a.severity === "critical" ? -1 : 1));
 }
@@ -1114,7 +1116,16 @@ export async function getOverviewData(
     clinicMetrics,
     googleAdsSummary,
     activityByDay,
-    attentionItems: attentionFor(periodLeads.filter((lead) => overviewLeadMap.has(lead.id)), enrollments, periodMessages, failedSmsAlerts.length),
+    attentionItems: attentionFor(
+      periodLeads.filter((lead) => overviewLeadMap.has(lead.id)),
+      enrollments,
+      periodMessages,
+      failedSmsAlerts.length,
+      // Operational, like failed SMS: every call still missing details, not just this period's.
+      leadResult.status === "fulfilled" && callResult.status === "fulfilled"
+        ? callsNeedingDetails(leadResult.value, callResult.value).length
+        : 0,
+    ),
     failedSmsAlerts,
     reviewedSmsCount,
     recentActivity,

@@ -22,6 +22,7 @@ export default function DashboardLayout({
 }: DashboardLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showCallPrompt, setShowCallPrompt] = useState(false);
+  const [callPromptCount, setCallPromptCount] = useState(0);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
@@ -35,7 +36,17 @@ export default function DashboardLayout({
     if (!pending && sessionStorage.getItem(seenKey) === "1") return;
     sessionStorage.removeItem(pendingKey);
     sessionStorage.setItem(seenKey, "1");
-    setShowCallPrompt(true);
+    // Only remind when calls since NEEDS_DETAILS_FROM are still waiting for details.
+    void fetch("/api/calls?summary=needs-details", { cache: "no-store", credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() as Promise<{ needsDetails?: number }> : null))
+      .then((body) => {
+        const count = body?.needsDetails ?? 0;
+        if (count > 0) {
+          setCallPromptCount(count);
+          setShowCallPrompt(true);
+        }
+      })
+      .catch(() => undefined);
   }, [isLoading, user]);
 
   useEffect(() => {
@@ -115,10 +126,10 @@ export default function DashboardLayout({
           >
             <BellRing size={19} className="mt-0.5 shrink-0" aria-hidden="true" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-extrabold">New calls need details</p>
-              <p className="mt-0.5 text-xs leading-5">Review Call Leads in Overview and add caller details for follow-up.</p>
+              <p className="text-sm font-extrabold">{callPromptCount} {callPromptCount === 1 ? "call needs" : "calls need"} details</p>
+              <p className="mt-0.5 text-xs leading-5">Open Leads → Call Leads and add caller details for follow-up.</p>
               <Link
-                href="/dashboard#call-leads"
+                href="/leads?view=calls&needs=1"
                 onClick={() => setShowCallPrompt(false)}
                 className="mt-2 inline-flex min-h-10 items-center rounded-xl border border-current px-3 text-xs font-extrabold"
               >

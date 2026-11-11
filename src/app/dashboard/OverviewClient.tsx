@@ -24,7 +24,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Sparkline from "@/components/overview/Sparkline";
-import CallLeadsPanel from "@/components/overview/CallLeadsPanel";
 import LeadExportButtons from "@/components/leads/LeadExportButtons";
 import { getCachedData, setCachedData } from "@/lib/dashboard-data-cache";
 import { useAuth } from "@/contexts/AuthContext";
@@ -361,7 +360,6 @@ function OverviewContent({
       </div>
 
       <div className="mt-4"><LeadExportButtons /></div>
-      <CallLeadsPanel onLeadCreated={onRetry} />
 
       {/* Analytical grid */}
       <div className="mt-4 grid grid-cols-12 gap-4">
@@ -1009,6 +1007,7 @@ const MONITORED_SIGNALS: Array<{ label: string; ids: string[] }> = [
   { label: "Campaign timing", ids: ["overdue-enrollment"] },
   { label: "Lead response", ids: ["overdue-lead"] },
   { label: "Contact details", ids: ["missing-phone", "missing-email", "duplicates"] },
+  { label: "Call details", ids: ["calls-need-details"] },
 ];
 
 function AttentionPanel({

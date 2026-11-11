@@ -13,7 +13,7 @@ import {
   UserRoundPlus,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   callMarker as marker,
@@ -22,9 +22,9 @@ import {
   groupCallSources,
   pageOfCall,
   type CallRecord,
-  type CallSourceId,
 } from "@/lib/leads/call-records";
-import { filterCalls } from "@/lib/leads/call-filter";
+import { callMetrics, callNeedsDetails, filterCallLeads, type CallLeadFilters } from "@/lib/leads/call-filter";
+import type { CallLeadsData } from "@/lib/leads/use-call-leads";
 
 type CallLeadForm = {
   name: string;
@@ -33,8 +33,6 @@ type CallLeadForm = {
   treatment: string;
   notes: string;
 };
-
-type ExistingLead = { message?: string; notes?: string };
 
 const EMPTY_FORM: CallLeadForm = {
   name: "",
@@ -58,79 +56,30 @@ function assessmentStyle(kind: CallRecord["kind"]) {
 }
 
 export default function CallLeadsPanel({
+  data,
+  filters,
   onLeadCreated,
-  fromDate,
-  toDate,
   focusCallId,
 }: {
+  /** Shared call data from useCallLeads, so the page KPIs and this table agree. */
+  data: CallLeadsData;
+  filters: CallLeadFilters;
   onLeadCreated: () => void;
-  fromDate?: string;
-  toDate?: string;
   /** Opens this call, e.g. from a call alert email's "Add caller details" link. */
   focusCallId?: string | null;
 }) {
   const { can } = useAuth();
   const canAddLead = can("update:leads");
-  const [sourceId, setSourceId] = useState<CallSourceId | "all">("all");
+  const { calls: allRecords, loadError, checking, addedIds, notALeadIds, markAdded, reload: loadCalls } = data;
+  const { fromDate, toDate } = filters;
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<CallRecord | null>(null);
-  const [allRecords, setAllRecords] = useState<CallRecord[] | null>(null);
-  const [loadError, setLoadError] = useState("");
-  const [linkedText, setLinkedText] = useState("");
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [checking, setChecking] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState<CallLeadForm>(EMPTY_FORM);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const focusHandled = useRef(false);
-
-  const loadAddedCalls = useCallback(async () => {
-    try {
-      const items: ExistingLead[] = [];
-      let cursor: string | null = null;
-      do {
-        const params = new URLSearchParams({ source: "Call Leads", pageSize: "50" });
-        if (cursor) params.set("cursor", cursor);
-        const response = await fetch("/api/airtable/leads?" + params, {
-          cache: "no-store",
-          credentials: "same-origin",
-        });
-        if (!response.ok) return;
-        const body = await response.json() as { items?: ExistingLead[]; nextCursor?: string | null };
-        items.push(...body.items ?? []);
-        cursor = body.nextCursor ?? null;
-      } while (cursor);
-      setLinkedText(items
-        .map((lead) => (lead.message ?? "") + "\n" + (lead.notes ?? ""))
-        .join("\n"));
-    } finally {
-      setChecking(false);
-    }
-  }, []);
-
-  const loadCalls = useCallback(async () => {
-    setLoadError("");
-    try {
-      const response = await fetch("/api/calls", { cache: "no-store", credentials: "same-origin" });
-      const body = await response.json().catch(() => ({})) as { calls?: CallRecord[]; error?: string };
-      if (!response.ok || !Array.isArray(body.calls)) throw new Error(body.error || "Call history is temporarily unavailable.");
-      setAllRecords(body.calls);
-    } catch (event) {
-      setLoadError(event instanceof Error ? event.message : "Call history is temporarily unavailable.");
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadAddedCalls();
-    void loadCalls();
-  }, [loadAddedCalls, loadCalls]);
-
-  const addedIds = useMemo(() => new Set([
-    ...(allRecords ?? []).filter((call) => linkedText.includes(marker(call.id))).map((call) => call.id),
-    ...savedIds,
-  ]), [allRecords, linkedText, savedIds]);
 
   useEffect(() => {
     if (!selected) return;
@@ -146,30 +95,33 @@ export default function CallLeadsPanel({
     };
   }, [saving, selected]);
 
-  const availableSources = useMemo(() => groupCallSources(allRecords ?? []).map((item) => ({
-    ...item,
-    calls: filterCalls(item.calls, fromDate, toDate),
-    range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : item.range,
-  })), [allRecords, fromDate, toDate]);
-  const allCalls = useMemo(() => availableSources.flatMap((item) => item.calls), [availableSources]);
-  const source = useMemo(() => sourceId === "all" || !availableSources.some((item) => item.id === sourceId)
-    ? { label: "All", line: describeCallLines(availableSources), range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : formatCallRange(allRecords ?? []), calls: allCalls }
-    : availableSources.find((item) => item.id === sourceId)!, [sourceId, availableSources, allCalls, allRecords, fromDate, toDate]);
+  const allCalls = useMemo(() => filterCallLeads(allRecords ?? [], filters, addedIds), [allRecords, filters, addedIds]);
+  const source = useMemo(() => {
+    const picked = filters.source && filters.source !== "all"
+      ? groupCallSources(allRecords ?? []).find((item) => item.id === filters.source)
+      : null;
+    return {
+      label: picked?.label ?? "All",
+      line: picked?.line ?? describeCallLines(groupCallSources(allRecords ?? [])),
+      range: fromDate ? `${fromDate} to ${toDate ?? "today"}` : formatCallRange(allRecords ?? []),
+    };
+  }, [allRecords, filters.source, fromDate, toDate]);
   const loadingCalls = allRecords === null && !loadError;
-  const calls = useMemo(() => [...source.calls].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)), [source]);
+  const calls = useMemo(() => [...allCalls].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)), [allCalls]);
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(calls.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
   const visibleCalls = calls.slice(pageStart, pageStart + pageSize);
-  const summary = useMemo(() => {
-    const answered = calls.filter((call) => !call.missed);
-    return {
-      conversations: calls.filter((call) => call.kind === "conversation").length,
-      outOfState: calls.filter((call) => call.kind === "out-of-state").length,
-      averageDuration: answered.length ? Math.round(answered.reduce((sum, call) => sum + call.duration, 0) / answered.length) : 0,
-    };
-  }, [calls]);
+  const summary = useMemo(() => callMetrics(calls, addedIds), [calls, addedIds]);
+  // Any filter change starts again from the first page.
+  const filterKey = [filters.source, filters.status, filters.needsDetails, fromDate, toDate].join("|");
+  const lastFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
+    setPage(1);
+  }, [filterKey]);
 
   function openForm(call: CallRecord) {
     setForm(EMPTY_FORM);
@@ -183,10 +135,9 @@ export default function CallLeadsPanel({
     focusHandled.current = true;
     const call = allCalls.find((item) => item.id === focusCallId);
     if (!call) {
-      setNotice("That call isn't in the selected date range. Choose All dates to find it.");
+      setNotice("That call isn't in the selected filters. Choose All dates and clear the call filters to find it.");
       return;
     }
-    setSourceId("all");
     setPage(pageOfCall(allCalls, call.id, pageSize) ?? 1);
     setHighlightedId(call.id);
     if (canAddLead && !addedIds.has(call.id)) openForm(call);
@@ -232,7 +183,7 @@ export default function CallLeadsPanel({
       const body = await response.json().catch(() => ({})) as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not add this call lead");
       const savedName = form.name.trim();
-      setSavedIds((current) => new Set(current).add(selected.id));
+      markAdded(selected.id);
       setSelected(null);
       setNotice(savedName + " was added as a Call Lead.");
       window.setTimeout(() => setNotice(""), 4500);
@@ -254,23 +205,6 @@ export default function CallLeadsPanel({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="overview-display text-lg font-semibold text-[var(--text-primary)]">Call Leads</h2>
-              <div role="tablist" aria-label="Call source" className="inline-flex rounded-full border border-[var(--border-subtle)] bg-[var(--surface-2)] p-0.5">
-                {[{ id: "all" as const, label: "All", calls: allCalls }, ...availableSources].map((item) => {
-                  const active = item.id === sourceId;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => { setSourceId(item.id); setPage(1); }}
-                      className={"rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.1em] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " + (active ? "bg-[var(--brand-primary-soft)] text-[var(--brand-primary-strong)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]")}
-                    >
-                      {item.label} {allRecords && <span className="tabular-nums opacity-70">{item.calls.length}</span>}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">Inbound call opportunities · {allRecords ? `${source.line} · ${source.range}` : loadError ? "unavailable" : "loading call history…"}</p>
           </div>
@@ -279,7 +213,7 @@ export default function CallLeadsPanel({
           <SummaryChip value={calls.length} label="calls" />
           <SummaryChip value={summary.conversations} label="conversations" />
           <SummaryChip value={summary.averageDuration + "s"} label="avg. duration" />
-          <SummaryChip value={summary.outOfState} label="out of state" />
+          <SummaryChip value={summary.outOfState} label="out of state" title="Known area code outside Florida. Calls with no area code are never counted." />
         </div>
       </div>
 
@@ -316,6 +250,7 @@ export default function CallLeadsPanel({
             )}
             {visibleCalls.map((call) => {
               const added = addedIds.has(call.id);
+              const needsDetails = callNeedsDetails(call, addedIds);
               return (
                 <tr key={call.id} id={"call-row-" + call.id} role="row" className={"transition-colors hover:bg-[var(--surface-hover)] " + (call.id === highlightedId ? "bg-[var(--brand-primary-soft)]" : "")}>
                   <td role="cell" data-label="Date & time" className="px-5 py-3">
@@ -330,17 +265,27 @@ export default function CallLeadsPanel({
                     <span className="inline-flex items-center gap-1.5 text-xs tabular-nums text-[var(--text-secondary)]"><Clock3 size={13} />{formatDuration(call)}</span>
                   </td>
                   <td role="cell" data-label="Call assessment" className="px-4 py-3">
-                    <span className={"inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold " + assessmentStyle(call.kind)}>{call.assessment}</span>
+                    <span className="inline-flex flex-wrap gap-1.5">
+                      <span className={"inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold " + assessmentStyle(call.kind)}>{call.assessment}</span>
+                      {call.region === "unknown" && (
+                        <span title="Google Ads sent no caller area code, so the region is not known." className="inline-flex rounded-full border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-muted)]">Region unknown</span>
+                      )}
+                    </span>
                   </td>
                   <td role="cell" data-label="Lead record" className="px-5 py-3 text-right">
                     {checking ? (
                       <span className="inline-flex min-h-9 items-center justify-end"><Skeleton className="h-9 w-28 rounded-lg" /><span className="sr-only">Checking lead status</span></span>
+                    ) : notALeadIds.has(call.id) ? (
+                      <span title="A lead was saved for this call and later marked Not a lead." className="inline-flex min-h-9 items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] px-3 text-xs font-bold text-[var(--text-muted)]">Not a lead</span>
                     ) : added ? (
                       <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--success-border)] bg-[var(--success-bg)] px-3 text-xs font-bold text-[var(--success-text)]"><BadgeCheck size={14} /> Added</span>
-                    ) : canAddLead ? (
-                      <button type="button" onClick={() => openForm(call)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[var(--brand-primary)] px-3 text-xs font-extrabold text-[var(--primary-foreground)] transition hover:brightness-95"><UserRoundPlus size={14} /> Add details</button>
                     ) : (
-                      <span className="text-xs text-[var(--text-muted)]">Details pending</span>
+                      <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                        {needsDetails && <NeedsDetailsChip />}
+                        {canAddLead ? (
+                          <button type="button" onClick={() => openForm(call)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-[var(--brand-primary)] px-3 text-xs font-extrabold text-[var(--primary-foreground)] transition hover:brightness-95"><UserRoundPlus size={14} /> Add details</button>
+                        ) : !needsDetails && <span className="text-xs text-[var(--text-muted)]">Details pending</span>}
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -404,8 +349,12 @@ export default function CallLeadsPanel({
   );
 }
 
-function SummaryChip({ value, label }: { value: string | number; label: string }) {
-  return <span className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 py-1.5 text-[var(--text-muted)]"><strong className="mr-1 text-[var(--text-primary)] tabular-nums">{value}</strong>{label}</span>;
+function NeedsDetailsChip() {
+  return <span className="inline-flex min-h-7 items-center rounded-full border border-[var(--warning-border)] bg-[var(--warning-bg)] px-2.5 text-[11px] font-bold text-[var(--warning-text)]">Needs details</span>;
+}
+
+function SummaryChip({ value, label, title }: { value: string | number; label: string; title?: string }) {
+  return <span title={title} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-2)] px-2.5 py-1.5 text-[var(--text-muted)]"><strong className="mr-1 text-[var(--text-primary)] tabular-nums">{value}</strong>{label}</span>;
 }
 
 function CallFact({ label, value }: { label: string; value: string }) {
