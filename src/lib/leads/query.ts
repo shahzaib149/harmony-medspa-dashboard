@@ -1,5 +1,6 @@
 import { isAiTag, NOT_A_LEAD_FILTER, NOT_A_LEAD_FORMULA } from "@/lib/leads/classification";
 import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
+import { ACTIVE_CAMPAIGNS } from "@/lib/google/campaign-registry";
 
 import type { DateTime } from "luxon";
 import { clinicRangeToUtc } from "@/lib/date-range";
@@ -106,6 +107,18 @@ export function buildLeadFormula(
       'AND(COUNTA({Nurture Enrollments})=0,LOWER({Email Sent Status}&"")!="sent",LOWER({Email Sent Status}&"")!="delivered",LOWER({SMS Sent Status}&"")!="sent",LOWER({SMS Sent Status}&"")!="delivered")',
     );
   }
+
+  // Google Ads campaign (utm_campaign code) and ad group (utm_adgroup ID).
+  // "google-ads" = any lead from an active registry campaign.
+  const adCampaign = searchParams.get("adCampaign")?.trim();
+  if (adCampaign === "google-ads") {
+    const codes = ACTIVE_CAMPAIGNS.flatMap((entry) => (entry.utmCampaign ? [entry.utmCampaign] : []));
+    filters.push(`OR(${codes.map((code) => `LOWER({UTM Campaign}&"")="${code}"`).join(",")})`);
+  } else if (adCampaign && adCampaign.toLowerCase() !== "all") {
+    filters.push(`LOWER({UTM Campaign}&"")="${formulaString(adCampaign.toLowerCase())}"`);
+  }
+  const adGroup = searchParams.get("adGroup")?.trim();
+  if (adGroup && /^\d+$/.test(adGroup)) filters.push(`TRIM({UTM Ad Group}&"")="${adGroup}"`);
 
   exact(["campaignStatus"], "Nurture Status");
   exact(["currentStep", "campaignStep"], "Nurture Current Step");

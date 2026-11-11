@@ -23,6 +23,7 @@ import {
   type PendingAd,
 } from "@/lib/google/pending-ads";
 import { postPublishAdToMake } from "@/lib/make/publish-ad";
+import { campaignById } from "@/lib/google/campaign-registry";
 
 const STATUS_FILTERS = new Set<AdReviewStatusFilter>(["pending", "published", "failed", "all"]);
 
@@ -169,6 +170,12 @@ export async function PATCH(request: Request) {
         );
       }
       if (isGoogleAdResourceName(before.ad_resource_name)) return publicError("This ad already has a Google Ads resource and cannot be published twice.", 409);
+      // No default campaign: the reviewer must have picked one, and ended campaigns are closed.
+      const targetCampaignId = String(before.reviewPackage.campaignId ?? "").trim();
+      if (!targetCampaignId) return publicError("Choose the campaign this ad should publish to.", 400);
+      if (campaignById(targetCampaignId)?.lifecycle === "ended") {
+        return publicError(`${campaignById(targetCampaignId)?.name} has ended. Choose an active campaign.`, 400);
+      }
       const validationErrors = validatePendingAdPackage(before.reviewPackage);
       const missingApprovals = unconfirmedApprovals(before.reviewPackage);
       if (validationErrors.length || missingApprovals.length) {

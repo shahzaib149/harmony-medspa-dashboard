@@ -61,6 +61,7 @@ test("lead source display includes campaign and ad-group attribution", () => {
   const api = read("src/lib/leads/map-lead.ts");
   const client = read("src/app/leads/LeadsClient.tsx");
   assert.match(api, /utmAdGroup: str\(r\.fields, "UTM Ad Group"/);
-  assert.match(client, /Campaign: \{lead\.utmCampaign\}/);
-  assert.match(client, /Ad group: \{lead\.utmAdGroup\}/);
+  // Readable names from the campaign registry (src/lib/google/campaign-registry.ts).
+  assert.match(client, /Campaign: \{adCampaignLabel\(lead\.utmCampaign\)\}/);
+  assert.match(client, /Ad group: \{adGroupLabel\(lead\.utmAdGroup\)\}/);
 });

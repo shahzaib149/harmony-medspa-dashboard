@@ -1,5 +1,6 @@
 import { countsAsRealLead, needsReview } from "@/lib/leads/classification";
 import { LEAD_VIEWS, leadBelongsToView, type LeadView } from "@/lib/leads/view";
+import { adCampaignLabel, adGroupLabel } from "@/lib/google/campaign-registry";
 
 export type LeadSummaryRecord = {
   id: string;
@@ -14,6 +15,16 @@ export type LeadSummaryRecord = {
   leadType: string;
   isRealLead: boolean;
   aiTags: string[];
+  utmCampaign?: string;
+  utmAdGroup?: string;
+};
+
+export type AdCampaignBreakdown = {
+  code: string;
+  label: string;
+  total: number;
+  booked: number;
+  adGroups: { id: string; label: string; total: number }[];
 };
 
 export type LeadSummaryMetrics = {
@@ -34,6 +45,8 @@ export type LeadSummaryMetrics = {
   needsReview: number;
   /** Not-a-lead records grouped by Lead Type. */
   byLeadType: Record<string, number>;
+  /** Leads in the view that carry a UTM Campaign, grouped by campaign then ad group. */
+  byAdCampaign: AdCampaignBreakdown[];
 };
 
 export type LeadViewCounts = Record<LeadView, number>;
@@ -134,7 +147,28 @@ export function aggregateLeadSummary(
     notALead: notALeadRecords.length,
     needsReview: records.filter(needsReview).length,
     byLeadType,
+    byAdCampaign: groupByAdCampaign(matching),
   };
 
   return { summary, viewCounts };
+}
+
+/** Paid-attribution breakdown, using the same names as the Airtable Ad Campaign / Ad Group formulas. */
+export function groupByAdCampaign(records: LeadSummaryRecord[]): AdCampaignBreakdown[] {
+  const groups = new Map<string, AdCampaignBreakdown>();
+  for (const record of records) {
+    const code = (record.utmCampaign ?? "").trim().toLowerCase();
+    if (!code) continue;
+    const group = groups.get(code) ?? { code, label: adCampaignLabel(code), total: 0, booked: 0, adGroups: [] };
+    group.total += 1;
+    if (record.status.trim().toLowerCase() === "booked") group.booked += 1;
+    const adGroupId = (record.utmAdGroup ?? "").trim() || "(none)";
+    const adGroup = group.adGroups.find((entry) => entry.id === adGroupId);
+    if (adGroup) adGroup.total += 1;
+    else group.adGroups.push({ id: adGroupId, label: adGroupId === "(none)" ? "No ad group" : adGroupLabel(adGroupId), total: 1 });
+    groups.set(code, group);
+  }
+  return [...groups.values()]
+    .map((group) => ({ ...group, adGroups: group.adGroups.sort((a, b) => b.total - a.total || a.label.localeCompare(b.label)) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }

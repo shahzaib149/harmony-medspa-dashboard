@@ -1357,11 +1357,14 @@ function CampaignsTable({
   onOpen: (entity: SelectedEntity) => void;
   onScope: (campaignId: string) => void;
 }) {
+  // Default to Enabled so ended/paused campaigns (e.g. Website new) are hidden
+  // until "All statuses" is chosen.
   const filters = useEntityFilters(
     "campaigns",
     rows,
     campaignSearch,
     campaignStatus,
+    "ENABLED",
   );
   const table = usePagedEntities(filters.filtered, (item) => item.campaignName);
   const inventoryByCampaign = useMemo(() => {

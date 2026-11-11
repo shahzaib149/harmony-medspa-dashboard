@@ -27,6 +27,8 @@ const SUMMARY_FIELDS = [
   "Lead Type",
   "Is Real Lead",
   "AI Tags",
+  "UTM Campaign",
+  "UTM Ad Group",
 ];
 
 export const dynamic = "force-dynamic";
@@ -53,6 +55,8 @@ function mapSummaryRecord(record: AirtableRecord): LeadSummaryRecord {
     leadType: textField(record.fields, "Lead Type"),
     isRealLead: record.fields["Is Real Lead"] === true,
     aiTags: Array.isArray(record.fields["AI Tags"]) ? (record.fields["AI Tags"] as unknown[]).map(String) : [],
+    utmCampaign: textField(record.fields, "UTM Campaign"),
+    utmAdGroup: textField(record.fields, "UTM Ad Group"),
   };
 }
 

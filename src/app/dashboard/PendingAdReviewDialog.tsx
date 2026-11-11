@@ -20,6 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { campaignById } from "@/lib/google/campaign-registry";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -185,15 +186,10 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
       .then((data: { campaigns?: Array<{ id: string; campaignId: string; campaignName: string; status: string }> }) => {
         if (cancelled) return;
         const list = data.campaigns || [];
-        setCampaignsList(list);
-
-        const currentCampName = ad?.reviewPackage.campaignName || "";
-        const match = list.find(
-          (c) => c.campaignName.toLowerCase() === currentCampName.toLowerCase() || c.campaignId === currentCampName
-        );
-        if (match) {
-          setSelectedCampaignId(match.campaignId);
-        }
+        // Ended campaigns (e.g. Website new) can never be picked, and nothing is
+        // pre-selected: the reviewer must choose the campaign explicitly every time.
+        setCampaignsList(list.filter((c) => campaignById(c.campaignId)?.lifecycle !== "ended"));
+        setSelectedCampaignId("");
       })
       .catch(() => {
         if (!cancelled) setCampaignsList([]);
@@ -205,7 +201,7 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
     return () => {
       cancelled = true;
     };
-  }, [ad?.reviewPackage.campaignName, selectedAdId]);
+  }, [selectedAdId]);
 
   useEffect(() => {
     if (!selectedCampaignId) {
@@ -398,6 +394,10 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
 
   async function publish() {
     if (!ad || !draft) return;
+    if (!selectedCampaignId || campaignById(selectedCampaignId)?.lifecycle === "ended") {
+      setError({ title: "Choose a campaign", message: "Pick the campaign this ad should publish to. Ended campaigns can't be used." });
+      return;
+    }
     setWorking("publish"); setError(null);
     try {
       let currentAdId = pendingAdId;
@@ -529,16 +529,13 @@ export default function PendingAdReviewDialog({ ad, onClose, onChanged, onResolv
                       className={`${fieldClass} mt-1.5`}
                     >
                       <option value="">
-                        {draft.campaignName && !selectedCampaignId
-                            ? draft.campaignName
-                            : "Select Campaign"}
+                        Select campaign
                       </option>
                       {campaignsList
                         .filter(
                           (c) =>
                             c.status === "ENABLED" ||
-                            c.campaignId === selectedCampaignId ||
-                            c.campaignName === draft.campaignName
+                            c.campaignId === selectedCampaignId
                         )
                         .map((c) => (
                           <option key={c.id || c.campaignId} value={c.campaignId}>

@@ -54,6 +54,7 @@ import { useCallLeads } from "@/lib/leads/use-call-leads";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { dateRangeParams, resolveDateRange } from "@/lib/date-range";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
+import { ACTIVE_CAMPAIGNS, adCampaignLabel, adGroupLabel } from "@/lib/google/campaign-registry";
 import {
   DEFAULT_LEAD_VIEW,
   leadBelongsToView,
@@ -61,6 +62,7 @@ import {
   type LeadView,
 } from "@/lib/leads/view";
 import type {
+  AdCampaignBreakdown,
   LeadSummaryMetrics,
   LeadViewCounts,
 } from "@/lib/leads/summary";
@@ -774,6 +776,48 @@ function summaryCardsFor(
   ];
 }
 
+/** Leads in the current filters grouped by Google Ads campaign and ad group. Click a campaign to filter. */
+function AdCampaignBreakdownPanel({
+  groups,
+  active,
+  onSelect,
+}: {
+  groups: AdCampaignBreakdown[];
+  active: string;
+  onSelect: (code: string) => void;
+}) {
+  return (
+    <section aria-label="Leads by ad campaign" className="mt-3 rounded-2xl border p-3" style={{ borderColor: BORDER, backgroundColor: CARD }}>
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: GOLD }}>
+        Leads by ad campaign
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {groups.map((group) => (
+          <button
+            key={group.code}
+            type="button"
+            onClick={() => onSelect(group.code)}
+            aria-pressed={active === group.code}
+            className="min-h-11 rounded-xl border px-3 py-2 text-left"
+            style={{
+              borderColor: active === group.code ? TEAL : BORDER_SOFT,
+              backgroundColor: active === group.code ? "var(--brand-primary-soft)" : PANEL,
+            }}
+          >
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-bold" style={{ color: TEXT }}>{group.label}</span>
+              <span className="text-sm font-bold tabular-nums" style={{ color: TEXT }}>{group.total}</span>
+            </span>
+            <span className="mt-0.5 block text-[11px]" style={{ color: MUTED }}>
+              {group.booked} booked · {group.adGroups.map((adGroup) => `${adGroup.label} ${adGroup.total}`).join(" · ")}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 type LatestLead = Pick<Lead, "id" | "name" | "source" | "status" | "createdAt">;
 
 type LeadSummaryApiResponse = {
@@ -857,13 +901,24 @@ function LeadTicker({
   );
 }
 
+const AD_CAMPAIGN_OPTIONS = [
+  { label: "All ad campaigns", value: "all" },
+  { label: "Any Google Ads campaign", value: "google-ads" },
+  ...ACTIVE_CAMPAIGNS.flatMap((campaign) => (campaign.utmCampaign ? [{ label: campaign.label, value: campaign.utmCampaign }] : [])),
+];
+
+/** "CS3 Hormone Optimization (cs3_hormone)"; just the value when no readable name exists. */
+function withCode(label: string, code: string) {
+  return label && label !== code ? `${label} (${code})` : code;
+}
+
 function attributionItems(lead: Lead) {
   return ([
     ["Keyword", lead.utmTerm],
     ["Match type", lead.matchType],
     ["Ad", lead.utmContent],
-    ["Campaign", lead.utmCampaign],
-    ["Ad group", lead.utmAdGroup],
+    ["Campaign", lead.utmCampaign ? withCode(adCampaignLabel(lead.utmCampaign), lead.utmCampaign) : ""],
+    ["Ad group", lead.utmAdGroup ? withCode(adGroupLabel(lead.utmAdGroup), lead.utmAdGroup) : ""],
     ["Source", lead.utmSource],
     ["Medium", lead.utmMedium],
     ["Device", lead.device],
@@ -1789,6 +1844,7 @@ export default function LeadsClient() {
   const emailParam = searchParams.get("emailStatus");
   const emailFilter: SentFilter = emailParam === "sent" || emailParam === "not_sent" ? emailParam : "all";
   const campaignFilter = searchParams.get("campaign")?.trim() || "all";
+  const adCampaignFilter = searchParams.get("adCampaign")?.trim() || "all";
   const campaignStatusFilter = searchParams.get("campaignStatus")?.trim() || "all";
   const campaignStepFilter = searchParams.get("campaignStep")?.trim() || "all";
   const leadTypeFilter = searchParams.get("leadType")?.trim() || "all";
@@ -1803,6 +1859,7 @@ export default function LeadsClient() {
     if (smsFilter !== "all") params.set("smsStatus", smsFilter);
     if (emailFilter !== "all") params.set("emailStatus", emailFilter);
     if (campaignFilter !== "all") params.set("campaign", campaignFilter);
+    if (adCampaignFilter !== "all") params.set("adCampaign", adCampaignFilter);
     if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
     if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
     if (leadTypeFilter !== "all") params.set("leadType", leadTypeFilter);
@@ -1810,8 +1867,8 @@ export default function LeadsClient() {
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
     return params.toString();
-  }, [activeView, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFrom, dateTo, emailFilter, leadTypeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
-  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && !dateRange && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && !tagFilterKey;
+  }, [activeView, adCampaignFilter, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFrom, dateTo, emailFilter, leadTypeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
+  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && !dateRange && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && adCampaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && !tagFilterKey;
   const cachedLeads = useDashboardCachedData<{ leads?: Lead[]; view?: LeadView; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number }>(
     DATA_CACHE_KEYS.leads,
   );
@@ -1910,7 +1967,7 @@ export default function LeadsClient() {
     setFiltersOpen(false);
     // Patient-only filters don't apply to calls; the date range does, so it stays.
     updateQuery({ view: CALLS_VIEW, source: null, search: null, status: null,
-      campaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
+      campaign: null, adCampaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
       emailStatus: null, leadType: null, tags: null, lead: null }, { push });
   }
 
@@ -1918,6 +1975,7 @@ export default function LeadsClient() {
     setCursorHistory([null]);
     updateQuery({
       campaign: null,
+      adCampaign: null,
       campaignStatus: null,
       campaignStep: null,
       status: null,
@@ -2157,6 +2215,7 @@ export default function LeadsClient() {
     campaignStepFilter !== "all" ? { key: "campaignStep", label: `Step: ${campaignStepFilter}` } : null,
     statusFilter !== "all" ? { key: "status", label: `Lead status: ${statusFilter}` } : null,
     sourceFilter !== "all" ? { key: "source", label: `Source: ${sourceFilter}` } : null,
+    adCampaignFilter !== "all" ? { key: "adCampaign", label: `Ad campaign: ${adCampaignFilter === "google-ads" ? "All Google Ads" : adCampaignLabel(adCampaignFilter)}` } : null,
     dateRange ? { key: "date", label: dateRange.label } : null,
     smsFilter !== "all" ? { key: "smsStatus", label: smsFilter === "sent" ? "SMS sent" : "SMS not sent" } : null,
     emailFilter !== "all" ? { key: "emailStatus", label: emailFilter === "sent" ? "Email sent" : "Email not sent" } : null,
@@ -2732,6 +2791,13 @@ export default function LeadsClient() {
               })}
             </div>
           )}
+          {!summaryLoading && leadSummary?.byAdCampaign?.length ? (
+            <AdCampaignBreakdownPanel
+              groups={leadSummary.byAdCampaign}
+              active={adCampaignFilter}
+              onSelect={(code) => setFilterParam("adCampaign", adCampaignFilter === code ? "all" : code)}
+            />
+          ) : null}
         </div>
 
         {/* On the Call Leads tab the filters and the action buttons share one wrapping
@@ -2917,6 +2983,7 @@ export default function LeadsClient() {
               onChange={(value) => setFilterParam("source", value)}
               options={sources}
             />
+            <SelectControl label="Filter by ad campaign" value={adCampaignFilter} onChange={(value) => setFilterParam("adCampaign", value)} options={AD_CAMPAIGN_OPTIONS} />
             <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
             <SelectControl
               label="Filter by tag"
@@ -3017,6 +3084,7 @@ export default function LeadsClient() {
                   ]}
                 />
                 <SelectControl label="Filter by source" value={sourceFilter} onChange={(value) => setFilterParam("source", value)} options={sources} />
+                <SelectControl label="Filter by ad campaign" value={adCampaignFilter} onChange={(value) => setFilterParam("adCampaign", value)} options={AD_CAMPAIGN_OPTIONS} />
                 <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
                 <SelectControl
                   label="Filter by SMS sent"
@@ -3245,12 +3313,12 @@ export default function LeadsClient() {
                           <span className="block">{sourceLabel(lead.source)}</span>
                           {lead.utmCampaign && (
                             <small className="mt-0.5 block font-normal" style={{ color: MUTED }}>
-                              Campaign: {lead.utmCampaign}
+                              Campaign: {adCampaignLabel(lead.utmCampaign)}
                             </small>
                           )}
                           {lead.utmAdGroup && (
                             <small className="block font-normal" style={{ color: MUTED }}>
-                              Ad group: {lead.utmAdGroup}
+                              Ad group: {adGroupLabel(lead.utmAdGroup)}
                             </small>
                           )}
                         </td>

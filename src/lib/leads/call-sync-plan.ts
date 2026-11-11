@@ -14,6 +14,10 @@ export { FLORIDA_AREA_CODES };
 export const KNOWN_CALL_CAMPAIGNS: Record<string, { source: string; line: string; prefix: string }> = {
   "24080482948": { source: "Website", line: "Website new", prefix: "web" },
   "24134330302": { source: "CS2", line: "CS2", prefix: "cs2" },
+  // Launched 2026-11-10; see src/lib/google/campaign-registry.ts.
+  "24452301491": { source: "CS3", line: "CS3", prefix: "cs3" },
+  "24452305673": { source: "CS4", line: "CS4", prefix: "cs4" },
+  "24447046761": { source: "CS5", line: "CS5", prefix: "cs5" },
 };
 
 export type IncomingCall = {

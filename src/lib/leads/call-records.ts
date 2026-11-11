@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { canonicalCallSource } from "@/lib/google/campaign-registry";
 
 // Inbound call opportunities live in the Airtable "Calls" table (leads base).
 // Google Ads call details are imported by src/lib/leads/call-sync.ts; staff can
@@ -114,7 +115,7 @@ export const CALL_FIELDS = {
 export const CALL_KINDS: CallKind[] = ["conversation", "brief", "out-of-state", "hangup"];
 const CLINIC_ZONE = "America/New_York";
 // Established sources keep their original order and ids, which existing lead markers rely on.
-const SOURCE_ORDER = ["website", "cs2"];
+const SOURCE_ORDER = ["website", "cs2", "cs3", "cs4", "cs5"];
 
 export function callMarker(id: string) {
   return "[Call lead: " + id + "]";
@@ -135,7 +136,7 @@ export function mapCallRecord(record: { fields: Record<string, unknown> }): Call
   const when = clinicTime(String(f[CALL_FIELDS.occurredAt] ?? ""));
   if (!id || !when.isValid) return null;
   const storedKind = String(f[CALL_FIELDS.kind] ?? "");
-  const source = String(f[CALL_FIELDS.source] ?? "").trim() || "Other";
+  const source = canonicalCallSource(String(f[CALL_FIELDS.source] ?? "")) || "Other";
   const areaCode = String(f[CALL_FIELDS.areaCode] ?? "").trim() || "Unknown";
   const duration = Math.max(0, Math.round(Number(f[CALL_FIELDS.duration] ?? 0)) || 0);
   const missed = f[CALL_FIELDS.missed] === true;
