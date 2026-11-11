@@ -2743,7 +2743,7 @@ export default function LeadsClient() {
             <DateRangeFilter value={dateSelection} onChange={setDateRange} presets={LEAD_DATE_PRESETS} allowAll />
             <SelectControl
               label="Filter calls by status"
-              className="min-w-[112px] flex-1 sm:flex-none"
+              className="min-w-[104px] flex-1 sm:flex-none"
               value={callStatusFilter}
               onChange={(value) => setFilterParam("callStatus", value)}
               options={[
@@ -2764,7 +2764,7 @@ export default function LeadsClient() {
               }}
               title={needsDetailsFilter ? "Show every call" : "Show only calls nobody has logged yet"}
             >
-              {needsDetailsFilter ? <Check size={14} /> : <PhoneCall size={14} />}
+              {needsDetailsFilter ? <Check size={14} className="hidden sm:block" /> : <PhoneCall size={14} className="hidden sm:block" />}
               Needs details
               <span className="rounded-full px-1.5 py-0.5 text-[10px] tabular-nums" style={{ backgroundColor: "var(--surface-1)" }}>
                 {allCallRecords && !callData.checking ? callCardMetrics.needsDetails : "…"}
