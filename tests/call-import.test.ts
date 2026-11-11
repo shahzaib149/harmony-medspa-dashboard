@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { CALL_FIELDS, describeCallLines, formatCallRange, mapCallRecord, pageOfCall } from "../src/lib/leads/call-records";
+import { CALL_FIELDS, FLORIDA_AREA_CODES, areaCodeOf, callRegion, describeCallLines, formatCallRange, mapCallRecord, pageOfCall } from "../src/lib/leads/call-records";
 import { classifyCall, googleCallTime, planCallSync, type ExistingCall, type IncomingCall } from "../src/lib/leads/call-sync-plan";
 import { ALL_CALLS, CALL_SOURCES } from "./fixtures/call-history";
 
@@ -45,6 +45,36 @@ test("classification separates missed, out-of-state, hangups and conversations",
   assert.equal(call(70).assessment, "Real conversation");
   assert.equal(call(713).assessment, "Long conversation");
   assert.equal(call(40, "656").kind, "conversation", "Tampa overlay counts as Florida");
+});
+
+test("only the area code decides the region; a country code alone never does", () => {
+  const call = (durationSeconds: number, areaCode: string, countryCode: string) => classifyCall({ durationSeconds, areaCode, missed: false, countryCode });
+  // Nov 9 2026 10:22:48, callView 14689651873996677467: country "1", no area code, 14s.
+  assert.deepEqual(call(14, "", "1"), { kind: "hangup", assessment: "Hangup", areaLabel: "Unknown" });
+  assert.deepEqual(call(35, "", "+1"), { kind: "conversation", assessment: "Short but real", areaLabel: "Unknown" });
+  assert.deepEqual(call(17, "941", "1"), { kind: "brief", assessment: "Brief", areaLabel: "941" });
+  assert.deepEqual(call(57, "773", "1"), { kind: "out-of-state", assessment: "Out of state", areaLabel: "773" });
+  assert.equal(call(20, "813", "1").areaLabel, "813 · Florida");
+});
+
+test("the Florida list has all 23 active area codes", () => {
+  assert.deepEqual([...FLORIDA_AREA_CODES].sort(), ["239", "305", "321", "324", "352", "386", "407", "448", "561", "645", "656", "689",
+    "727", "728", "754", "772", "786", "813", "850", "863", "904", "941", "954"]);
+});
+
+test("stored labels map to a region; a stored Out of state with no area code is re-derived", () => {
+  assert.deepEqual(["941", "813 · Tampa", "305 · Florida", "330 · Ohio", "773", "Unknown", "", "1"].map(callRegion),
+    ["local", "florida", "florida", "out-of-state", "out-of-state", "unknown", "unknown", "unknown"]);
+  assert.equal(areaCodeOf("732 · Central New Jersey"), "732");
+  const row = (fields: Record<string, unknown>) => mapCallRecord({ fields: { [CALL_FIELDS.id]: "x", [CALL_FIELDS.occurredAt]: "2026-11-09T15:22:48.000Z", ...fields } })!;
+  const nov9 = row({ [CALL_FIELDS.areaCode]: "Unknown", [CALL_FIELDS.duration]: 14, [CALL_FIELDS.kind]: "out-of-state", [CALL_FIELDS.assessment]: "Out of state" });
+  assert.deepEqual([nov9.region, nov9.kind, nov9.assessment], ["unknown", "hangup", "Hangup"]);
+  const floridaMislabel = row({ [CALL_FIELDS.areaCode]: "813", [CALL_FIELDS.duration]: 40, [CALL_FIELDS.kind]: "out-of-state", [CALL_FIELDS.assessment]: "Out of state" });
+  assert.deepEqual([floridaMislabel.region, floridaMislabel.assessment], ["florida", "Short but real"]);
+  const realOut = row({ [CALL_FIELDS.areaCode]: "330 · Ohio", [CALL_FIELDS.duration]: 87, [CALL_FIELDS.kind]: "out-of-state", [CALL_FIELDS.assessment]: "Out of state, but long" });
+  assert.deepEqual([realOut.region, realOut.assessment], ["out-of-state", "Out of state, but long"]);
+  const staffEdit = row({ [CALL_FIELDS.areaCode]: "Unknown", [CALL_FIELDS.duration]: 50, [CALL_FIELDS.kind]: "conversation", [CALL_FIELDS.assessment]: "Booked consult" });
+  assert.equal(staffEdit.assessment, "Booked consult", "staff edits that aren't Out of state are kept");
 });
 
 test("Google call times convert from the account time zone to clinic time", () => {

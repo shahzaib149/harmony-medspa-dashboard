@@ -1,12 +1,14 @@
 import { DateTime } from "luxon";
-import { CALL_FIELDS, callSourceId, type CallKind } from "./call-records";
+import {
+  CALL_FIELDS,
+  FLORIDA_AREA_CODES,
+  LOCAL_AREA_CODE,
+  callSourceId,
+  durationAssessment,
+  type CallKind,
+} from "./call-records";
 
-// Active Florida area codes (23, including the 324/448/645/656/728 overlays).
-export const FLORIDA_AREA_CODES = new Set([
-  "239", "305", "321", "324", "352", "386", "407", "448", "561", "645", "656", "689",
-  "727", "728", "754", "772", "786", "813", "850", "863", "904", "941", "954",
-]);
-const LOCAL_AREA_CODE = "941";
+export { FLORIDA_AREA_CODES };
 
 // Matched by campaign ID so a renamed campaign keeps its source and call ids.
 export const KNOWN_CALL_CAMPAIGNS: Record<string, { source: string; line: string; prefix: string }> = {
@@ -46,20 +48,20 @@ export function classifyCall(call: Pick<IncomingCall, "durationSeconds" | "misse
   assessment: string;
   areaLabel: string;
 } {
-  const code = call.areaCode.trim();
-  const domestic = !call.countryCode || call.countryCode.toUpperCase() === "US";
-  const inFlorida = domestic && FLORIDA_AREA_CODES.has(code);
-  const areaLabel = !code ? "Unknown" : code === LOCAL_AREA_CODE ? code : inFlorida ? `${code} · Florida` : domestic ? code : `${code} · ${call.countryCode.toUpperCase()}`;
+  // Only the area code decides the region. Google sends caller_country_code "1"
+  // (or "US") for domestic calls, often with no area code at all; a country code
+  // alone must never make a call "Out of state".
+  const code = /^\d{3}$/.test(call.areaCode.trim()) ? call.areaCode.trim() : "";
+  const country = call.countryCode.trim().toUpperCase();
+  const foreign = Boolean(country) && !["1", "+1", "US"].includes(country);
+  const inFlorida = FLORIDA_AREA_CODES.has(code);
+  const areaLabel = !code ? "Unknown" : code === LOCAL_AREA_CODE ? code : inFlorida ? `${code} · Florida` : foreign ? `${code} · ${country}` : code;
   const seconds = call.durationSeconds;
-  if (call.missed) return { kind: "hangup", assessment: "Missed call", areaLabel };
+  if (call.missed) return { ...durationAssessment(seconds, true), areaLabel };
   if (code && !inFlorida) {
     return { kind: "out-of-state", assessment: seconds >= 60 ? "Out of state, but long" : "Out of state", areaLabel };
   }
-  if (seconds < 15) return { kind: "hangup", assessment: "Hangup", areaLabel };
-  if (seconds < 30) return { kind: "brief", assessment: "Brief", areaLabel };
-  if (seconds < 45) return { kind: "conversation", assessment: "Short but real", areaLabel };
-  if (seconds < 180) return { kind: "conversation", assessment: "Real conversation", areaLabel };
-  return { kind: "conversation", assessment: "Long conversation", areaLabel };
+  return { ...durationAssessment(seconds, false), areaLabel };
 }
 
 /** Google Ads reports call times as "yyyy-MM-dd HH:mm:ss" in the account's time zone. */
