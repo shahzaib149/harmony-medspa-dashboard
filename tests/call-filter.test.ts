@@ -15,7 +15,7 @@ test("seven-day range matches Overview and includes the missed calls", () => {
   const calls = filterCalls(ALL_CALLS, window.fromDate, window.toDate);
   assert.equal(calls.length, 10);
   assert.equal(calls.filter((call) => call.missed).length, 2);
-  assert.equal(filterCalls(CALL_SOURCES[0].calls, window.fromDate, window.toDate).length, 0);
+  assert.equal(filterCalls(CALL_SOURCES.find((source) => source.id === "website")!.calls, window.fromDate, window.toDate).length, 0);
 });
 
 test("date windows follow the clinic timezone rather than UTC midnight", () => {

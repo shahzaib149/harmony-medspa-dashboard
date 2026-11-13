@@ -17,10 +17,11 @@ test("the Calls table reproduces the previously hard-coded history exactly", () 
 
 test("sources, ranges and labels are derived from the data", () => {
   assert.deepEqual(CALL_SOURCES.map((source) => [source.id, source.label, source.line, source.calls.length, source.range]), [
-    ["website", "Website", "Website new", 24, "Aug 3–Sep 8, 2026"],
+    // Registry order (2026-11-13): active CS2 first, ended Website last.
     ["cs2", "CS2", "CS2", 29, "Aug 31–Oct 21, 2026"],
+    ["website", "Website", "Website new", 24, "Aug 3–Sep 8, 2026"],
   ]);
-  assert.equal(describeCallLines(CALL_SOURCES), "Website and CS2");
+  assert.equal(describeCallLines(CALL_SOURCES), "CS2 and Website");
   assert.equal(formatCallRange(ALL_CALLS), "Aug 3–Oct 21, 2026");
   assert.equal(formatCallRange([]), "No calls yet");
 });
@@ -112,7 +113,7 @@ test("new calls get stable source-prefixed ids that never collide", () => {
     ],
     "2026-10-27T00:00:00Z",
   );
-  assert.deepEqual(plan.create.map((fields) => fields[CALL_FIELDS.id]), ["web-2026-10-22-1000-2", "web-2026-10-22-1000-3", "weight-loss-2026-10-23-1105"]);
+  assert.deepEqual(plan.create.map((fields) => fields[CALL_FIELDS.id]), ["web-2026-10-22-1000-2", "web-2026-10-22-1000-3", "gads-2026-10-23-1105"]); // unknown campaigns use Make's "gads" prefix
   const [first, missed, other] = plan.create;
   assert.equal(first[CALL_FIELDS.source], "Website");
   assert.equal(first[CALL_FIELDS.line], "Website new");

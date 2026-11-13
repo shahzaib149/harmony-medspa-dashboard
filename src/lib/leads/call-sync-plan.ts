@@ -3,22 +3,18 @@ import {
   CALL_FIELDS,
   FLORIDA_AREA_CODES,
   LOCAL_AREA_CODE,
-  callSourceId,
   durationAssessment,
   type CallKind,
 } from "./call-records";
+import { CAMPAIGNS, callLabelsForCampaign } from "@/lib/google/campaign-registry";
 
 export { FLORIDA_AREA_CODES };
 
-// Matched by campaign ID so a renamed campaign keeps its source and call ids.
-export const KNOWN_CALL_CAMPAIGNS: Record<string, { source: string; line: string; prefix: string }> = {
-  "24080482948": { source: "Website", line: "Website new", prefix: "web" },
-  "24134330302": { source: "CS2", line: "CS2", prefix: "cs2" },
-  // Launched 2026-11-10; see src/lib/google/campaign-registry.ts.
-  "24452301491": { source: "CS3", line: "CS3", prefix: "cs3" },
-  "24452305673": { source: "CS4", line: "CS4", prefix: "cs4" },
-  "24447046761": { source: "CS5", line: "CS5", prefix: "cs5" },
-};
+// Matched by campaign ID so a renamed campaign keeps its source and call ids. Derived from
+// the campaign registry, which mirrors the Make "Daily Call Import" scenario (6807651).
+export const KNOWN_CALL_CAMPAIGNS: Record<string, { source: string; line: string; prefix: string }> = Object.fromEntries(
+  CAMPAIGNS.map((campaign) => [campaign.id, { source: campaign.code, line: campaign.callLine, prefix: campaign.callPrefix }]),
+);
 
 export type IncomingCall = {
   googleCall: string;
@@ -74,11 +70,9 @@ export function googleCallTime(value: string, accountTimeZone: string) {
   return time.isValid ? time.setZone("America/New_York").toISO({ suppressMilliseconds: true }) : null;
 }
 
+/** Same mapping as Make: known campaign → code / line / prefix; any other → its name and "gads". */
 function sourceFor(call: IncomingCall) {
-  const known = KNOWN_CALL_CAMPAIGNS[call.campaignId];
-  if (known) return known;
-  const name = call.campaignName.trim() || `Campaign ${call.campaignId}`;
-  return { source: name, line: name, prefix: callSourceId(name) };
+  return callLabelsForCampaign(call.campaignId, call.campaignName);
 }
 
 /**

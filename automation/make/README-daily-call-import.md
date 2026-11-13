@@ -22,7 +22,18 @@ Status: **active since 2026-11-03.** Runs daily at 08:00 America/New_York.
 ```
 
 The classification mirrors `classifyCall` / `planCallSync` in `src/lib/leads/call-sync-plan.ts`.
-Change both together. Sources are mapped by campaign ID: 24134330302 → CS2, 24080482948 → Website ("Website new").
+Change both together. Sources are mapped by campaign ID (module 2 `source` / `line` / `prefix`, and `src/lib/google/campaign-registry.ts` for the dashboard):
+
+| Campaign ID | Source | Line | Call ID prefix |
+|---|---|---|---|
+| 24134330302 | CS2 | CS2 | cs2- |
+| 24447046761 | CS5 | CS5 Brand | cs5- |
+| 24452301491 | CS3 | CS3 Hormone | cs3- |
+| 24452305673 | CS4 | CS4 Aesthetics | cs4- |
+| 24080482948 | Website | Website new | web- |
+| any other | campaign name | campaign name | gads- |
+
+Since 2026-11-13 the scenario also writes Campaign ID, and the dashboard groups calls by it (falling back to Source).
 
 | Item | Value |
 |---|---|

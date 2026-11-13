@@ -1,6 +1,6 @@
 import { countsAsRealLead, needsReview } from "@/lib/leads/classification";
 import { LEAD_VIEWS, leadBelongsToView, type LeadView } from "@/lib/leads/view";
-import { adCampaignLabel, adGroupLabel } from "@/lib/google/campaign-registry";
+import { adCampaignLabel, adGroupLabel, campaignByUtm } from "@/lib/google/campaign-registry";
 
 export type LeadSummaryRecord = {
   id: string;
@@ -157,9 +157,12 @@ export function aggregateLeadSummary(
 export function groupByAdCampaign(records: LeadSummaryRecord[]): AdCampaignBreakdown[] {
   const groups = new Map<string, AdCampaignBreakdown>();
   for (const record of records) {
-    const code = (record.utmCampaign ?? "").trim().toLowerCase();
-    if (!code) continue;
-    const group = groups.get(code) ?? { code, label: adCampaignLabel(code), total: 0, booked: 0, adGroups: [] };
+    const utm = (record.utmCampaign ?? "").trim().toLowerCase();
+    if (!utm) continue;
+    // One group per campaign: cs2_main and cs2_weight_loss are both "CS2".
+    const campaign = campaignByUtm(utm);
+    const code = campaign?.code ?? utm;
+    const group = groups.get(code) ?? { code, label: campaign?.label ?? adCampaignLabel(utm), total: 0, booked: 0, adGroups: [] };
     group.total += 1;
     if (record.status.trim().toLowerCase() === "booked") group.booked += 1;
     const adGroupId = (record.utmAdGroup ?? "").trim() || "(none)";

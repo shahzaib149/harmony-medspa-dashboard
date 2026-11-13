@@ -54,7 +54,7 @@ import { useCallLeads } from "@/lib/leads/use-call-leads";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { dateRangeParams, resolveDateRange } from "@/lib/date-range";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
-import { ACTIVE_CAMPAIGNS, adCampaignLabel, adGroupLabel } from "@/lib/google/campaign-registry";
+import { LEAD_CAMPAIGNS, adCampaignLabel, adGroupLabel, callSourceLabel, campaignByCode } from "@/lib/google/campaign-registry";
 import {
   DEFAULT_LEAD_VIEW,
   leadBelongsToView,
@@ -904,8 +904,14 @@ function LeadTicker({
 const AD_CAMPAIGN_OPTIONS = [
   { label: "All ad campaigns", value: "all" },
   { label: "Any Google Ads campaign", value: "google-ads" },
-  ...ACTIVE_CAMPAIGNS.flatMap((campaign) => (campaign.utmCampaign ? [{ label: campaign.label, value: campaign.utmCampaign }] : [])),
+  // Value is the campaign code, so CS2 covers both cs2_main and cs2_weight_loss.
+  ...LEAD_CAMPAIGNS.map((campaign) => ({ label: campaign.lifecycle === "paused" ? `${campaign.label} (paused)` : campaign.label, value: campaign.code })),
 ];
+
+/** Chip / breakdown label for an adCampaign filter value (campaign code or raw utm code). */
+function adCampaignFilterLabel(value: string) {
+  return campaignByCode(value)?.label ?? adCampaignLabel(value);
+}
 
 /** "CS3 Hormone Optimization (cs3_hormone)"; just the value when no readable name exists. */
 function withCode(label: string, code: string) {
@@ -2215,7 +2221,7 @@ export default function LeadsClient() {
     campaignStepFilter !== "all" ? { key: "campaignStep", label: `Step: ${campaignStepFilter}` } : null,
     statusFilter !== "all" ? { key: "status", label: `Lead status: ${statusFilter}` } : null,
     sourceFilter !== "all" ? { key: "source", label: `Source: ${sourceFilter}` } : null,
-    adCampaignFilter !== "all" ? { key: "adCampaign", label: `Ad campaign: ${adCampaignFilter === "google-ads" ? "All Google Ads" : adCampaignLabel(adCampaignFilter)}` } : null,
+    adCampaignFilter !== "all" ? { key: "adCampaign", label: `Ad campaign: ${adCampaignFilter === "google-ads" ? "All Google Ads" : adCampaignFilterLabel(adCampaignFilter)}` } : null,
     dateRange ? { key: "date", label: dateRange.label } : null,
     smsFilter !== "all" ? { key: "smsStatus", label: smsFilter === "sent" ? "SMS sent" : "SMS not sent" } : null,
     emailFilter !== "all" ? { key: "emailStatus", label: emailFilter === "sent" ? "Email sent" : "Email not sent" } : null,
@@ -2587,8 +2593,10 @@ export default function LeadsClient() {
   );
   const callSourceOptions = [
     { label: "All sources", value: "all" },
-    ...groupCallSources(allCallRecords ?? []).map((item) => ({ label: item.label, value: item.id })),
-    ...(callSourceFilter !== "all" && !groupCallSources(allCallRecords ?? []).some((item) => item.id === callSourceFilter)
+    // Every campaign is listed (CS2, CS5, CS3, CS4, Website), plus Other Google Ads or any
+    // hand-entered source once a call has it, so no call is ever unreachable.
+    ...groupCallSources(allCallRecords ?? [], { includeCampaigns: true }).map((item) => ({ label: callSourceLabel(item.label), value: item.id })),
+    ...(callSourceFilter !== "all" && !groupCallSources(allCallRecords ?? [], { includeCampaigns: true }).some((item) => item.id === callSourceFilter)
       ? [{ label: callSourceFilter, value: callSourceFilter }] : []),
   ];
   const callCards: Array<{ label: string; value: number | string; meta: string; color: string; active?: boolean; onClick?: () => void }> = [

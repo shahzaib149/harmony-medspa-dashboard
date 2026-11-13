@@ -1,6 +1,6 @@
 import { isAiTag, NOT_A_LEAD_FILTER, NOT_A_LEAD_FORMULA } from "@/lib/leads/classification";
 import { leadViewFormula, normalizeLeadView } from "@/lib/leads/view";
-import { ACTIVE_CAMPAIGNS } from "@/lib/google/campaign-registry";
+import { ALL_UTM_CAMPAIGNS, utmCampaignsFor } from "@/lib/google/campaign-registry";
 
 import type { DateTime } from "luxon";
 import { clinicRangeToUtc } from "@/lib/date-range";
@@ -108,15 +108,16 @@ export function buildLeadFormula(
     );
   }
 
-  // Google Ads campaign (utm_campaign code) and ad group (utm_adgroup ID).
-  // "google-ads" = any lead from an active registry campaign.
+  // Google Ads campaign and ad group (utm_adgroup ID). adCampaign is a registry code
+  // ("CS2" covers cs2_main and cs2_weight_loss) or a raw utm_campaign value;
+  // "google-ads" = any lead carrying a utm code the registry knows (current or legacy).
   const adCampaign = searchParams.get("adCampaign")?.trim();
-  if (adCampaign === "google-ads") {
-    const codes = ACTIVE_CAMPAIGNS.flatMap((entry) => (entry.utmCampaign ? [entry.utmCampaign] : []));
-    filters.push(`OR(${codes.map((code) => `LOWER({UTM Campaign}&"")="${code}"`).join(",")})`);
-  } else if (adCampaign && adCampaign.toLowerCase() !== "all") {
-    filters.push(`LOWER({UTM Campaign}&"")="${formulaString(adCampaign.toLowerCase())}"`);
-  }
+  const anyOf = (codes: string[]) => {
+    const clauses = codes.map((code) => `LOWER({UTM Campaign}&"")="${formulaString(code.toLowerCase())}"`);
+    filters.push(clauses.length > 1 ? `OR(${clauses.join(",")})` : clauses[0]);
+  };
+  if (adCampaign === "google-ads") anyOf(ALL_UTM_CAMPAIGNS);
+  else if (adCampaign && adCampaign.toLowerCase() !== "all") anyOf(utmCampaignsFor(adCampaign));
   const adGroup = searchParams.get("adGroup")?.trim();
   if (adGroup && /^\d+$/.test(adGroup)) filters.push(`TRIM({UTM Ad Group}&"")="${adGroup}"`);
 

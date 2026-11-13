@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { canonicalCallSource } from "@/lib/google/campaign-registry";
+import { CALL_SOURCE_ORDER, OTHER_GOOGLE_ADS, callBucket, campaignByCode } from "@/lib/google/campaign-registry";
 
 // Inbound call opportunities live in the Airtable "Calls" table (leads base).
 // Google Ads call details are imported by src/lib/leads/call-sync.ts; staff can
@@ -82,8 +82,11 @@ export type CallRecord = {
   assessment: string;
   kind: CallKind;
   missed?: boolean;
+  /** Calls bucket: the campaign code ("CS2", "CS5", "Website"), "Other Google Ads", or a hand-entered Source. */
   source: string;
   line: string;
+  /** Google Ads campaign ID when the import recorded one. */
+  campaignId?: string;
 };
 
 export type CallSourceId = string;
@@ -114,8 +117,9 @@ export const CALL_FIELDS = {
 
 export const CALL_KINDS: CallKind[] = ["conversation", "brief", "out-of-state", "hangup"];
 const CLINIC_ZONE = "America/New_York";
-// Established sources keep their original order and ids, which existing lead markers rely on.
-const SOURCE_ORDER = ["website", "cs2", "cs3", "cs4", "cs5"];
+// Bucket ids are slugs of the campaign code ("cs2", "website"), which existing lead markers
+// and ?callSource= links rely on. Order: active campaigns, paused, ended, Other Google Ads.
+const SOURCE_ORDER = [...CALL_SOURCE_ORDER, OTHER_GOOGLE_ADS].map((code) => callSourceId(code));
 
 export function callMarker(id: string) {
   return "[Call lead: " + id + "]";
@@ -136,7 +140,14 @@ export function mapCallRecord(record: { fields: Record<string, unknown> }): Call
   const when = clinicTime(String(f[CALL_FIELDS.occurredAt] ?? ""));
   if (!id || !when.isValid) return null;
   const storedKind = String(f[CALL_FIELDS.kind] ?? "");
-  const source = canonicalCallSource(String(f[CALL_FIELDS.source] ?? "")) || "Other";
+  // Campaign ID first (registry), then Source; unknown Google Ads campaigns → "Other Google Ads".
+  const campaignId = String(f[CALL_FIELDS.campaignId] ?? "").trim();
+  const bucket = callBucket({
+    campaignId,
+    source: String(f[CALL_FIELDS.source] ?? ""),
+    googleAds: String(f[CALL_FIELDS.origin] ?? "") === "Google Ads sync" || Boolean(String(f[CALL_FIELDS.googleCall] ?? "").trim()),
+  });
+  const source = bucket.code;
   const areaCode = String(f[CALL_FIELDS.areaCode] ?? "").trim() || "Unknown";
   const duration = Math.max(0, Math.round(Number(f[CALL_FIELDS.duration] ?? 0)) || 0);
   const missed = f[CALL_FIELDS.missed] === true;
@@ -159,7 +170,9 @@ export function mapCallRecord(record: { fields: Record<string, unknown> }): Call
     kind,
     ...(missed ? { missed: true } : {}),
     source,
-    line: String(f[CALL_FIELDS.line] ?? "").trim() || source,
+    // Registry campaigns use the registry line; anything else keeps its stored Line.
+    line: campaignByCode(source) ? bucket.line : String(f[CALL_FIELDS.line] ?? "").trim() || bucket.line,
+    ...(campaignId ? { campaignId } : {}),
   };
 }
 
@@ -174,8 +187,19 @@ export function formatCallRange(calls: CallRecord[]) {
   return `${first.toFormat("LLL d, yyyy")}–${last.toFormat("LLL d, yyyy")}`;
 }
 
-export function groupCallSources(calls: CallRecord[]): CallSource[] {
+/**
+ * Calls grouped by bucket. With `includeCampaigns`, every registry campaign gets a group even
+ * with no calls yet (used for the Call Leads source filter, so CS5 is pickable before its
+ * first call); other callers only see groups that have calls.
+ */
+export function groupCallSources(calls: CallRecord[], options: { includeCampaigns?: boolean } = {}): CallSource[] {
   const groups = new Map<CallSourceId, CallSource>();
+  if (options.includeCampaigns) {
+    for (const code of CALL_SOURCE_ORDER) {
+      const campaign = campaignByCode(code)!;
+      groups.set(callSourceId(code), { id: callSourceId(code), label: code, line: campaign.callLine, range: "", calls: [] });
+    }
+  }
   for (const call of calls) {
     const id = callSourceId(call.source);
     const group = groups.get(id) ?? { id, label: call.source, line: call.line, range: "", calls: [] };
