@@ -13,7 +13,8 @@ export { FLORIDA_AREA_CODES };
 // Matched by campaign ID so a renamed campaign keeps its source and call ids. Derived from
 // the campaign registry, which mirrors the Make "Daily Call Import" scenario (6807651).
 export const KNOWN_CALL_CAMPAIGNS: Record<string, { source: string; line: string; prefix: string }> = Object.fromEntries(
-  CAMPAIGNS.map((campaign) => [campaign.id, { source: campaign.code, line: campaign.callLine, prefix: campaign.callPrefix }]),
+  CAMPAIGNS.filter((campaign) => campaign.makeMapped !== false)
+    .map((campaign) => [campaign.id, { source: campaign.code, line: campaign.callLine, prefix: campaign.callPrefix }]),
 );
 
 export type IncomingCall = {

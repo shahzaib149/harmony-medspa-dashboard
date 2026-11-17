@@ -19,18 +19,26 @@ import { KNOWN_CALL_CAMPAIGNS, planCallSync } from "../src/lib/leads/call-sync-p
 import { buildLeadFormula } from "../src/lib/leads/query";
 import { groupByAdCampaign, type LeadSummaryRecord } from "../src/lib/leads/summary";
 
-test("registry: Nov 12 structure (CS2 Harmony Main $45, CS5 $5 active; CS3/CS4 paused; Website ended)", () => {
+test("registry: Nov 17 structure (CS6 active $200 Nov 18–30; CS2/CS5/CS3/CS4 paused; Website ended)", () => {
   assert.deepEqual(
     CAMPAIGNS.map((c) => [c.code, c.id, c.lifecycle, c.dailyBudget]),
     [
-      ["CS2", "24134330302", "active", 45],
-      ["CS5", "24447046761", "active", 5],
+      ["CS6", "24474577625", "active", null],
+      ["CS2", "24134330302", "paused", 45],
+      ["CS5", "24447046761", "paused", 5],
       ["CS3", "24452301491", "paused", null],
       ["CS4", "24452305673", "paused", null],
       ["Website", "24080482948", "ended", null],
     ],
   );
-  assert.deepEqual(ACTIVE_CAMPAIGNS.map((c) => c.code), ["CS2", "CS5"]);
+  assert.deepEqual(ACTIVE_CAMPAIGNS.map((c) => c.code), ["CS6"]);
+  const cs6 = campaignById("24474577625")!;
+  assert.equal(cs6.name, "CS6 | Local Med Spa & Facials | Sarasota");
+  assert.equal(cs6.totalBudget, 200);
+  assert.deepEqual(cs6.flight, { start: "2026-11-18", end: "2026-11-30" });
+  assert.deepEqual(cs6.utmCampaigns, ["cs6_local"]);
+  assert.deepEqual(cs6.adGroups.map((g) => [g.id, g.label]), [["205276469754", "Med Spa Sarasota (CS6)"], ["202287702956", "Facials & Glo2Facial (CS6)"]]);
+  assert.equal(adCampaignLabel("cs6_local"), "CS6 Local Med Spa & Facials");
   assert.equal(campaignById("24134330302")?.name, "CS2 | Harmony Main | Sarasota");
   assert.deepEqual(campaignById("24134330302")?.adGroups.map((g) => g.id), ["194482691170", "203567439833", "203567451553", "202693470432", "201362020079", "202693487912"]);
 });
@@ -90,17 +98,37 @@ test("calls: Campaign ID first, Source fallback, unknown Google Ads → Other Go
 test("calls filter lists every campaign even before its first call; deep links work for every prefix", () => {
   const calls = ["cs2-2026-11-10-1000", "web-2026-08-10-1000", "cs5-2026-11-12-0934", "cs3-2026-11-11-1000", "cs4-2026-11-11-1100", "gads-2026-11-12-1200"].map((id, i) =>
     row({ "Call ID": id, "Occurred At": `2026-11-1${i % 3}T1${i}:00:00.000Z`, Source: id.startsWith("gads") ? "Spring Promo" : "", "Campaign ID": { cs2: "24134330302", web: "24080482948", cs5: "24447046761", cs3: "24452301491", cs4: "24452305673", gads: "999" }[id.split("-")[0]] }));
-  assert.deepEqual(groupCallSources([], { includeCampaigns: true }).map((g) => [g.id, g.calls.length]), [["cs2", 0], ["cs5", 0], ["cs3", 0], ["cs4", 0], ["website", 0]]);
+  assert.deepEqual(groupCallSources([], { includeCampaigns: true }).map((g) => [g.id, g.calls.length]), [["cs6", 0], ["cs2", 0], ["cs5", 0], ["cs3", 0], ["cs4", 0], ["website", 0]]);
   assert.deepEqual(groupCallSources(calls).map((g) => g.id), ["cs2", "cs5", "cs3", "cs4", "website", "other-google-ads"]);
   for (const call of calls) {
     const visible = filterCallLeads(calls, { source: "all" }, new Set());
     assert.notEqual(pageOfCall(visible, call.id, 10), null, `${call.id} is reachable from the deep link`);
     assert.equal(filterCallLeads(calls, { source: call.source === "Other Google Ads" ? "other-google-ads" : call.source.toLowerCase() }, new Set()).some((c) => c.id === call.id), true);
   }
-  assert.equal(callSourceLabel("CS2"), "CS2 Harmony Main");
-  assert.equal(callSourceLabel("CS5"), "CS5 Brand");
+  assert.equal(callSourceLabel("CS6"), "CS6 Local");
+  assert.equal(callSourceLabel("CS2"), "CS2 Harmony Main (paused)");
+  assert.equal(callSourceLabel("CS5"), "CS5 Brand (paused)");
   assert.equal(callSourceLabel("CS3"), "CS3 Hormone (paused)");
   assert.equal(callSourceLabel("Website"), "Website new (ended)");
+});
+
+test("CS6 calls: Make writes the campaign name and gads- (no explicit row yet); the Calls view files them under CS6", () => {
+  // The dashboard importer matches what Make writes today for an unmapped campaign.
+  assert.deepEqual(
+    callLabelsForCampaign("24474577625", "CS6 | Local Med Spa & Facials | Sarasota"),
+    { source: "CS6 | Local Med Spa & Facials | Sarasota", line: "CS6 | Local Med Spa & Facials | Sarasota", prefix: "gads" },
+  );
+  assert.equal(KNOWN_CALL_CAMPAIGNS["24474577625"], undefined);
+  // A Calls row as Make writes it lands in the CS6 group, never hidden.
+  const cs6 = row({ "Call ID": "gads-2026-11-18-1015", Source: "CS6 | Local Med Spa & Facials | Sarasota", Line: "CS6 | Local Med Spa & Facials | Sarasota", "Campaign ID": "24474577625", Origin: "Google Ads sync" });
+  assert.equal(cs6.source, "CS6");
+  assert.equal(cs6.line, "CS6 Local");
+  // Even without a Campaign ID, the full name maps to CS6; an unknown campaign goes to Other Google Ads.
+  assert.equal(row({ "Call ID": "gads-x", Source: "CS6 | Local Med Spa & Facials | Sarasota", Origin: "Google Ads sync" }).source, "CS6");
+  const groups = groupCallSources([cs6], { includeCampaigns: true });
+  assert.equal(groups[0].id, "cs6");
+  assert.equal(groups[0].calls.length, 1);
+  assert.equal(filterCallLeads([cs6], { source: "cs6" }, new Set()).length, 1);
 });
 
 test("lead filter: campaign code covers legacy utm codes; any-Google-Ads covers every known code", () => {

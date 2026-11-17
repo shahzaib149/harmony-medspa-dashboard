@@ -8,9 +8,10 @@
 // - the Make "Daily Call Import" scenario 6807651, module 2 (same Source / Line /
 //   Call ID prefix per campaign ID; any other campaign → its name and prefix "gads").
 //
-// Structure as of 2026-11-12: CS2 "Harmony Main" carries every service ad group;
+// Structure as of 2026-11-17: CS6 "Local Med Spa & Facials" is the only active campaign
+// ($200 total, Nov 18–30). CS2 "Harmony Main" and CS5 Brand are paused until Dec 1;
 // CS3 and CS4 are paused (their ad groups kept for history as "(old CS3/CS4)");
-// CS5 Brand is active; Website new ended Aug 31.
+// Website new ended Aug 31.
 
 export const GOOGLE_ADS_ACCOUNT_ID = "7080113749";
 
@@ -37,6 +38,17 @@ export type CampaignEntry = {
   utmCampaigns: string[];
   /** Planned daily budget in USD (null when the campaign has none). */
   dailyBudget: number | null;
+  /** Campaign total budget in USD, for flight campaigns (null otherwise). */
+  totalBudget?: number | null;
+  /** Flight dates (inclusive, clinic time) when the campaign only runs for a set period. */
+  flight?: { start: string; end: string };
+  /**
+   * false when the Make call import (6807651) has no explicit row for this campaign yet:
+   * it then writes the campaign name as Source / Line and the "gads" prefix, so the
+   * dashboard importer does the same. The Calls view still files these calls under the
+   * campaign code by Campaign ID.
+   */
+  makeMapped?: boolean;
   /** "paused" and "ended" campaigns are left out of active pickers but keep their history. */
   lifecycle: CampaignLifecycle;
   /** Calls table Line and Call ID prefix written by the importers. */
@@ -47,13 +59,31 @@ export type CampaignEntry = {
 
 export const CAMPAIGNS: readonly CampaignEntry[] = [
   {
+    code: "CS6",
+    id: "24474577625",
+    name: "CS6 | Local Med Spa & Facials | Sarasota",
+    label: "CS6 Local Med Spa & Facials",
+    utmCampaigns: ["cs6_local"],
+    dailyBudget: null,
+    totalBudget: 200,
+    flight: { start: "2026-11-18", end: "2026-11-30" },
+    lifecycle: "active",
+    callLine: "CS6 Local",
+    callPrefix: "cs6",
+    makeMapped: false,
+    adGroups: [
+      { id: "205276469754", name: "Med Spa Sarasota", label: "Med Spa Sarasota (CS6)", landingPage: "/landing/november-specials" },
+      { id: "202287702956", name: "Facials & Glo2Facial", label: "Facials & Glo2Facial (CS6)", landingPage: "/glo2facials" },
+    ],
+  },
+  {
     code: "CS2",
     id: "24134330302",
     name: "CS2 | Harmony Main | Sarasota",
     label: "CS2 Harmony Main",
     utmCampaigns: ["cs2_main", "cs2_weight_loss"],
     dailyBudget: 45,
-    lifecycle: "active",
+    lifecycle: "paused", // paused 2026-11-17 until Dec 1 while CS6 runs
     callLine: "CS2",
     callPrefix: "cs2",
     adGroups: [
@@ -72,7 +102,7 @@ export const CAMPAIGNS: readonly CampaignEntry[] = [
     label: "CS5 Brand",
     utmCampaigns: ["cs5_brand"],
     dailyBudget: 5,
-    lifecycle: "active",
+    lifecycle: "paused", // paused 2026-11-17 until Dec 1 while CS6 runs
     callLine: "CS5 Brand",
     callPrefix: "cs5",
     adGroups: [{ id: "205117916634", name: "Brand", label: "Brand", landingPage: "/" }],
@@ -171,8 +201,8 @@ export function adGroupLabel(utmAdGroup: string | null | undefined) {
 /** Calls importer mapping (dashboard /api/calls/sync), identical to the Make scenario. */
 export function callLabelsForCampaign(campaignId: string, campaignName: string) {
   const campaign = campaignById(campaignId);
-  if (campaign) return { source: campaign.code, line: campaign.callLine, prefix: campaign.callPrefix };
-  const name = campaignName.trim() || `Campaign ${campaignId}`;
+  if (campaign && campaign.makeMapped !== false) return { source: campaign.code, line: campaign.callLine, prefix: campaign.callPrefix };
+  const name = campaignName.trim() || campaign?.name || `Campaign ${campaignId}`;
   return { source: name, line: name, prefix: UNKNOWN_CALL_PREFIX };
 }
 
