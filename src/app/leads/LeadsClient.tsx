@@ -54,6 +54,7 @@ import { useCallLeads } from "@/lib/leads/use-call-leads";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { dateRangeParams, resolveDateRange } from "@/lib/date-range";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
+import { automaticHaydenAlert, type ManualHaydenNotification } from "@/lib/leads/hayden-alert";
 import { LEAD_CAMPAIGNS, adCampaignLabel, adGroupLabel, callSourceLabel, campaignByCode } from "@/lib/google/campaign-registry";
 import {
   DEFAULT_LEAD_VIEW,
@@ -935,6 +936,59 @@ function attributionItems(lead: Lead) {
   ] as Array<[string, string]>).filter(([, value]) => Boolean(value));
 }
 
+/**
+ * Campaign Activity entry for the last Speed-to-Lead step: the automatic email to Hayden and
+ * management (derived from the classification Make saves just before sending it), plus any
+ * "Notify Hayden" sends from the dashboard (audit log).
+ */
+function HaydenNotificationActivity({
+  lead,
+  notifiedThisSession,
+  getAuthHeaders,
+}: {
+  lead: Lead;
+  notifiedThisSession: boolean;
+  getAuthHeaders: () => Promise<HeadersInit>;
+}) {
+  const automatic = automaticHaydenAlert(lead);
+  const [manual, setManual] = useState<ManualHaydenNotification[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/airtable/leads/${lead.id}/notify-hayden`, { headers: await getAuthHeaders(), cache: "no-store" });
+        const data = (await response.json().catch(() => ({}))) as { notifications?: ManualHaydenNotification[] };
+        if (!cancelled) setManual(Array.isArray(data.notifications) ? data.notifications : []);
+      } catch {
+        if (!cancelled) setManual([]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // getAuthHeaders is recreated on every parent render; refetch only for a new lead or a new send.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id, notifiedThisSession]);
+
+  const sends = manual ?? [];
+  if (!automatic && !sends.length && !notifiedThisSession) return null;
+  return (
+    <div className="mt-3 rounded-xl p-3 text-xs" style={{ backgroundColor: "rgba(255,255,255,.025)", color: MUTED }} data-testid="hayden-activity">
+      <div className="flex items-center justify-between gap-3">
+        <b className="inline-flex items-center gap-1.5" style={{ color: TEXT }}><Bell size={13} aria-hidden="true" /> Hayden notified</b>
+        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: "var(--success)", backgroundColor: "var(--success-bg, rgba(34,197,94,.12))" }}>Notified</span>
+      </div>
+      {automatic && (
+        <p className="mt-2">
+          Automatic · Speed-to-Lead emailed Hayden and management when this lead was classified as {automatic.leadType} · {formatCampaignDate(automatic.at)}
+        </p>
+      )}
+      {sends.map((send) => (
+        <p key={send.at} className="mt-1">Sent from the dashboard by {send.by} · {formatCampaignDate(send.at)}</p>
+      ))}
+      {notifiedThisSession && !sends.length && <p className="mt-1">Sent from the dashboard just now</p>}
+    </div>
+  );
+}
+
 function LeadDetailsModal({
   lead,
   duplicate,
@@ -1454,6 +1508,7 @@ function LeadDetailsModal({
                 {item.stopReason && <p>Stop reason: {item.stopReason}</p>}
               </div>
             ))}
+            <HaydenNotificationActivity lead={lead} notifiedThisSession={notified} getAuthHeaders={getAuthHeaders} />
           </div>
 
           <div

@@ -2,6 +2,7 @@ import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey, isAirtableConfigured } from "@/lib/airtable/config";
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { resilientFetch } from "@/lib/network/resilient-fetch";
+import { createServiceClient } from "@/lib/supabase/server";
 
 const TABLE_NAME = "Leads";
 type AirtableRecord = { id: string; createdTime: string; fields: Record<string, unknown> };
@@ -81,5 +82,34 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       request,
     });
     return Response.json({ error: "Couldn’t notify Hayden. Try again.", notificationId, requestId: audit.requestId }, { status: 502 });
+  }
+}
+
+/**
+ * Read-only: the dashboard "Notify Hayden" sends recorded for this lead (audit log), newest
+ * first, so the lead profile can show them next to the automatic Speed-to-Lead alert.
+ */
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  try { await requireRole(request, "viewer"); }
+  catch (error) { return authErrorResponse(error); }
+  const { id } = await context.params;
+  if (!id || !/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return Response.json({ error: "Invalid lead ID." }, { status: 400 });
+  try {
+    const { data, error } = await createServiceClient()
+      .from("audit_logs")
+      .select("created_at,actor_name,metadata")
+      .eq("action", "lead_shared_with_hayden")
+      .eq("resource_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error) throw error;
+    const notifications = (data ?? []).map((row) => {
+      const meta = (row.metadata ?? {}) as { notified_at?: unknown };
+      return { at: typeof meta.notified_at === "string" ? meta.notified_at : String(row.created_at), by: String(row.actor_name || "A dashboard user") };
+    });
+    return Response.json({ notifications }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    console.error("[notify-hayden] history failed", error);
+    return Response.json({ notifications: [], error: "Notification history is unavailable." }, { status: 200 });
   }
 }
