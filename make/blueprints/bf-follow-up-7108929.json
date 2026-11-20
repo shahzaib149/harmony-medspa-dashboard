@@ -204,15 +204,15 @@
                   },
                   {
                     "name": "subject",
-                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Black Friday early access is open\"; \"BF-2 Sale Live\"; \"Our Black Friday sale is live\"; \"BF-3 Two Days Left\"; \"2 days left: Harmony Black Friday\"; \"BF-4 Last Day\"; \"Last day: Black Friday pricing ends tonight\"; \"\")}}"
+                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Black Friday early access is open\"; \"BF-2 Sale Live\"; \"Our Black Friday sale is live\"; \"BF-3 Two Days Left\"; \"2 days left: Harmony Black Friday\"; \"BF-4 Last Day\"; \"Last chance: Black Friday pricing ends tonight\"; \"\")}}"
                   },
                   {
                     "name": "line",
-                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Harmony Black Friday member early access is open through November 26. Not a member yet? Join today and get member pricing after your first membership payment.\"; \"BF-2 Sale Live\"; \"Harmony's Black Friday sale is live through November 30. Plus: buy a $100+ gift card, get 10% back in bonus credit for you.\"; \"BF-3 Two Days Left\"; \"Only 2 days left for Harmony's Black Friday pricing. Offers end November 30.\"; \"BF-4 Last Day\"; \"Today is the last day of Harmony's Black Friday pricing. Offers end tonight, November 30.\"; \"\")}}"
+                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Harmony Black Friday member early access is open through November 26. Not a member yet? Request a membership today and receive member pricing once your first membership payment has cleared.\"; \"BF-2 Sale Live\"; \"Harmony's Black Friday sale is live through November 30. Plus: buy a $100+ gift card, get 10% back in bonus credit for you.\"; \"BF-3 Two Days Left\"; \"Only 2 days left for Harmony's Black Friday pricing. Offers end November 30.\"; \"BF-4 Last Day\"; \"Today is your last chance for Harmony's Black Friday pricing. Offers end tonight, November 30.\"; \"\")}}"
                   },
                   {
                     "name": "sms",
-                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Harmony Black Friday early access is open for members through Nov 26. Not a member? Join today and get member pricing after your first payment. harmonymedspafl.com/black-friday Reply STOP to opt out.\"; \"BF-2 Sale Live\"; \"Harmony's Black Friday sale is live through Nov 30! Plus: buy a $100+ gift card, get 10% back. harmonymedspafl.com/black-friday (941) 923-8990. Reply STOP to opt out.\"; \"BF-3 Two Days Left\"; \"Only 2 days left for Harmony's Black Friday pricing. harmonymedspafl.com/black-friday (941) 923-8990. Reply STOP to opt out.\"; \"BF-4 Last Day\"; \"Last day! Harmony's Black Friday pricing ends tonight. Call (941) 923-8990 or visit harmonymedspafl.com/black-friday Reply STOP to opt out.\"; \"\")}}"
+                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Harmony Med Spa: Black Friday early access is open for members through Nov 26. Not a member? Request one today for member pricing. harmonymedspafl.com/black-friday Call or text (941) 923-8990. Reply STOP to opt out.\"; \"BF-2 Sale Live\"; \"Harmony Med Spa: Our Black Friday sale is live through Nov 30! Plus: buy a $100+ gift card, get 10% back. harmonymedspafl.com/black-friday Call or text (941) 923-8990. Reply STOP to opt out.\"; \"BF-3 Two Days Left\"; \"Harmony Med Spa: Only 2 days left for Black Friday pricing. harmonymedspafl.com/black-friday Call or text (941) 923-8990. Reply STOP to opt out.\"; \"BF-4 Last Day\"; \"Harmony Med Spa: Last chance! Black Friday pricing ends tonight. Call or text (941) 923-8990 or visit harmonymedspafl.com/black-friday Reply STOP to opt out.\"; \"\")}}"
                   }
                 ]
               },
@@ -247,9 +247,14 @@
                         "__IMTCONN__": 9664565
                       },
                       "filter": {
-                        "name": "Has email",
+                        "name": "Email consent + email",
                         "conditions": [
                           [
+                            {
+                              "a": "{{2.`Email Consent`}}",
+                              "o": "boolean:equal",
+                              "b": "true"
+                            },
                             {
                               "a": "{{2.Email}}",
                               "o": "exist"
@@ -266,7 +271,7 @@
                           }
                         ],
                         "subject": "{{6.subject}}",
-                        "text": "Hi {{6.first_name}},\n\n{{6.line}}\n\nView all specials: https://www.harmonymedspafl.com/black-friday\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231",
+                        "text": "Hi {{6.first_name}},\n\n{{6.line}}\n\nView all specials: https://www.harmonymedspafl.com/black-friday\n\nTo claim an offer, call or text us at (941) 923-8990, or book online:\nhttps://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231\n\nYou're receiving this because you asked for our Black Friday offers and opted in to email. Reply \"unsubscribe\" to stop these emails.",
                         "metadata": {},
                         "from_name": "Harmony Med Spa",
                         "from_email": "haydenalamo@harmonymedspafl.com",
@@ -301,7 +306,7 @@
                           "fldUkbpPHJ2xy3Bm4": "{{8.`_id`}}",
                           "fldCe1M3F01X4BJQV": "{{8.reject_reason}}",
                           "fldXCsxSgSe5hfqa0": "{{now}}",
-                          "fldYLDwfiSdwF6xLB": "Hi {{6.first_name}},\n\n{{6.line}}\n\nView all specials: https://www.harmonymedspafl.com/black-friday\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231"
+                          "fldYLDwfiSdwF6xLB": "Hi {{6.first_name}},\n\n{{6.line}}\n\nView all specials: https://www.harmonymedspafl.com/black-friday\n\nTo claim an offer, call or text us at (941) 923-8990, or book online:\nhttps://na02.patientnow.com/a/HARMONYMEDSPA/OnlineBooking.aspx\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231\n\nYou're receiving this because you asked for our Black Friday offers and opted in to email. Reply \"unsubscribe\" to stop these emails."
                         }
                       },
                       "metadata": {

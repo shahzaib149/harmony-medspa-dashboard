@@ -45,6 +45,8 @@ export interface Lead {
   // Promotions: Offer Code from the website form (e.g. BF2026) and SMS consent
   offerCode: string;
   smsConsent: boolean;
+  /** Email marketing consent (Black Friday form). Separate from SMS consent. */
+  emailConsent: boolean;
   // Gift card requests (Lead Type "Gift Card Lead"). Recipient fields are never contacted.
   giftCardAmount: number | null;
   giftCardBonus: number | null;
@@ -138,6 +140,7 @@ export function mapLead(r: AirtableRecord): Lead {
     bestTime: str(r.fields, "Best Time to Reach"),
     offerCode: str(r.fields, "Offer Code"),
     smsConsent: r.fields["SMS Consent"] === true,
+    emailConsent: r.fields["Email Consent"] === true,
     giftCardAmount: money(r.fields["Gift Card Amount"]),
     giftCardBonus: money(r.fields["Gift Card Bonus"]),
     giftCardStatus: str(r.fields, "Gift Card Status"),

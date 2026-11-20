@@ -1223,7 +1223,7 @@ function LeadDetailsModal({
             )}
             {lead.offerCode === BLACK_FRIDAY_OFFER_CODE && (
               <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ color: MUTED, backgroundColor: "var(--surface-2)" }}>
-                SMS consent: {lead.smsConsent ? "Yes" : "No"}
+                SMS consent: {lead.smsConsent ? "Yes" : "No"} · Email consent: {lead.emailConsent ? "Yes" : "No"}
               </span>
             )}
           </div>

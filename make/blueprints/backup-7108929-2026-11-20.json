@@ -1,0 +1,403 @@
+{
+  "name": "Black Friday Follow-up 2026",
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "designer": {
+      "orphans": []
+    }
+  },
+  "flow": [
+    {
+      "id": 1,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "scope": "roundtrip",
+        "variables": [
+          {
+            "name": "step",
+            "value": "{{switch(formatDate(now; \"YYYY-MM-DD\"; \"America/New_York\"); \"2026-11-23\"; \"BF-1 Early Access\"; \"2026-11-27\"; \"BF-2 Sale Live\"; \"2026-11-29\"; \"BF-3 Two Days Left\"; \"2026-11-30\"; \"BF-4 Last Day\"; \"2026-12-01\"; \"Handoff\"; \"none\")}}"
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0,
+          "name": "Today (ET) → step"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "airtable:ActionSearchRecords",
+      "version": 3,
+      "parameters": {
+        "__IMTCONN__": 9625252
+      },
+      "filter": {
+        "name": "Campaign day",
+        "conditions": [
+          [
+            {
+              "a": "{{1.step}}",
+              "o": "text:notequal",
+              "b": "none"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "base": "appNL010pW9LUpgST",
+        "table": "tblLmBUvsRYFWrp5N",
+        "formula": "AND({Offer Code}='BF2026',NOT(OR({Status}='Booked',{Status}='Not Interested',{Status}='Not a Lead',{Status}='Duplicate',{Status}='Failed')),OR({Lead Type}='Real Lead',{Lead Type}='Unclear',{Lead Type}='Existing Patient'))",
+        "maxRecords": "500",
+        "useColumnId": false
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0,
+          "name": "BF2026 leads still open"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "mapper": null,
+      "parameters": {},
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 13,
+              "module": "airtable:ActionCreateRecord",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "filter": {
+                "name": "Dec 1 handoff, not already in nurture",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.step}}",
+                      "o": "text:equal",
+                      "b": "Handoff"
+                    },
+                    {
+                      "a": "{{length(2.`Nurture Enrollments`)}}",
+                      "o": "number:equal",
+                      "b": "0"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tblAR3Gak8srM7VWI",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld8i73FhIEtLHJ3N": "{{2.id}}",
+                  "fldTgemVZ7IWACtES": "Day 1 SMS",
+                  "fldUVWoyenIdnVqv8": "{{addDays(now; 2)}}",
+                  "fldwrrNqUkwcqdw83": "Active"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 900,
+                  "y": -300,
+                  "name": "Dec 1: enroll in 14-Day Nurture"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 4,
+              "module": "airtable:ActionSearchRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "filter": {
+                "name": "Message day",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.step}}",
+                      "o": "text:notequal",
+                      "b": "Handoff"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tblTdHCBUt7lNDPvH",
+                "formula": "AND({Sequence Step}='{{1.step}}',OR(RECORD_ID()='{{join(2.`Message Log`; \"',RECORD_ID()='\")}}'))",
+                "maxRecords": "5",
+                "useColumnId": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 900,
+                  "y": 0,
+                  "name": "Already sent this step?"
+                }
+              }
+            },
+            {
+              "id": 5,
+              "module": "builtin:BasicAggregator",
+              "version": 1,
+              "parameters": {
+                "feeder": 4
+              },
+              "mapper": {
+                "id": "{{4.id}}"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1200,
+                  "y": 0,
+                  "name": "Collect matches"
+                }
+              }
+            },
+            {
+              "id": 6,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "filter": {
+                "name": "Not sent yet (idempotent)",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{first(map(5.array; \"id\"))}}",
+                      "o": "notexist"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "scope": "roundtrip",
+                "variables": [
+                  {
+                    "name": "first_name",
+                    "value": "{{ifempty(trim(first(split(2.Name; space))); \"there\")}}"
+                  },
+                  {
+                    "name": "subject",
+                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Black Friday early access is open\"; \"BF-2 Sale Live\"; \"Our Black Friday sale is live\"; \"BF-3 Two Days Left\"; \"2 days left: Harmony Black Friday\"; \"BF-4 Last Day\"; \"Last day: Black Friday pricing ends tonight\"; \"\")}}"
+                  },
+                  {
+                    "name": "line",
+                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Harmony Black Friday member early access is open through November 26. Not a member yet? Join today and get member pricing after your first membership payment.\"; \"BF-2 Sale Live\"; \"Harmony's Black Friday sale is live through November 30. Plus: buy a $100+ gift card, get 10% back in bonus credit for you.\"; \"BF-3 Two Days Left\"; \"Only 2 days left for Harmony's Black Friday pricing. Offers end November 30.\"; \"BF-4 Last Day\"; \"Today is the last day of Harmony's Black Friday pricing. Offers end tonight, November 30.\"; \"\")}}"
+                  },
+                  {
+                    "name": "sms",
+                    "value": "{{switch(1.step; \"BF-1 Early Access\"; \"Harmony Black Friday early access is open for members through Nov 26. Not a member? Join today and get member pricing after your first payment. harmonymedspafl.com/black-friday Reply STOP to opt out.\"; \"BF-2 Sale Live\"; \"Harmony's Black Friday sale is live through Nov 30! Plus: buy a $100+ gift card, get 10% back. harmonymedspafl.com/black-friday (941) 923-8990. Reply STOP to opt out.\"; \"BF-3 Two Days Left\"; \"Only 2 days left for Harmony's Black Friday pricing. harmonymedspafl.com/black-friday (941) 923-8990. Reply STOP to opt out.\"; \"BF-4 Last Day\"; \"Last day! Harmony's Black Friday pricing ends tonight. Call (941) 923-8990 or visit harmonymedspafl.com/black-friday Reply STOP to opt out.\"; \"\")}}"
+                  }
+                ]
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": 0,
+                  "name": "Step copy"
+                }
+              }
+            },
+            {
+              "id": 7,
+              "module": "builtin:BasicRouter",
+              "version": 1,
+              "mapper": null,
+              "parameters": {},
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": 0
+                }
+              },
+              "routes": [
+                {
+                  "flow": [
+                    {
+                      "id": 8,
+                      "module": "mailchimp-transactional-email:sendMessage",
+                      "version": 1,
+                      "parameters": {
+                        "__IMTCONN__": 9664565
+                      },
+                      "filter": {
+                        "name": "Has email",
+                        "conditions": [
+                          [
+                            {
+                              "a": "{{2.Email}}",
+                              "o": "exist"
+                            }
+                          ]
+                        ]
+                      },
+                      "mapper": {
+                        "to": [
+                          {
+                            "name": "{{2.Name}}",
+                            "type": "to",
+                            "email": "{{2.Email}}"
+                          }
+                        ],
+                        "subject": "{{6.subject}}",
+                        "text": "Hi {{6.first_name}},\n\n{{6.line}}\n\nView all specials: https://www.harmonymedspafl.com/black-friday\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231",
+                        "metadata": {},
+                        "from_name": "Harmony Med Spa",
+                        "from_email": "haydenalamo@harmonymedspafl.com",
+                        "useTemplate": false
+                      },
+                      "metadata": {
+                        "designer": {
+                          "x": 2100,
+                          "y": -200,
+                          "name": "Email"
+                        }
+                      }
+                    },
+                    {
+                      "id": 11,
+                      "module": "airtable:ActionCreateRecord",
+                      "version": 3,
+                      "parameters": {
+                        "__IMTCONN__": 9625252
+                      },
+                      "mapper": {
+                        "base": "appNL010pW9LUpgST",
+                        "table": "tblTdHCBUt7lNDPvH",
+                        "typecast": false,
+                        "useColumnId": false,
+                        "record": {
+                          "fld1FMN5z1AmpuoMT": "Black Friday 2026",
+                          "fldDVB0sh2MfAjSfd": "{{1.step}}",
+                          "fld5AHOFq2WMropw0": "{{2.id}}",
+                          "fldAhnGoIhtd2FliR": "Email",
+                          "fldOwJrqyhOYzuQhN": "{{if(8.status = \"rejected\"; \"rejected\"; \"sent\")}}",
+                          "fldUkbpPHJ2xy3Bm4": "{{8.`_id`}}",
+                          "fldCe1M3F01X4BJQV": "{{8.reject_reason}}",
+                          "fldXCsxSgSe5hfqa0": "{{now}}",
+                          "fldYLDwfiSdwF6xLB": "Hi {{6.first_name}},\n\n{{6.line}}\n\nView all specials: https://www.harmonymedspafl.com/black-friday\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231"
+                        }
+                      },
+                      "metadata": {
+                        "designer": {
+                          "x": 2400,
+                          "y": -200,
+                          "name": "Log email"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "flow": [
+                    {
+                      "id": 9,
+                      "module": "mailchimp-transactional-email:makeApiCall",
+                      "version": 1,
+                      "parameters": {
+                        "__IMTCONN__": 9664565
+                      },
+                      "filter": {
+                        "name": "SMS consent + phone",
+                        "conditions": [
+                          [
+                            {
+                              "a": "{{2.`SMS Consent`}}",
+                              "o": "boolean:equal",
+                              "b": "true"
+                            },
+                            {
+                              "a": "{{2.Phone}}",
+                              "o": "exist"
+                            }
+                          ]
+                        ]
+                      },
+                      "mapper": {
+                        "url": "/1.1/messages/send-sms",
+                        "method": "POST",
+                        "headers": [
+                          {
+                            "key": "Content-Type",
+                            "value": "application/json"
+                          }
+                        ],
+                        "qs": [],
+                        "body": "{\n  \"message\": {\n    \"sms\": {\n      \"text\": \"{{6.sms}}\",\n      \"to\": \"{{2.Phone}}\",\n      \"from\": \"+18638620501\",\n      \"consent\": \"onetime\",\n      \"track_clicks\": false\n    }\n  }\n}"
+                      },
+                      "metadata": {
+                        "designer": {
+                          "x": 2100,
+                          "y": 200,
+                          "name": "SMS (consent only)"
+                        }
+                      }
+                    },
+                    {
+                      "id": 12,
+                      "module": "airtable:ActionCreateRecord",
+                      "version": 3,
+                      "parameters": {
+                        "__IMTCONN__": 9625252
+                      },
+                      "mapper": {
+                        "base": "appNL010pW9LUpgST",
+                        "table": "tblTdHCBUt7lNDPvH",
+                        "typecast": false,
+                        "useColumnId": false,
+                        "record": {
+                          "fld1FMN5z1AmpuoMT": "Black Friday 2026",
+                          "fldDVB0sh2MfAjSfd": "{{1.step}}",
+                          "fld5AHOFq2WMropw0": "{{2.id}}",
+                          "fldAhnGoIhtd2FliR": "SMS",
+                          "fldOwJrqyhOYzuQhN": "{{if(contains(split(\"sent,queued,scheduled\"; \",\"); first(map(9.body; \"status\"))); \"sent\"; \"rejected\")}}",
+                          "fldUkbpPHJ2xy3Bm4": "{{first(map(9.body; \"_id\"))}}",
+                          "fldCe1M3F01X4BJQV": "{{first(map(9.body; \"reject_reason\"))}}",
+                          "fldXCsxSgSe5hfqa0": "{{now}}",
+                          "fldYLDwfiSdwF6xLB": "{{6.sms}}"
+                        }
+                      },
+                      "metadata": {
+                        "designer": {
+                          "x": 2400,
+                          "y": 200,
+                          "name": "Log SMS"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

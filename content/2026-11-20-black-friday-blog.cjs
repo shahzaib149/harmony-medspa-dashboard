@@ -8,6 +8,8 @@ const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const SITE = "https://www.harmonymedspafl.com";
+const EARLY_ACCESS = "https://mailchi.mp/harmonymedspafl/black-friday-specials";
+const ASSETS = "https://jwbngsdmdwaagpksyxxn.supabase.co/storage/v1/object/public/Black%20Friday%202026";
 const ENTITY = "Harmony Med Spa, 2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231";
 
 let n = 0;
@@ -28,16 +30,18 @@ const faq = [
   ["Do I have to use my treatments during Black Friday?",
     "No. You prepay during the sale dates (November 23–30, 2026) and can schedule treatments later. Treatments are redeemable within 365 days of purchase unless listed otherwise, with provider approval."],
   ["How does the Black Friday gift card bonus work?",
-    "Buy a gift card of $100 or more November 27–30, 2026, and you receive a separate bonus credit worth 10% of the amount. The bonus goes to the purchaser, can be used starting December 1, 2026 on regular-priced services and skincare, and expires after 365 days. Purchased gift cards never expire."],
+    "Buy a gift card of $100 or more November 27–30, 2026, paid with new funds, and you receive a separate promotional credit worth 10% of the amount. The credit goes to the purchaser, can be used starting December 1, 2026 on regular-priced services and skincare, and can't be used toward another gift card. Purchased gift cards never expire."],
   ["How do I purchase a Black Friday special?",
-    "Call Harmony Med Spa at (941) 923-8990, visit the clinic, or request the specials online at harmonymedspafl.com/black-friday. Full prepayment is required during the sale dates; there are no deposits or price holds."],
+    "Call or text Harmony Med Spa at (941) 923-8990, visit the clinic, or book online. Full prepayment is required during the sale dates; there are no deposits or price holds."],
   ["Where is Harmony Med Spa located?",
     `${ENTITY}, in the Gulf Gate area. The clinic serves patients from Sarasota, Siesta Key, Osprey, Venice, Lakewood Ranch and Bradenton.`],
   ["Who decides dosing and treatment eligibility?",
     "Your Harmony provider. Every Black Friday treatment requires provider approval, and eligibility and dosing are determined at your consultation."],
 ];
 
+const img = (id, url, alt, caption) => ({ id, type: "image", url, alt, caption });
 const content = [
+  img("bf26-img-room", `${ASSETS}/Signature%20Facials/DJI_20261104_103423_693.JPG`, "A treatment room at Harmony Med Spa in Sarasota", "Harmony Med Spa's Signature Facial room in Gulf Gate, Sarasota."),
   p(`Harmony Med Spa's Black Friday Beauty Event runs in two windows in 2026: member early access November 23–26, and the public sale November 27–30. ${ENTITY}, is offering prepaid savings on Daxxify, RHA fillers, Sculptra, Glo2Facial and Signature Facial packages, RF microneedling, CO2, IPL and laser hair removal packages, selected skincare, gift cards and a $150 hormone optimization exam.`),
   p("In short: prepay during the sale, then schedule your treatments any time within 365 days, with your provider's approval. Members save more, and new patients can unlock member pricing by joining a membership."),
   p("The event is for patients across Sarasota and the Gulf Gate neighborhood, and for those who visit from Siesta Key, Osprey, Venice, Lakewood Ranch and Bradenton. Whether you already have a treatment in mind or want to plan the year ahead, Black Friday is the one time each year these package prices are available."),
@@ -53,8 +57,8 @@ const content = [
   h3("Sculptra: save up to $1,000"),
   ul([
     "2 vials, $250 off: $1,382.00 nonmember, $1,218.80 member",
-    "4 vials, $600 off: $2,664.00 nonmember, $2,337.60 member",
-    "6 vials, $1,000 off: $3,896.00 nonmember, $3,406.40 member",
+    "4 vials: $600 off (package total confirmed when you call)",
+    "6 vials: $1,000 off (package total confirmed when you call)",
   ]),
   p("How member pricing works on fillers and Sculptra: members' usual 10% injectable discount is applied first, and then the Black Friday offer is applied. That is why the member price is lower than a simple percentage off. Sculptra can be used over multiple visits with provider approval."),
 
@@ -81,21 +85,22 @@ const content = [
   p("Spend $399 or more on skincare, after the discount and before tax, and choose one free gift from the approved options, including a Revision Brightening Facial Wash travel size, while supplies last."),
 
   h2("Black Friday Gift Cards: Get 10% Back"),
+  img("bf26-img-giftcard", `${ASSETS}/Gift%20Cards/HMS_Gift%20Card_Granite_Gold.png`, "Harmony Med Spa black and gold gift card", "Harmony Med Spa gift cards never expire."),
   p(`From November 27 through November 30, 2026, buy a Harmony gift card of $100 or more and receive 10% back as a separate bonus credit for you, with no cap. For example, a $250 gift card earns a $25 bonus. Request a gift card at ${SITE}/gift-cards and our team will contact you to arrange secure payment.`),
   ul([
-    "The bonus applies to new-money gift card purchases made November 27–30, 2026.",
-    "The bonus credit is issued to the purchaser and can be used starting December 1, 2026.",
-    "It applies to regular-priced services and skincare and expires after 365 days.",
+    "The bonus applies to gift cards purchased November 27–30, 2026 with new funds (not a prepaid balance, gift card, credit or Beauty Bank).",
+    "The bonus credit is issued to the purchaser after payment and can be used starting December 1, 2026.",
+    "It applies to regular-priced services and skincare, never toward another gift card. Full bonus terms are provided at purchase.",
     "Purchased gift cards never expire.",
     "We contact the purchaser only, never the gift recipient, so the surprise stays a surprise.",
   ]),
 
   h2("Hormone Optimization: $150 BHRT Initial Exam"),
-  p("The bioidentical hormone replacement therapy (BHRT) initial examination is $150.00 when you enroll and prepay by November 30, 2026. The prepaid exam has no expiration date. It includes an exam with a nurse practitioner, a personalized plan and one year of follow-ups from the exam date. Labs and therapy are billed separately."),
+  p("The bioidentical hormone replacement therapy (BHRT) initial examination is $150.00 (regularly $300) when you enroll and pay by November 30, 2026. The prepaid exam has no expiration date. It includes an assessment with a nurse practitioner, a customized plan and follow-up consultations for one year from the exam. Labs, medications, pellets and other procedures are extra."),
 
   h2("How to Shop Harmony's Black Friday Event"),
   ol([
-    `Request the specials at ${SITE}/black-friday or call (941) 923-8990. Members can shop from November 23; everyone can shop November 27–30, 2026.`,
+    `Call or text (941) 923-8990, or book online, to claim an offer. Members can shop from November 23; everyone can shop November 27–30, 2026. Want the specials first? Request early access at ${EARLY_ACCESS}.`,
     "Prepay in full during the sale dates, in the office, by phone or through approved online checkout. There are no deposits or price holds.",
     "Schedule your treatments when it suits you. Treatments are redeemable within 365 days unless listed otherwise, and every treatment requires provider approval.",
   ]),
@@ -153,4 +158,23 @@ async function create() {
   if (!response.ok) throw new Error(`create failed ${response.status}: ${JSON.stringify(body.error)}`);
   console.log(JSON.stringify({ created: body.id, status: body.fields.Status }));
 }
+async function update() {
+  const envText = readFileSync(path.join(__dirname, "..", ".env.local"), "utf8");
+  const token = (envText.match(/^AIRTABLE_API_KEY=(.*)$/m) || [])[1]?.trim().replace(/^"|"$/g, "");
+  if (!token) throw new Error("AIRTABLE_API_KEY missing");
+  const endpoint = "https://api.airtable.com/v0/appNL010pW9LUpgST/Blogs";
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const found = await (await fetch(`${endpoint}?${new URLSearchParams({ filterByFormula: `{Slug}="${article.slug}"`, "fields[]": "Status" })}`, { headers })).json();
+  const rec = found.records && found.records[0];
+  if (!rec) throw new Error("record not found");
+  if (rec.fields.Status === "Published") throw new Error("record is Published; not touching it");
+  const response = await fetch(`${endpoint}/${rec.id}`, {
+    method: "PATCH", headers,
+    body: JSON.stringify({ fields: { "CMS Data": JSON.stringify(article.cms), "Updated At": new Date().toISOString(), "Updated By": "Claude (Black Friday build)" } }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(`update failed ${response.status}: ${JSON.stringify(body.error)}`);
+  console.log(JSON.stringify({ updated: body.id, status: body.fields.Status }));
+}
+if (process.argv.includes("--update")) update().catch((e) => { console.error(e.message); process.exit(1); });
 if (process.argv.includes("--create")) create().catch((e) => { console.error(e.message); process.exit(1); });

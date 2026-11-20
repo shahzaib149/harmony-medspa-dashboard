@@ -1,0 +1,375 @@
+{
+  "name": "Black Friday Instant Reply (2026)",
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "designer": {
+      "orphans": []
+    }
+  },
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 3086868,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0,
+          "name": "From Speed to Lead (BF2026)"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "filter": {
+        "name": "Has lead id",
+        "conditions": [
+          [
+            {
+              "a": "{{1.lead_id}}",
+              "o": "exist"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "scope": "roundtrip",
+        "variables": [
+          {
+            "name": "first_name",
+            "value": "{{ifempty(trim(first(split(1.name; space))); \"there\")}}"
+          },
+          {
+            "name": "consent",
+            "value": "{{if(lower(1.sms_consent) = \"true\"; \"yes\"; \"no\")}}"
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0,
+          "name": "First name + consent"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "mapper": null,
+      "parameters": {},
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 4,
+              "module": "mailchimp-transactional-email:sendMessage",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 9664565
+              },
+              "filter": {
+                "name": "Reply allowed + email",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.reply}}",
+                      "o": "text:equal",
+                      "b": "yes"
+                    },
+                    {
+                      "a": "{{1.email}}",
+                      "o": "exist"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "to": [
+                  {
+                    "name": "{{1.name}}",
+                    "type": "to",
+                    "email": "{{1.email}}"
+                  }
+                ],
+                "subject": "Your Harmony Black Friday specials",
+                "text": "Hi {{2.first_name}},\n\nThank you for your interest in Harmony Med Spa's Black Friday Beauty Event!\n\nMember Early Access: November 23–26\nPublic Sale: November 27–30\n\nSee every special, with member and nonmember pricing:\nhttps://www.harmonymedspafl.com/black-friday\n\nNot a member yet? Join a membership and unlock member pricing as soon as your first membership payment is completed:\nhttps://www.harmonymedspafl.com/membership\n\nReady to purchase or have questions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231",
+                "metadata": {},
+                "from_name": "Harmony Med Spa",
+                "from_email": "haydenalamo@harmonymedspafl.com",
+                "useTemplate": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 900,
+                  "y": -300,
+                  "name": "BF email"
+                }
+              }
+            },
+            {
+              "id": 5,
+              "module": "airtable:ActionCreateRecord",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tblTdHCBUt7lNDPvH",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld1FMN5z1AmpuoMT": "Black Friday 2026",
+                  "fldDVB0sh2MfAjSfd": "BF-Instant",
+                  "fld5AHOFq2WMropw0": "{{1.lead_id}}",
+                  "fldAhnGoIhtd2FliR": "Email",
+                  "fldOwJrqyhOYzuQhN": "{{if(4.status = \"rejected\"; \"rejected\"; \"sent\")}}",
+                  "fldUkbpPHJ2xy3Bm4": "{{4.`_id`}}",
+                  "fldCe1M3F01X4BJQV": "{{4.reject_reason}}",
+                  "fldXCsxSgSe5hfqa0": "{{now}}",
+                  "fldYLDwfiSdwF6xLB": "Hi {{2.first_name}},\n\nThank you for your interest in Harmony Med Spa's Black Friday Beauty Event!\n\nMember Early Access: November 23–26\nPublic Sale: November 27–30\n\nSee every special, with member and nonmember pricing:\nhttps://www.harmonymedspafl.com/black-friday\n\nNot a member yet? Join a membership and unlock member pricing as soon as your first membership payment is completed:\nhttps://www.harmonymedspafl.com/membership\n\nReady to purchase or have questions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1200,
+                  "y": -300,
+                  "name": "Log BF email"
+                }
+              }
+            },
+            {
+              "id": 6,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "id": "{{1.lead_id}}",
+                "base": "appNL010pW9LUpgST",
+                "table": "tblLmBUvsRYFWrp5N",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld7XT511zDSI2Ful": "{{now}}",
+                  "fldE7klonI7g9dIxw": "{{1.status_value}}",
+                  "fldtjnZOAMUz7tbcs": "{{if(4.status = \"rejected\"; \"rejected\"; \"sent\")}}",
+                  "fldjG5ZCsut46egUN": "BF2026"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": -300,
+                  "name": "Lead: contacted + email status"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "id": "{{1.lead_id}}",
+                "base": "appNL010pW9LUpgST",
+                "table": "tblLmBUvsRYFWrp5N",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld1Ps5I3GiQyI5fU": true,
+                  "fldjG5ZCsut46egUN": "BF2026"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 900,
+                  "y": 0,
+                  "name": "Lead: SMS consent = yes"
+                }
+              },
+              "filter": {
+                "name": "SMS consent given",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{2.consent}}",
+                      "o": "text:equal",
+                      "b": "yes"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 8,
+              "module": "mailchimp-transactional-email:makeApiCall",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 9664565
+              },
+              "filter": {
+                "name": "Reply allowed + phone",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.reply}}",
+                      "o": "text:equal",
+                      "b": "yes"
+                    },
+                    {
+                      "a": "{{1.phone}}",
+                      "o": "exist"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "url": "/1.1/messages/send-sms",
+                "method": "POST",
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "qs": [],
+                "body": "{\n  \"message\": {\n    \"sms\": {\n      \"text\": \"Hi {{2.first_name}}! Thanks for your interest in Harmony Med Spa's Black Friday event. Member early access Nov 23–26, public sale Nov 27–30. See all specials: harmonymedspafl.com/black-friday Questions? (941) 923-8990. Reply STOP to opt out.\",\n      \"to\": \"{{1.phone}}\",\n      \"from\": \"+18638620501\",\n      \"consent\": \"onetime\",\n      \"track_clicks\": false\n    }\n  }\n}"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1200,
+                  "y": 0,
+                  "name": "BF SMS (Mandrill connection)"
+                }
+              }
+            },
+            {
+              "id": 9,
+              "module": "airtable:ActionCreateRecord",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tblTdHCBUt7lNDPvH",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld1FMN5z1AmpuoMT": "Black Friday 2026",
+                  "fldDVB0sh2MfAjSfd": "BF-Instant",
+                  "fld5AHOFq2WMropw0": "{{1.lead_id}}",
+                  "fldAhnGoIhtd2FliR": "SMS",
+                  "fldOwJrqyhOYzuQhN": "{{if(contains(split(\"sent,queued,scheduled\"; \",\"); first(map(8.body; \"status\"))); \"sent\"; \"rejected\")}}",
+                  "fldUkbpPHJ2xy3Bm4": "{{first(map(8.body; \"_id\"))}}",
+                  "fldCe1M3F01X4BJQV": "{{first(map(8.body; \"reject_reason\"))}}",
+                  "fldXCsxSgSe5hfqa0": "{{now}}",
+                  "fldYLDwfiSdwF6xLB": "Hi {{2.first_name}}! Thanks for your interest in Harmony Med Spa's Black Friday event. Member early access Nov 23–26, public sale Nov 27–30. See all specials: harmonymedspafl.com/black-friday Questions? (941) 923-8990. Reply STOP to opt out."
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": 0,
+                  "name": "Log BF SMS"
+                }
+              }
+            },
+            {
+              "id": 10,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "id": "{{1.lead_id}}",
+                "base": "appNL010pW9LUpgST",
+                "table": "tblLmBUvsRYFWrp5N",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fldXbmos2WDbCtFxl": "{{if(contains(split(\"sent,queued,scheduled\"; \",\"); first(map(8.body; \"status\"))); \"sent\"; \"rejected\")}}"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": 0,
+                  "name": "Lead: SMS status"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 11,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "id": "{{1.lead_id}}",
+                "base": "appNL010pW9LUpgST",
+                "table": "tblLmBUvsRYFWrp5N",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fldXbmos2WDbCtFxl": "Not Requested",
+                  "fldjG5ZCsut46egUN": "BF2026"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 900,
+                  "y": 300,
+                  "name": "Lead: SMS not requested"
+                }
+              },
+              "filter": {
+                "name": "No SMS consent",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{2.consent}}",
+                      "o": "text:equal",
+                      "b": "no"
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
