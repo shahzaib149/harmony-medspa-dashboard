@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isGiftCardLead } from "@/lib/leads/classification";
 import { after } from "next/server";
 import { authErrorResponse, requireRole } from "@/lib/auth/requireRole";
 import {
@@ -525,7 +526,9 @@ export async function POST(request: Request) {
       input.phone = normalizeUsPhone(lead.phone) ?? "";
       input.leadId = record.id;
       result.summary.existingLeads += 1;
-      const reason = blocked.has(lead.status)
+      const reason = isGiftCardLead({ leadType: String(record.fields["Lead Type"] ?? "") })
+        ? "Gift card request"
+        : blocked.has(lead.status)
         ? lead.status
         : lead.replied
           ? "Replied"

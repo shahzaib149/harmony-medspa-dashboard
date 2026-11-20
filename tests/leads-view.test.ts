@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   countsAsRealLead,
+  GIFT_CARD_STATUSES,
+  isGiftCardStatus,
+  isNotALead,
   NO_AUTO_REPLY_TYPES,
   sendsAutoReply,
 } from "../src/lib/leads/classification";
@@ -20,8 +23,9 @@ function lead(overrides: Partial<ViewLead> = {}): ViewLead {
   return { status: "Contacted", leadType: "", isRealLead: false, ...overrides };
 }
 
-test("tabs are All | Real Leads | Booked, defaulting to Real Leads", () => {
-  assert.deepEqual([...LEAD_VIEWS], ["all", "leads", "booked"]);
+test("tabs are All | Real Leads | Booked | Gift Cards, defaulting to Real Leads", () => {
+  assert.deepEqual([...LEAD_VIEWS], ["all", "leads", "booked", "gift-cards"]);
+  assert.equal(normalizeLeadView("gift-cards"), "gift-cards");
   assert.equal(normalizeLeadView(null), "leads");
   assert.equal(normalizeLeadView("unknown"), "leads");
   assert.equal(normalizeLeadView("replied"), "leads");
@@ -37,6 +41,8 @@ test("Real Leads excludes non-leads; All keeps everything", () => {
     { lead: lead({ leadType: "Unclear", isRealLead: true }), views: ["all", "leads"] },
     { lead: lead({ leadType: "Solicitor", status: "Not a Lead" }), views: ["all"] },
     { lead: lead({ leadType: "Real Lead", isRealLead: true, status: "Booked" }), views: ["all", "leads", "booked"] },
+    // Gift card requests never count as leads and only show in All and Gift Cards.
+    { lead: lead({ leadType: "Gift Card Lead", status: "New" }), views: ["all", "gift-cards"] },
   ];
   for (const example of examples) {
     assert.deepEqual(LEAD_VIEWS.filter((view) => leadBelongsToView(example.lead, view)), example.views);
@@ -51,6 +57,22 @@ test("Airtable view formulas mirror view membership", () => {
   assert.match(leadViewFormula("leads"), /\{Lead Type\}="Real Lead"/);
   assert.match(leadViewFormula("leads"), /\{Lead Type\}="Unclear"/);
   assert.doesNotMatch(leadViewFormula("leads"), /Is Real Lead/);
+  assert.equal(leadViewFormula("gift-cards"), '{Lead Type}="Gift Card Lead"');
+});
+
+test("gift card leads are neither real leads nor 'not a lead'", () => {
+  assert.equal(countsAsRealLead({ leadType: "Gift Card Lead", isRealLead: false }), false);
+  assert.equal(isNotALead({ leadType: "Gift Card Lead" }), false);
+  assert.equal(isNotALead({ leadType: "Spam" }), true);
+  assert.match(buildLeadFormula(new URLSearchParams({ view: "all", leadType: "not-lead" })), /\{Lead Type\}!="Gift Card Lead"/);
+  assert.match(buildLeadFormula(new URLSearchParams({ view: "all", offerCode: "BF2026" })), /\{Offer Code\}="BF2026"/);
+});
+
+test("Gift Card Status accepts only the six Airtable options", () => {
+  assert.deepEqual([...GIFT_CARD_STATUSES], ["Requested", "Contacted", "Paid", "Issued", "Completed", "Cancelled"]);
+  assert.equal(isGiftCardStatus("Paid"), true);
+  assert.equal(isGiftCardStatus("paid"), false);
+  assert.equal(isGiftCardStatus("Refunded"), false);
 });
 
 test("classification stands alone when the Is Real Lead checkbox never got written", () => {

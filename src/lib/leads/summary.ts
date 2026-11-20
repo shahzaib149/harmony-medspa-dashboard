@@ -1,4 +1,4 @@
-import { countsAsRealLead, needsReview } from "@/lib/leads/classification";
+import { countsAsRealLead, isGiftCardLead, isNotALead, needsReview } from "@/lib/leads/classification";
 import { LEAD_VIEWS, leadBelongsToView, type LeadView } from "@/lib/leads/view";
 import { adCampaignLabel, adGroupLabel, campaignByUtm } from "@/lib/google/campaign-registry";
 
@@ -17,6 +17,8 @@ export type LeadSummaryRecord = {
   aiTags: string[];
   utmCampaign?: string;
   utmAdGroup?: string;
+  giftCardAmount?: number | null;
+  giftCardStatus?: string;
 };
 
 export type AdCampaignBreakdown = {
@@ -47,6 +49,15 @@ export type LeadSummaryMetrics = {
   byLeadType: Record<string, number>;
   /** Leads in the view that carry a UTM Campaign, grouped by campaign then ad group. */
   byAdCampaign: AdCampaignBreakdown[];
+  /** Gift card requests in the same filters (ignores the view). */
+  giftCards: {
+    total: number;
+    thisMonth: number;
+    /** Sum of Gift Card Amount for requests this month (clinic time). */
+    requestedThisMonth: number;
+    /** Not Completed or Cancelled. */
+    open: number;
+  };
 };
 
 export type LeadViewCounts = Record<LeadView, number>;
@@ -105,7 +116,7 @@ export function aggregateLeadSummary(
   const viewCounts = Object.fromEntries(
     LEAD_VIEWS.map((candidate) => [candidate, records.filter((record) => leadBelongsToView(record, candidate)).length]),
   ) as LeadViewCounts;
-  const notALeadRecords = records.filter((record) => !countsAsRealLead(record));
+  const notALeadRecords = records.filter((record) => isNotALead(record));
   const byLeadType: Record<string, number> = {};
   notALeadRecords.forEach((record) => {
     byLeadType[record.leadType] = (byLeadType[record.leadType] ?? 0) + 1;
@@ -130,6 +141,10 @@ export function aggregateLeadSummary(
     (record) => record.status.trim().toLowerCase() === "booked",
   ).length;
 
+  const giftCardRecords = records.filter((record) => isGiftCardLead(record));
+  const month = today.slice(0, 7);
+  const giftCardsThisMonth = giftCardRecords.filter((record) => dateKey(record.createdAt).startsWith(month));
+
   const summary: LeadSummaryMetrics = {
     total: matching.length,
     newToday: matching.filter((record) => dateKey(record.createdAt) === today).length,
@@ -148,6 +163,12 @@ export function aggregateLeadSummary(
     needsReview: records.filter(needsReview).length,
     byLeadType,
     byAdCampaign: groupByAdCampaign(matching),
+    giftCards: {
+      total: giftCardRecords.length,
+      thisMonth: giftCardsThisMonth.length,
+      requestedThisMonth: Math.round(giftCardsThisMonth.reduce((sum, record) => sum + (record.giftCardAmount ?? 0), 0) * 100) / 100,
+      open: giftCardRecords.filter((record) => !["completed", "cancelled"].includes((record.giftCardStatus ?? "").trim().toLowerCase())).length,
+    },
   };
 
   return { summary, viewCounts };

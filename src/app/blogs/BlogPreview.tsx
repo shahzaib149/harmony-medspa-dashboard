@@ -16,6 +16,8 @@ import {
   Loader2,
   Send,
   Trash2,
+  ClipboardCheck,
+  Undo2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { blogSiteUrl, validateBlog } from "@/lib/blogs/seo";
@@ -94,6 +96,29 @@ export default function BlogPreview({
   const publicUrl = `${blogSiteUrl(siteUrl)}/blog/${blog.slug}`;
   const published = blog.status === "Published";
   const archived = blog.status === "Archived";
+  const inReview = blog.status === "In Review";
+  const [reviewBusy, setReviewBusy] = useState(false);
+  // Draft ⇄ In Review. Neither status is visible on the website.
+  async function moveReview(action: "review" | "draft") {
+    setReviewBusy(true);
+    try {
+      const response = await fetch(`/api/airtable/blogs/${encodeURIComponent(blog.id)}/status`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const body = await response.json().catch(() => ({})) as { blog?: BlogRecord; error?: string };
+      if (!response.ok || !body.blog) throw new Error(body.error || "The status could not be changed.");
+      setBlog(body.blog);
+      setToast({ variant: "success", message: action === "review" ? "Submitted for clinic review. It stays hidden from the website." : "Moved back to draft." });
+      router.refresh();
+    } catch (error) {
+      setToast({ variant: "danger", message: error instanceof Error ? error.message : "The status could not be changed." });
+    } finally {
+      setReviewBusy(false);
+    }
+  }
   const lifecycle = useBlogLifecycle({
     onToast: setToast,
     onChanged: (next) => {
@@ -165,6 +190,16 @@ export default function BlogPreview({
         <Link href="/blogs" className="blog-back-link"><ArrowLeft size={17} /> Blog library</Link>
         <div className="blog-preview-actions">
           {canEdit && blog.status === "Draft" && (
+            <button type="button" className="blog-preview-action" data-action="review" disabled={reviewBusy} onClick={() => void moveReview("review")}>
+              {reviewBusy ? <Loader2 size={16} className="animate-spin" /> : <ClipboardCheck size={16} />} Submit for review
+            </button>
+          )}
+          {canEdit && inReview && (
+            <button type="button" className="blog-preview-action" data-action="edit" disabled={reviewBusy} onClick={() => void moveReview("draft")}>
+              {reviewBusy ? <Loader2 size={16} className="animate-spin" /> : <Undo2 size={16} />} Back to draft
+            </button>
+          )}
+          {canEdit && (blog.status === "Draft" || inReview) && (
             <button type="button" className="blog-preview-action" data-action="publish" disabled={publishing} onClick={requestPublish}>
               {publishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {publishing ? "Publishing…" : "Publish article"}
             </button>
@@ -197,10 +232,10 @@ export default function BlogPreview({
         </div>
       </div>
 
-      <div className="blog-preview-notice" data-status={blog.status.toLowerCase()}>
+      <div className="blog-preview-notice" data-status={blog.status.toLowerCase().replace(/\s+/g, "-")}>
         <Eye size={17} />
         <div>
-          <strong>{published ? "Dashboard preview of the published article" : archived ? "Archived article" : "Dashboard-only draft preview"}</strong>
+          <strong>{published ? "Dashboard preview of the published article" : archived ? "Archived article" : inReview ? "In clinic review" : "Dashboard-only draft preview"}</strong>
           <span>{published ? "Use the published URL to check the live website version." : archived ? "Hidden from the public website. Restore it to republish at the same URL." : "This draft is not visible on the public website."}</span>
         </div>
       </div>
@@ -211,7 +246,7 @@ export default function BlogPreview({
             <span>Article record</span>
             <h2 id="article-details-heading">Publication details</h2>
           </div>
-          <span className="blog-preview-meta-status" data-status={blog.status.toLowerCase()}>
+          <span className="blog-preview-meta-status" data-status={blog.status.toLowerCase().replace(/\s+/g, "-")}>
             <span aria-hidden="true" /> {blog.status}
           </span>
         </div>

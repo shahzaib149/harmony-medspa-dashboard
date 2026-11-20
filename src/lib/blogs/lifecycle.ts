@@ -4,7 +4,8 @@ import { BLOG_STATUSES, type BlogStatus } from "@/lib/blogs/types";
 // the website, kept in the dashboard) or deleted. Archived articles return by
 // republishing at the same URL.
 const ALLOWED_TRANSITIONS: Record<BlogStatus, BlogStatus[]> = {
-  Draft: ["Published"],
+  Draft: ["In Review", "Published"],
+  "In Review": ["Draft", "Published"],
   Published: ["Archived"],
   Archived: ["Published"],
 };

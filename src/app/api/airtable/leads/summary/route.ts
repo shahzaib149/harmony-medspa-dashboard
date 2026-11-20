@@ -29,6 +29,8 @@ const SUMMARY_FIELDS = [
   "AI Tags",
   "UTM Campaign",
   "UTM Ad Group",
+  "Gift Card Amount",
+  "Gift Card Status",
 ];
 
 export const dynamic = "force-dynamic";
@@ -57,6 +59,8 @@ function mapSummaryRecord(record: AirtableRecord): LeadSummaryRecord {
     aiTags: Array.isArray(record.fields["AI Tags"]) ? (record.fields["AI Tags"] as unknown[]).map(String) : [],
     utmCampaign: textField(record.fields, "UTM Campaign"),
     utmAdGroup: textField(record.fields, "UTM Ad Group"),
+    giftCardAmount: typeof record.fields["Gift Card Amount"] === "number" ? record.fields["Gift Card Amount"] as number : null,
+    giftCardStatus: textField(record.fields, "Gift Card Status"),
   };
 }
 

@@ -57,6 +57,7 @@ export function buildLeadFormula(
   }
 
   exact(["source"], "Source");
+  exact(["offerCode"], "Offer Code");
   const leadType = searchParams.get("leadType")?.trim();
   if (leadType === NOT_A_LEAD_FILTER) filters.push(NOT_A_LEAD_FORMULA);
   else exact(["leadType"], "Lead Type");

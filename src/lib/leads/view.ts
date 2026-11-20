@@ -1,8 +1,8 @@
-import { countsAsRealLead, REAL_LEAD_FORMULA } from "@/lib/leads/classification";
+import { countsAsRealLead, GIFT_CARD_FORMULA, isGiftCardLead, REAL_LEAD_FORMULA } from "@/lib/leads/classification";
 
-// Tab order in the Leads page: All | Real Leads | Booked.
+// Tab order in the Leads page: All | Real Leads | Booked | Gift Cards.
 // Non-leads and "Needs Review" are reached through the Lead type / Tag filters.
-export const LEAD_VIEWS = ["all", "leads", "booked"] as const;
+export const LEAD_VIEWS = ["all", "leads", "booked", "gift-cards"] as const;
 
 export type LeadView = (typeof LEAD_VIEWS)[number];
 
@@ -21,11 +21,13 @@ export function normalizeLeadView(value: string | null | undefined): LeadView {
 export function leadBelongsToView(lead: LeadViewFields, view: LeadView) {
   if (view === "all") return true;
   if (view === "leads") return countsAsRealLead(lead);
+  if (view === "gift-cards") return isGiftCardLead(lead);
   return lead.status.trim().toLowerCase() === "booked";
 }
 
 export function leadViewFormula(view: LeadView) {
   if (view === "all") return "";
   if (view === "leads") return REAL_LEAD_FORMULA;
+  if (view === "gift-cards") return GIFT_CARD_FORMULA;
   return 'LOWER({Status}&"")="booked"';
 }

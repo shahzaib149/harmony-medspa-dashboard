@@ -5,6 +5,7 @@ import { normalizeUsPhone, invalidateLeadsBaseCache } from "@/lib/airtable/leads
 import { logAuditEvent } from "@/lib/audit/log-audit-event";
 import { normalizeLeadView } from "@/lib/leads/view";
 import { buildLeadFormula } from "@/lib/leads/query";
+import { GIFT_CARD_STATUSES, isGiftCardStatus } from "@/lib/leads/classification";
 import { withCache, bustCachePrefix } from "@/lib/server-cache";
 
 const TABLE_NAME = "Leads";
@@ -204,7 +205,7 @@ export async function PATCH(request: Request) {
 
   if (!isAirtableConfigured()) return Response.json({ error: "AIRTABLE_API_KEY not configured" }, { status: 500 });
 
-  const { id, status, replied, name, email, phone, treatment, message, source, notes } = await request.json() as Record<string, unknown>;
+  const { id, status, replied, name, email, phone, treatment, message, source, notes, giftCardStatus } = await request.json() as Record<string, unknown>;
   if (!id) return Response.json({ error: "id required" }, { status: 400 });
   const fields: Record<string, unknown> = {};
   if (typeof status === "string" && status.trim()) fields.Status = status.trim();
@@ -216,6 +217,11 @@ export async function PATCH(request: Request) {
   if (typeof message === "string") fields.Message = message.trim();
   if (typeof source === "string") fields.Source = source.trim();
   if (typeof notes === "string") fields.Notes = notes.trim();
+  // Validated here because the PATCH uses typecast, which would otherwise create junk options.
+  if (giftCardStatus !== undefined) {
+    if (!isGiftCardStatus(giftCardStatus)) return Response.json({ error: `Gift Card Status must be one of: ${GIFT_CARD_STATUSES.join(", ")}` }, { status: 400 });
+    fields["Gift Card Status"] = giftCardStatus;
+  }
   if (Object.keys(fields).length === 0) return Response.json({ error: "No editable fields provided" }, { status: 400 });
   const existing = await airtableRecord(String(id));
   const beforeFields = existing?.fields ?? {};
@@ -237,11 +243,11 @@ export async function PATCH(request: Request) {
   }
   invalidateLeadsBaseCache();
   bustCachePrefix("leads:");
-  const fieldNames: Record<string, string> = { Status: "status", Replied: "replied", Name: "name", Email: "email", Phone: "phone", "Treatment Interest": "treatment", Message: "message", Source: "source", Notes: "notes" };
+  const fieldNames: Record<string, string> = { Status: "status", Replied: "replied", Name: "name", Email: "email", Phone: "phone", "Treatment Interest": "treatment", Message: "message", Source: "source", Notes: "notes", "Gift Card Status": "gift_card_status" };
   const before = Object.fromEntries(Object.keys(fields).map((field) => [fieldNames[field] || field, beforeFields[field] ?? null]));
   const after = Object.fromEntries(Object.entries(fields).map(([field, value]) => [fieldNames[field] || field, value]));
-  const action = "Status" in fields && Object.keys(fields).length === 1 ? "lead_status_changed" : "Replied" in fields && Object.keys(fields).length === 1 ? "lead_replied_changed" : "lead_updated";
-  await logAuditEvent({ actor, action, category: "leads", resource: { type: "lead", id: String(id), label: str(beforeFields, "Name") || (typeof name === "string" ? name : null) }, summary: action === "lead_status_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} status` : action === "lead_replied_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} replied state` : `Updated ${str(beforeFields, "Name") || "lead"}`, before, after, request });
+  const action = "Status" in fields && Object.keys(fields).length === 1 ? "lead_status_changed" : "Gift Card Status" in fields && Object.keys(fields).length === 1 ? "lead_gift_card_status_changed" : "Replied" in fields && Object.keys(fields).length === 1 ? "lead_replied_changed" : "lead_updated";
+  await logAuditEvent({ actor, action, category: "leads", resource: { type: "lead", id: String(id), label: str(beforeFields, "Name") || (typeof name === "string" ? name : null) }, summary: action === "lead_status_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} status` : action === "lead_gift_card_status_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} gift card status to ${String(fields["Gift Card Status"])}` : action === "lead_replied_changed" ? `Changed ${str(beforeFields, "Name") || "lead"} replied state` : `Updated ${str(beforeFields, "Name") || "lead"}`, before, after, request });
   return Response.json({ success: true, lead: updatedRecord ? mapLead(updatedRecord) : null });
 }
 

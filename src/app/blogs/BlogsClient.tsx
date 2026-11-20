@@ -26,7 +26,7 @@ import { blogSiteUrl } from "@/lib/blogs/seo";
 import type { BlogSummary } from "@/lib/blogs/types";
 import { useBlogLifecycle, type BlogLifecycleTarget } from "./useBlogLifecycle";
 
-const STATUS_FILTERS = ["Active", "Published", "Draft", "Archived", "All"] as const;
+const STATUS_FILTERS = ["Active", "Published", "In Review", "Draft", "Archived", "All"] as const;
 
 function matchesStatus(filter: string, status: BlogSummary["status"]) {
   if (filter === "All") return true;
@@ -47,7 +47,7 @@ function formatDate(value: string | null) {
 
 function StatusBadge({ status }: { status: BlogSummary["status"] }) {
   return (
-    <span className="blog-status-badge" data-status={status.toLowerCase()}>
+    <span className="blog-status-badge" data-status={status.toLowerCase().replace(/\s+/g, "-")}>
       <span className="blog-status-dot" aria-hidden="true" />
       {status}
     </span>
@@ -395,7 +395,7 @@ export default function BlogsClient({ canManage, canDelete, siteUrl }: { canMana
           <div className="blog-queue-list">
             {visible.map((blog) => (
               <div key={blog.id} className="blog-article-item" data-actions={canManage || undefined}>
-              <Link href={`/blogs/${blog.id}`} className="blog-article-row" data-status={blog.status.toLowerCase()}>
+              <Link href={`/blogs/${blog.id}`} className="blog-article-row" data-status={blog.status.toLowerCase().replace(/\s+/g, "-")}>
                 <span className="blog-row-status-rail" aria-hidden="true" />
                 <div className="blog-article-primary">
                   <div className="blog-article-heading">

@@ -1,0 +1,462 @@
+{
+  "name": "Gift Card Request (2026)",
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "designer": {
+      "orphans": []
+    }
+  },
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 3086837,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0,
+          "name": "harmony-gift-card-request"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "filter": {
+        "name": "Valid request",
+        "conditions": [
+          [
+            {
+              "a": "{{1.`Purchaser First Name`}}",
+              "o": "exist"
+            },
+            {
+              "a": "{{parseNumber(1.`Gift Card Amount`)}}",
+              "o": "number:greater",
+              "b": "0"
+            },
+            {
+              "a": "{{ifempty(1.website; \"none\")}}",
+              "o": "text:equal",
+              "b": "none"
+            },
+            {
+              "a": "{{1.`Purchaser Email`}}",
+              "o": "exist"
+            }
+          ],
+          [
+            {
+              "a": "{{1.`Purchaser First Name`}}",
+              "o": "exist"
+            },
+            {
+              "a": "{{parseNumber(1.`Gift Card Amount`)}}",
+              "o": "number:greater",
+              "b": "0"
+            },
+            {
+              "a": "{{ifempty(1.website; \"none\")}}",
+              "o": "text:equal",
+              "b": "none"
+            },
+            {
+              "a": "{{1.`Purchaser Phone`}}",
+              "o": "exist"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "scope": "roundtrip",
+        "variables": [
+          {
+            "name": "amount",
+            "value": "{{parseNumber(1.`Gift Card Amount`)}}"
+          },
+          {
+            "name": "bonus",
+            "value": "{{if(parseNumber(1.`Gift Card Amount`) >= 100 & parseNumber(formatDate(now; \"X\")) >= 1795755600 & parseNumber(formatDate(now; \"X\")) < 1796101200; round(parseNumber(1.`Gift Card Amount`) * 10) / 100; 0)}}"
+          },
+          {
+            "name": "purchaser_name",
+            "value": "{{1.`Purchaser First Name`}} {{1.`Purchaser Last Name`}}"
+          },
+          {
+            "name": "contact_phrase",
+            "value": "{{if(1.`Preferred Contact Method` = \"SMS\"; \"text message\"; \"phone call\")}}"
+          },
+          {
+            "name": "submitted_et",
+            "value": "{{formatDate(now; \"MMM D, YYYY h:mm A\"; \"America/New_York\")}} ET"
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0,
+          "name": "Request values + bonus"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "airtable:ActionCreateRecord",
+      "version": 3,
+      "parameters": {
+        "__IMTCONN__": 9625252
+      },
+      "mapper": {
+        "base": "appNL010pW9LUpgST",
+        "table": "tblLmBUvsRYFWrp5N",
+        "typecast": false,
+        "useColumnId": false,
+        "record": {
+          "fldUfjUPqAqOXXaJ8": "{{2.purchaser_name}}",
+          "fldNT7heqbHcwWS8Q": "{{1.`Purchaser Phone`}}",
+          "fldNnnkWUQEIvq9z3": "{{1.`Purchaser Email`}}",
+          "fldF3pVQThLISTrdS": "Gift Card Request Form",
+          "fldQLYChjFYyCUVAz": "Gift Card Lead",
+          "fldE7klonI7g9dIxw": "New",
+          "fldW3T4WDn7qLZkeO": "Requested",
+          "fldGHm2z5d9GkV952": "{{now}}",
+          "fldEhcL4wI5VzBXy5": "{{2.amount}}",
+          "fldjCZQWSHD3GJy96": "{{2.bonus}}",
+          "fld7OyAnKkKXlD53v": "{{1.`Recipient First Name`}}",
+          "fld3Tv5i3nQl1tSOk": "{{1.`Recipient Last Name`}}",
+          "fldnZMn5D8xC63mOb": "{{1.`Recipient Email`}}",
+          "fldVlr9omWQWsacwX": "{{1.`Recipient Phone`}}",
+          "fldGrrrLkZeHpVsdX": "{{1.`Preferred Contact Method`}}",
+          "fldPP5dddepKwNmHJ": "{{1.`Page URL`}}",
+          "fldPTcEsywGTmQBFz": "{{1.`UTM Source`}}",
+          "fld5hLZj2qgoeIZei": "{{1.`UTM Campaign`}}",
+          "fld1MtufJy68Uv5oK": "{{1.`UTM Medium`}}",
+          "fldC2AcHWOy1NO89p": "{{1.`UTM Ad Group`}}",
+          "fldNz1zJbrKBP6dwT": "{{1.`UTM Content`}}",
+          "fldRiO9QQ220eJUJj": "{{1.`UTM Term`}}",
+          "fld5dJVvKp6HQvukk": "{{1.`GCLID`}}",
+          "fldmSQV4e7C0a1rp0": "{{1.`GBRAID`}}",
+          "fldVRqpXDXxvh6afB": "{{1.`WBRAID`}}",
+          "fldco6PH84I69YQne": "{{1.`Match Type`}}",
+          "fldtIYJO0KrfVpDm7": "{{1.`Device`}}",
+          "fld5ccPyr4rXv2tll": "{{1.`Network`}}",
+          "fldgJQHy3L2HCiiPn": "{{1.referrerSource}}",
+          "fld43g7UPAtyXI9Zt": "{{now}}",
+          "flddpJxIto9u92hif": "Gift card request form",
+          "fldB0lzHFmWx7Ixks": "Gift card request: ${{formatNumber(2.amount; 2; \".\"; \",\")}} — contact by {{1.`Preferred Contact Method`}}"
+        }
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0,
+          "name": "Create gift card lead"
+        }
+      },
+      "onerror": [
+        {
+          "id": 20,
+          "module": "google-email:sendAnEmail",
+          "version": 4,
+          "parameters": {
+            "__IMTCONN__": 11267570
+          },
+          "mapper": {
+            "to": [
+              "management@harmonymedspafl.com",
+              "haydenalamo@harmonymedspafl.com"
+            ],
+            "subject": "⚠ NOT SAVED — New Gift Card Request — ${{1.`Gift Card Amount`}} from {{2.purchaser_name}}",
+            "bodyType": "rawHtml",
+            "content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>Gift card request</title></head>\n<body style=\"margin:0;padding:0;background:#fffdf9;color:#182126;font-family:Segoe UI,Arial,sans-serif\">\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background:#fffdf9\"><tr><td align=\"center\" style=\"padding:24px 12px\">\n<table role=\"presentation\" width=\"640\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;max-width:640px;background:#fff;border:1px solid #e5dece;border-radius:16px;overflow:hidden;box-shadow:0 12px 36px rgba(113,83,23,0.1)\">\n<tr><td style=\"height:4px;background:#a97813;font-size:0\">&nbsp;</td></tr>\n<tr><td style=\"padding:21px 28px;border-bottom:1px solid #eee8dc\">\n<span style=\"display:block;font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:30px;font-style:italic;color:#a57412\">Harmony</span>\n<p style=\"margin:12px 0 5px;color:#9b6b0b;font-size:10px;font-weight:700;letter-spacing:2px\">GIFT CARD REQUEST</p>\n<h1 style=\"margin:0;color:#172027;font-family:Georgia,serif;font-size:26px;line-height:32px;font-weight:400\">Gift card request (not saved)</h1>\n</td></tr>\n<tr><td style=\"padding:16px 12px\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Purchaser</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">{{2.purchaser_name}}</td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Email</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\"><a href=\"mailto:{{1.`Purchaser Email`}}\" style=\"color:#9b6b0b;text-decoration:none\">{{1.`Purchaser Email`}}</a></td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Phone</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\"><a href=\"tel:{{1.`Purchaser Phone`}}\" style=\"color:#9b6b0b;text-decoration:none\">{{1.`Purchaser Phone`}}</a></td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Requested amount</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">${{1.`Gift Card Amount`}} (raw value submitted)</td></tr>\n\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Preferred contact</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">{{1.`Preferred Contact Method`}}</td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Submitted</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">{{2.submitted_et}}</td></tr>\n</table>\n<p style=\"margin:14px 16px;color:#a12f2f;font-size:14px;font-weight:700\">⚠ Not saved to dashboard — add manually.</p><p style=\"margin:0 16px 14px;color:#5a646a;font-size:12px\">Page: {{1.`Page URL`}}</p>\n</td></tr>\n<tr><td style=\"padding:15px 28px;background:#faf8f2;border-top:1px solid #d8c28f;color:#5a646a;font-size:13px\"><strong>Reminder: contact the purchaser only. Never contact the gift recipient.</strong></td></tr>\n</table></td></tr></table></body></html>"
+          },
+          "metadata": {
+            "designer": {
+              "x": 900,
+              "y": 300,
+              "name": "Fallback: notify staff (not saved)"
+            }
+          }
+        },
+        {
+          "id": 21,
+          "module": "builtin:Ignore",
+          "version": 1,
+          "mapper": null,
+          "parameters": {},
+          "metadata": {
+            "designer": {
+              "x": 1200,
+              "y": 300
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "scope": "roundtrip",
+        "variables": [
+          {
+            "name": "amount_fmt",
+            "value": "{{formatNumber(2.amount; 2; \".\"; \",\")}}"
+          },
+          {
+            "name": "bonus_fmt",
+            "value": "{{formatNumber(2.bonus; 2; \".\"; \",\")}}"
+          },
+          {
+            "name": "bonus_display",
+            "value": "{{if(2.bonus > 0; \"table-row\"; \"none\")}}"
+          },
+          {
+            "name": "lead_url",
+            "value": "https://crm.harmonymedspafl.com/leads?view=all&lead={{3.id}}"
+          }
+        ]
+      },
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0,
+          "name": "Display values + lead link"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "mapper": null,
+      "parameters": {},
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": 0
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 6,
+              "module": "google-email:sendAnEmail",
+              "version": 4,
+              "parameters": {
+                "__IMTCONN__": 11267570
+              },
+              "mapper": {
+                "to": [
+                  "management@harmonymedspafl.com",
+                  "haydenalamo@harmonymedspafl.com"
+                ],
+                "subject": "New Gift Card Request — ${{4.amount_fmt}} from {{2.purchaser_name}}",
+                "bodyType": "rawHtml",
+                "content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/><title>Gift card request</title></head>\n<body style=\"margin:0;padding:0;background:#fffdf9;color:#182126;font-family:Segoe UI,Arial,sans-serif\">\n<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"background:#fffdf9\"><tr><td align=\"center\" style=\"padding:24px 12px\">\n<table role=\"presentation\" width=\"640\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;max-width:640px;background:#fff;border:1px solid #e5dece;border-radius:16px;overflow:hidden;box-shadow:0 12px 36px rgba(113,83,23,0.1)\">\n<tr><td style=\"height:4px;background:#a97813;font-size:0\">&nbsp;</td></tr>\n<tr><td style=\"padding:21px 28px;border-bottom:1px solid #eee8dc\">\n<span style=\"display:block;font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:30px;font-style:italic;color:#a57412\">Harmony</span>\n<p style=\"margin:12px 0 5px;color:#9b6b0b;font-size:10px;font-weight:700;letter-spacing:2px\">GIFT CARD REQUEST</p>\n<h1 style=\"margin:0;color:#172027;font-family:Georgia,serif;font-size:26px;line-height:32px;font-weight:400\">A gift card request needs follow-up</h1>\n</td></tr>\n<tr><td style=\"padding:16px 12px\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Purchaser</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">{{2.purchaser_name}}</td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Email</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\"><a href=\"mailto:{{1.`Purchaser Email`}}\" style=\"color:#9b6b0b;text-decoration:none\">{{1.`Purchaser Email`}}</a></td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Phone</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\"><a href=\"tel:{{1.`Purchaser Phone`}}\" style=\"color:#9b6b0b;text-decoration:none\">{{1.`Purchaser Phone`}}</a></td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Requested amount</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">${{4.amount_fmt}}</td></tr>\n<tr style=\"display:{{4.bonus_display}}\"><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Black Friday bonus</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">${{4.bonus_fmt}}</td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Preferred contact</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">{{1.`Preferred Contact Method`}}</td></tr>\n<tr><td style=\"padding:8px 8px 8px 16px;color:#78848b;font-size:12px;width:170px\">Submitted</td><td style=\"padding:8px 16px 8px 0;font-size:14px;color:#172027\">{{2.submitted_et}}</td></tr>\n</table>\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:18px 16px 8px\"><tr><td bgcolor=\"#a57412\" style=\"border-radius:8px\"><a href=\"{{4.lead_url}}\" target=\"_blank\" style=\"display:inline-block;padding:15px 26px;color:#fff;font-size:15px;font-weight:700;text-decoration:none\">Open in Growth &amp; Command &nbsp;&rarr;</a></td></tr></table>\n</td></tr>\n<tr><td style=\"padding:15px 28px;background:#faf8f2;border-top:1px solid #d8c28f;color:#5a646a;font-size:13px\"><strong>Reminder: contact the purchaser only. Never contact the gift recipient.</strong></td></tr>\n</table></td></tr></table></body></html>"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": -300,
+                  "name": "Notify staff"
+                }
+              },
+              "onerror": [
+                {
+                  "id": 11,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": null,
+                  "parameters": {},
+                  "metadata": {
+                    "designer": {
+                      "x": 1800,
+                      "y": -300
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "mailchimp-transactional-email:sendMessage",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 9664565
+              },
+              "filter": {
+                "name": "Purchaser email + bonus",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.`Purchaser Email`}}",
+                      "o": "exist"
+                    },
+                    {
+                      "a": "{{2.bonus}}",
+                      "o": "number:greater",
+                      "b": "0"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "to": [
+                  {
+                    "name": "{{2.purchaser_name}}",
+                    "type": "to",
+                    "email": "{{1.`Purchaser Email`}}"
+                  }
+                ],
+                "subject": "We received your Harmony gift card request",
+                "text": "Hi {{1.`Purchaser First Name`}},\n\nThank you for choosing to give the gift of wellness! We received your request for a ${{4.amount_fmt}} Harmony Med Spa gift card.\n\nA member of our team will contact you by {{2.contact_phrase}} to finalize your gift card and arrange secure payment. We'll only ever contact you — never the gift recipient — so your surprise stays a surprise.\n\nBlack Friday bonus: gift cards of $100+ purchased November 27–30 receive 10% back in promotional credit for you (${{4.bonus_fmt}} on this request). Your bonus credit is issued after payment, can be used starting December 1, 2026, and is valid for 365 days on regular-priced services and skincare.\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231",
+                "metadata": {},
+                "from_name": "Harmony Med Spa",
+                "from_email": "haydenalamo@harmonymedspafl.com",
+                "useTemplate": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": 0,
+                  "name": "Confirm purchaser (with bonus)"
+                }
+              }
+            },
+            {
+              "id": 8,
+              "module": "airtable:ActionCreateRecord",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tblTdHCBUt7lNDPvH",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld1FMN5z1AmpuoMT": "Black Friday 2026",
+                  "fldDVB0sh2MfAjSfd": "Gift Card Confirmation",
+                  "fld5AHOFq2WMropw0": "{{3.id}}",
+                  "fldAhnGoIhtd2FliR": "Email",
+                  "fldOwJrqyhOYzuQhN": "{{7.status}}",
+                  "fldUkbpPHJ2xy3Bm4": "{{7.`_id`}}",
+                  "fldCe1M3F01X4BJQV": "{{7.reject_reason}}",
+                  "fldXCsxSgSe5hfqa0": "{{now}}",
+                  "fldYLDwfiSdwF6xLB": "Hi {{1.`Purchaser First Name`}},\n\nThank you for choosing to give the gift of wellness! We received your request for a ${{4.amount_fmt}} Harmony Med Spa gift card.\n\nA member of our team will contact you by {{2.contact_phrase}} to finalize your gift card and arrange secure payment. We'll only ever contact you — never the gift recipient — so your surprise stays a surprise.\n\nBlack Friday bonus: gift cards of $100+ purchased November 27–30 receive 10% back in promotional credit for you (${{4.bonus_fmt}} on this request). Your bonus credit is issued after payment, can be used starting December 1, 2026, and is valid for 365 days on regular-priced services and skincare.\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": 0,
+                  "name": "Log confirmation email"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 9,
+              "module": "mailchimp-transactional-email:sendMessage",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 9664565
+              },
+              "filter": {
+                "name": "Purchaser email, no bonus",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{1.`Purchaser Email`}}",
+                      "o": "exist"
+                    },
+                    {
+                      "a": "{{2.bonus}}",
+                      "o": "number:equal",
+                      "b": "0"
+                    }
+                  ]
+                ]
+              },
+              "mapper": {
+                "to": [
+                  {
+                    "name": "{{2.purchaser_name}}",
+                    "type": "to",
+                    "email": "{{1.`Purchaser Email`}}"
+                  }
+                ],
+                "subject": "We received your Harmony gift card request",
+                "text": "Hi {{1.`Purchaser First Name`}},\n\nThank you for choosing to give the gift of wellness! We received your request for a ${{4.amount_fmt}} Harmony Med Spa gift card.\n\nA member of our team will contact you by {{2.contact_phrase}} to finalize your gift card and arrange secure payment. We'll only ever contact you — never the gift recipient — so your surprise stays a surprise.\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231",
+                "metadata": {},
+                "from_name": "Harmony Med Spa",
+                "from_email": "haydenalamo@harmonymedspafl.com",
+                "useTemplate": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": 300,
+                  "name": "Confirm purchaser"
+                }
+              }
+            },
+            {
+              "id": 10,
+              "module": "airtable:ActionCreateRecord",
+              "version": 3,
+              "parameters": {
+                "__IMTCONN__": 9625252
+              },
+              "mapper": {
+                "base": "appNL010pW9LUpgST",
+                "table": "tblTdHCBUt7lNDPvH",
+                "typecast": false,
+                "useColumnId": false,
+                "record": {
+                  "fld1FMN5z1AmpuoMT": "Black Friday 2026",
+                  "fldDVB0sh2MfAjSfd": "Gift Card Confirmation",
+                  "fld5AHOFq2WMropw0": "{{3.id}}",
+                  "fldAhnGoIhtd2FliR": "Email",
+                  "fldOwJrqyhOYzuQhN": "{{9.status}}",
+                  "fldUkbpPHJ2xy3Bm4": "{{9.`_id`}}",
+                  "fldCe1M3F01X4BJQV": "{{9.reject_reason}}",
+                  "fldXCsxSgSe5hfqa0": "{{now}}",
+                  "fldYLDwfiSdwF6xLB": "Hi {{1.`Purchaser First Name`}},\n\nThank you for choosing to give the gift of wellness! We received your request for a ${{4.amount_fmt}} Harmony Med Spa gift card.\n\nA member of our team will contact you by {{2.contact_phrase}} to finalize your gift card and arrange secure payment. We'll only ever contact you — never the gift recipient — so your surprise stays a surprise.\n\nQuestions? Call us at (941) 923-8990.\n\n— Harmony Med Spa\n2184 Gulf Gate Dr., Unit B, Sarasota, FL 34231"
+                }
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": 300,
+                  "name": "Log confirmation email"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

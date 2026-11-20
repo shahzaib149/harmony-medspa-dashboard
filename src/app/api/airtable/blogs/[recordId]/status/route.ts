@@ -6,7 +6,14 @@ import { notifyPublicBlogWebsite } from "@/lib/blogs/publication";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const TARGETS = { archive: "Archived", restore: "Published" } as const;
+const TARGETS = { archive: "Archived", restore: "Published", review: "In Review", draft: "Draft" } as const;
+type StatusAction = keyof typeof TARGETS;
+const LABELS: Record<StatusAction, { done: string; verb: string; audit: string }> = {
+  archive: { done: "Archived", verb: "archived", audit: "blog_archived" },
+  restore: { done: "Restored", verb: "restored", audit: "blog_restored" },
+  review: { done: "Submitted for review:", verb: "submitted for review", audit: "blog_submitted_for_review" },
+  draft: { done: "Returned to draft:", verb: "returned to draft", audit: "blog_returned_to_draft" },
+};
 
 function actorLabel(actor: { full_name: string | null; email: string | null }) {
   return actor.full_name?.trim() || actor.email || "Dashboard editor";
@@ -34,18 +41,19 @@ export async function POST(
   }
   const { recordId } = await params;
   const body = await request.json().catch(() => null) as { action?: unknown } | null;
-  const action = body?.action === "archive" || body?.action === "restore" ? body.action : null;
-  if (!action) return Response.json({ error: "Choose archive or restore." }, { status: 400 });
+  const action = typeof body?.action === "string" && body.action in TARGETS ? body.action as StatusAction : null;
+  if (!action) return Response.json({ error: "Choose archive, restore, review or draft." }, { status: 400 });
 
   try {
     const { before, after } = await setBlogStatus(recordId, TARGETS[action], actorLabel(actor));
-    const publicationSync = await notifyPublicBlogWebsite({ slug: after.slug });
+    // Review and draft moves never touch the website (it reads Published only).
+    const publicationSync = action === "archive" || action === "restore" ? await notifyPublicBlogWebsite({ slug: after.slug }) : null;
     const audit = await logAuditEvent({
       actor,
-      action: action === "archive" ? "blog_archived" : "blog_restored",
+      action: LABELS[action].audit,
       category: "blogs",
       resource: { type: "blog", id: after.id, label: after.title },
-      summary: `${action === "archive" ? "Archived" : "Restored"} ${after.title}`,
+      summary: `${LABELS[action].done} ${after.title}`,
       before: { slug: before.slug, status: before.status },
       after: { slug: after.slug, status: after.status },
       request,
@@ -54,7 +62,7 @@ export async function POST(
   } catch (error) {
     await logAuditEvent({
       actor,
-      action: action === "archive" ? "blog_archive_failed" : "blog_restore_failed",
+      action: `${LABELS[action].audit}_failed`,
       category: "blogs",
       resource: { type: "blog", id: recordId },
       summary: `Blog article ${action} failed`,
@@ -62,6 +70,6 @@ export async function POST(
       result: "failed",
       request,
     });
-    return storageError(error, `Blog article could not be ${action === "archive" ? "archived" : "restored"}.`);
+    return storageError(error, `Blog article could not be ${LABELS[action].verb}.`);
   }
 }

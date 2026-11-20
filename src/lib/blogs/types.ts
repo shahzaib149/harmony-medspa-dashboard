@@ -1,4 +1,5 @@
-export const BLOG_STATUSES = ["Draft", "Published", "Archived"] as const;
+// "In Review" = clinic review (Jessica) before publishing. The website reads Published only.
+export const BLOG_STATUSES = ["Draft", "In Review", "Published", "Archived"] as const;
 export type BlogStatus = (typeof BLOG_STATUSES)[number];
 
 export const BLOG_BLOCK_TYPES = [

@@ -42,6 +42,18 @@ export interface Lead {
   network: string;
   landingUrl: string;
   bestTime: string;
+  // Promotions: Offer Code from the website form (e.g. BF2026) and SMS consent
+  offerCode: string;
+  smsConsent: boolean;
+  // Gift card requests (Lead Type "Gift Card Lead"). Recipient fields are never contacted.
+  giftCardAmount: number | null;
+  giftCardBonus: number | null;
+  giftCardStatus: string;
+  preferredContactMethod: string;
+  recipientFirstName: string;
+  recipientLastName: string;
+  recipientEmail: string;
+  recipientPhone: string;
 }
 
 export function str(fields: Record<string, unknown>, ...keys: string[]): string {
@@ -71,6 +83,11 @@ function campaignSummaries(fields: Record<string, unknown>): LeadCampaignSummary
   const created = values(fields["Nurture Enrollment Created At"]);
   enrollmentIds.forEach((enrollmentId, index) => campaigns.push({ campaign: "14-Day Nurture", slug: "14-day-nurture", status: (statuses[index] || "Completed") as LeadCampaignSummary["status"], currentStep: steps[index] || null, nextSendAt: next[index] || null, lastSentAt: last[index] || null, stopReason: reasons[index] || null, enrolledAt: created[index] || null, enrollmentId }));
   return campaigns;
+}
+
+function money(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function confidence(value: unknown): number | null {
@@ -119,5 +136,15 @@ export function mapLead(r: AirtableRecord): Lead {
     network: str(r.fields, "Network"),
     landingUrl: str(r.fields, "Landing URL"),
     bestTime: str(r.fields, "Best Time to Reach"),
+    offerCode: str(r.fields, "Offer Code"),
+    smsConsent: r.fields["SMS Consent"] === true,
+    giftCardAmount: money(r.fields["Gift Card Amount"]),
+    giftCardBonus: money(r.fields["Gift Card Bonus"]),
+    giftCardStatus: str(r.fields, "Gift Card Status"),
+    preferredContactMethod: str(r.fields, "Preferred Contact Method"),
+    recipientFirstName: str(r.fields, "Recipient First Name"),
+    recipientLastName: str(r.fields, "Recipient Last Name"),
+    recipientEmail: str(r.fields, "Recipient Email"),
+    recipientPhone: str(r.fields, "Recipient Phone"),
   };
 }

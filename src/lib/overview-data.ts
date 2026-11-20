@@ -9,7 +9,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable/leads-base";
 import { isAirtableConfigured } from "@/lib/airtable/config";
-import { countsAsRealLead } from "@/lib/leads/classification";
+import { countsAsRealLead, isNotALead } from "@/lib/leads/classification";
 import { callsNeedingDetails, withCallOpportunities } from "@/lib/leads/call-overview";
 import { listCalls } from "@/lib/leads/call-store";
 import { requireRole } from "@/lib/auth/requireRole";
@@ -987,9 +987,10 @@ export async function getOverviewData(
   // solicitors, spam and other non-leads would otherwise drag the funnel down.
   const allPeriodSubmissions = reportingLeads.filter((lead) => inWindow(lead.createdAt, period.from, period.to));
   const periodLeads = allPeriodSubmissions.filter(countsAsRealLead);
-  const notALeadCount = allPeriodSubmissions.length - periodLeads.length;
+  // Gift card requests are neither leads nor "not a lead"; they are left out of both.
+  const notALeadCount = allPeriodSubmissions.filter(isNotALead).length;
   const previousNotALead = reportingLeads.filter(
-    (lead) => inWindow(lead.createdAt, period.previousFrom, period.previousTo) && !countsAsRealLead(lead),
+    (lead) => inWindow(lead.createdAt, period.previousFrom, period.previousTo) && isNotALead(lead),
   ).length;
   const previousLeads = reportingLeads.filter((lead) =>
     inWindow(lead.createdAt, period.previousFrom, period.previousTo) && countsAsRealLead(lead),

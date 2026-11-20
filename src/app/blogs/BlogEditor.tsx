@@ -556,7 +556,7 @@ export default function BlogEditor({ mode, recordId, canEdit, canDelete = false,
             variant: "success",
             message: status === "Published"
               ? "Article published and the public website was refreshed."
-              : status === "Archived" ? "Archived article saved. It stays hidden from the website." : "Draft saved to Airtable.",
+              : status === "Archived" ? "Archived article saved. It stays hidden from the website." : status === "In Review" ? "Saved. The article stays in review and hidden from the website." : "Draft saved to Airtable.",
           });
       if (mode === "new") router.replace(`/blogs/${body.blog.id}`);
       router.refresh();
@@ -606,7 +606,7 @@ export default function BlogEditor({ mode, recordId, canEdit, canDelete = false,
           </p>
         </div>
         <div className="blog-document-meta">
-          <span className="blog-status-badge" data-status={blog.status.toLowerCase()}><span className="blog-status-dot" aria-hidden="true" />{blog.status}</span>
+          <span className="blog-status-badge" data-status={blog.status.toLowerCase().replace(/\s+/g, "-")}><span className="blog-status-dot" aria-hidden="true" />{blog.status}</span>
           <code>/blog/{blog.slug || "untitled"}</code>
         </div>
       </section>

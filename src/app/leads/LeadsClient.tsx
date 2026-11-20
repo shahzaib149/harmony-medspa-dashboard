@@ -67,8 +67,11 @@ import type {
   LeadSummaryMetrics,
   LeadViewCounts,
 } from "@/lib/leads/summary";
+import { GiftCardRequestCard, GiftCardsTable } from "@/components/leads/GiftCardParts";
 import {
   AI_TAGS,
+  BLACK_FRIDAY_OFFER_CODE,
+  isGiftCardLead,
   countsAsRealLead,
   isAiTag,
   isLeadType,
@@ -171,6 +174,7 @@ const LEAD_TYPE_TONE: Record<LeadType, Tone> = {
   Solicitor: TONES.neutral,
   "Job Seeker": TONES.neutral,
   Spam: TONES.danger,
+  "Gift Card Lead": { color: "var(--brand-primary-strong)", bg: "var(--brand-primary-soft)", border: "var(--brand-primary)" },
 };
 
 function leadTypeTone(leadType: string): Tone {
@@ -191,6 +195,7 @@ const VIEW_OPTIONS: Array<{ value: LeadView; label: string; empty: string; hint:
   { value: "all", label: "All", empty: "No Leads found", hint: "Every submission, including solicitors, spam and other non-leads." },
   { value: "leads", label: "Real Leads", empty: "No real Leads yet", hint: "Prospective patients only. Filter by Lead type → Not a lead to review everything else." },
   { value: "booked", label: "Booked", empty: "No booked Leads yet", hint: "" },
+  { value: "gift-cards", label: "Gift Cards", empty: "No gift card requests yet", hint: "Requests from the website Gift Cards page. Contact the purchaser only, never the recipient. Not counted as leads." },
 ];
 
 // "Call Leads" is a client-only tab. The leads APIs keep their three views; this
@@ -742,6 +747,7 @@ function summaryCardsFor(
     all: ["All Submissions", "Leads", "Contacted", "Replied", "Booked", "Not a Lead"],
     leads: ["Real Leads", "New Today", "Contacted", "Replied", "Booked", "Not a Lead"],
     booked: ["Total Booked", "Received Today", "Replied + Booked", "Not Replied", "Top Source", "Duplicates"],
+    "gift-cards": ["Requests This Month", "Requested This Month", "Open Requests"],
   };
 
   if (!summary) {
@@ -751,6 +757,15 @@ function summaryCardsFor(
       meta: "Not available",
       color: palette[index],
     }));
+  }
+
+  if (view === "gift-cards") {
+    const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    return [
+      { label: "Requests This Month", value: summary.giftCards.thisMonth, meta: `${summary.giftCards.total} matching filters`, color: "var(--brand-primary)" },
+      { label: "Requested This Month", value: money.format(summary.giftCards.requestedThisMonth), meta: "total gift card amount", color: "var(--success)" },
+      { label: "Open Requests", value: summary.giftCards.open, meta: "not Completed or Cancelled", color: "var(--warning)" },
+    ];
   }
 
   if (view === "booked") {
@@ -1201,7 +1216,21 @@ function LeadDetailsModal({
             {duplicate && <StatusPill status="Duplicate" />}
             <DeliveryPill label="SMS" value={lead.smsSentStatus} />
             <DeliveryPill label="Email" value={lead.emailSentStatus} />
+            {lead.offerCode && (
+              <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold" style={{ color: "var(--brand-primary-strong)", backgroundColor: "var(--brand-primary-soft)", borderColor: "var(--brand-primary)" }} aria-label={`Offer code: ${lead.offerCode}`}>
+                Offer {lead.offerCode}
+              </span>
+            )}
+            {lead.offerCode === BLACK_FRIDAY_OFFER_CODE && (
+              <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ color: MUTED, backgroundColor: "var(--surface-2)" }}>
+                SMS consent: {lead.smsConsent ? "Yes" : "No"}
+              </span>
+            )}
           </div>
+
+          {isGiftCardLead(lead) && (
+            <GiftCardRequestCard lead={lead} canUpdate={canUpdate} getAuthHeaders={getAuthHeaders} onUpdated={onStatusChange} />
+          )}
 
           <ClassificationCard
             lead={lead}
@@ -1909,6 +1938,7 @@ export default function LeadsClient() {
   const campaignStatusFilter = searchParams.get("campaignStatus")?.trim() || "all";
   const campaignStepFilter = searchParams.get("campaignStep")?.trim() || "all";
   const leadTypeFilter = searchParams.get("leadType")?.trim() || "all";
+  const offerCodeFilter = searchParams.get("offerCode")?.trim() || "all";
   const tagsParam = searchParams.get("tags") ?? "";
   const tagFilter = useMemo(() => tagsParam.split(",").map((tag) => tag.trim()).filter(isAiTag), [tagsParam]);
   const tagFilterKey = tagFilter.join(",");
@@ -1924,12 +1954,13 @@ export default function LeadsClient() {
     if (campaignStatusFilter !== "all") params.set("campaignStatus", campaignStatusFilter);
     if (campaignStepFilter !== "all") params.set("campaignStep", campaignStepFilter);
     if (leadTypeFilter !== "all") params.set("leadType", leadTypeFilter);
+    if (offerCodeFilter !== "all") params.set("offerCode", offerCodeFilter);
     if (tagFilterKey) params.set("tags", tagFilterKey);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
     return params.toString();
-  }, [activeView, adCampaignFilter, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFrom, dateTo, emailFilter, leadTypeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
-  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && !dateRange && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && adCampaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && !tagFilterKey;
+  }, [activeView, adCampaignFilter, campaignFilter, campaignStatusFilter, campaignStepFilter, dateFrom, dateTo, emailFilter, leadTypeFilter, offerCodeFilter, searchQuery, smsFilter, sourceFilter, statusFilter, tagFilterKey]);
+  const noExtraFilters = !searchQuery && statusFilter === "all" && sourceFilter === "all" && !dateRange && smsFilter === "all" && emailFilter === "all" && campaignFilter === "all" && adCampaignFilter === "all" && campaignStatusFilter === "all" && campaignStepFilter === "all" && leadTypeFilter === "all" && offerCodeFilter === "all" && !tagFilterKey;
   const cachedLeads = useDashboardCachedData<{ leads?: Lead[]; view?: LeadView; nextCursor?: string | null; visibleFrom?: number; visibleTo?: number }>(
     DATA_CACHE_KEYS.leads,
   );
@@ -2029,7 +2060,7 @@ export default function LeadsClient() {
     // Patient-only filters don't apply to calls; the date range does, so it stays.
     updateQuery({ view: CALLS_VIEW, source: null, search: null, status: null,
       campaign: null, adCampaign: null, campaignStatus: null, campaignStep: null, smsStatus: null,
-      emailStatus: null, leadType: null, tags: null, lead: null }, { push });
+      emailStatus: null, leadType: null, offerCode: null, tags: null, lead: null }, { push });
   }
 
   function clearFilters(clearSearch = false) {
@@ -2048,6 +2079,7 @@ export default function LeadsClient() {
       smsStatus: null,
       emailStatus: null,
       leadType: null,
+      offerCode: null,
       tags: null,
       callSource: null,
       callStatus: null,
@@ -2281,6 +2313,7 @@ export default function LeadsClient() {
     smsFilter !== "all" ? { key: "smsStatus", label: smsFilter === "sent" ? "SMS sent" : "SMS not sent" } : null,
     emailFilter !== "all" ? { key: "emailStatus", label: emailFilter === "sent" ? "Email sent" : "Email not sent" } : null,
     leadTypeFilter !== "all" ? { key: "leadType", label: leadTypeFilter === NOT_A_LEAD_FILTER ? "Not a lead" : `Lead type: ${leadTypeFilter}` } : null,
+    offerCodeFilter !== "all" ? { key: "offerCode", label: offerCodeFilter === BLACK_FRIDAY_OFFER_CODE ? "Black Friday (BF2026)" : `Offer code: ${offerCodeFilter}` } : null,
     tagFilter.length ? { key: "tags", label: `Tags: ${tagFilter.join(", ")}` } : null,
   ].filter((chip): chip is { key: string; label: string } => Boolean(chip));
   const activeFilterCount = filterChips.length;
@@ -2734,7 +2767,7 @@ export default function LeadsClient() {
           <div
             role="tablist"
             aria-label="Lead views"
-            className="grid w-full grid-cols-2 gap-1 rounded-xl border p-1 sm:grid-cols-4"
+            className="grid w-full grid-cols-3 gap-1 rounded-xl border p-1 sm:grid-cols-5"
             style={{ borderColor: BORDER, backgroundColor: CARD }}
           >
             {VIEW_OPTIONS.map((option) => {
@@ -3061,6 +3094,21 @@ export default function LeadsClient() {
         </div>
         )}
 
+        {!callsTab && activeView !== "gift-cards" && offerCodeFilter === "all" && (
+          <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Quick filters">
+            <button
+              type="button"
+              onClick={() => setFilterParam("offerCode", BLACK_FRIDAY_OFFER_CODE)}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-bold"
+              style={{ borderColor: BORDER, backgroundColor: CARD, color: TEXT }}
+              aria-label="Show Black Friday leads (offer code BF2026)"
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: GOLD }} />
+              Black Friday
+            </button>
+          </div>
+        )}
+
         {visibleChips.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Active filters">
             {visibleChips.map((chip) => (
@@ -3275,6 +3323,8 @@ export default function LeadsClient() {
             </button>
           )}
         </div>
+      ) : activeView === "gift-cards" ? (
+        <GiftCardsTable leads={filtered} onOpen={setSelectedLead} />
       ) : (
         <>
           <div

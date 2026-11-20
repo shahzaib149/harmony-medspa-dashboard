@@ -43,7 +43,7 @@ test("Lead summary aggregates beyond the visible 20-row page", () => {
   assert.equal(summary.total, 28);
   assert.equal(summary.newToday, 28);
   assert.equal(summary.contacted, 9);
-  assert.deepEqual(viewCounts, { all: 28, leads: 28, booked: 0 });
+  assert.deepEqual(viewCounts, { all: 28, leads: 28, booked: 0, "gift-cards": 0 });
 });
 
 test("summary tab counts overlap for replied and booked Leads", () => {
@@ -55,7 +55,7 @@ test("summary tab counts overlap for replied and booked Leads", () => {
   ];
 
   const aggregate = aggregateLeadSummary(records, "booked");
-  assert.deepEqual(aggregate.viewCounts, { all: 4, leads: 4, booked: 2 });
+  assert.deepEqual(aggregate.viewCounts, { all: 4, leads: 4, booked: 2, "gift-cards": 0 });
   assert.equal(aggregate.summary.total, 2);
   assert.equal(aggregate.summary.booked, 2);
   assert.equal(aggregate.summary.replied, 1);

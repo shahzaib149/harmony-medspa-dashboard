@@ -2845,6 +2845,16 @@ select:disabled {
   margin: 0.2rem 0.3rem;
   background: var(--border-subtle);
 }
+.blog-status-badge[data-status="in-review"],
+.blog-preview-notice[data-status="in-review"],
+.blog-preview-meta-status[data-status="in-review"] {
+  border-color: var(--info-border);
+  color: var(--info-text);
+  background: var(--info-bg);
+}
+.blog-article-row[data-status="in-review"] .blog-row-status-rail {
+  background: var(--info-border);
+}
 .blog-status-badge[data-status="archived"],
 .blog-preview-notice[data-status="archived"],
 .blog-preview-meta-status[data-status="archived"] {

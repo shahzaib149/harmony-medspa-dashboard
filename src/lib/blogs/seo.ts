@@ -205,7 +205,7 @@ export function validateBlog(input: BlogInput) {
   if (!input.metaDescription.trim()) errors.push("Add a meta description.");
   if (readableBlocks.length === 0) errors.push("Write the article before publishing.");
   if (input.status === "Published" && images.length === 0) errors.push("Add an article image before publishing.");
-  if (input.status === "Draft" && images.length === 0) warnings.push("Add an article image before publishing.");
+  if ((input.status === "Draft" || input.status === "In Review") && images.length === 0) warnings.push("Add an article image before publishing.");
 
   if (input.seoTitle.length > 60) warnings.push("SEO title is longer than 60 characters.");
   if (input.seoTitle.length > 0 && input.seoTitle.length < 30) warnings.push("SEO title is shorter than 30 characters.");

@@ -15,6 +15,7 @@ import {
   retryableEnrollmentFailures,
 } from "@/lib/campaigns/enrollment-results";
 import type { BulkEnrollmentResult } from "@/lib/types/campaigns";
+import { countsAsRealLead, isGiftCardLead } from "@/lib/leads/classification";
 import StackedTable from "@/components/ui/StackedTable";
 type Lead = {
   id: string;
@@ -58,6 +59,7 @@ const blocked: Record<string, string> = {
 const digits = (value: string) =>
   value.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
 function eligibility(lead: Lead) {
+  if (isGiftCardLead({ leadType: lead.leadType ?? "" })) return "Gift card request";
   if (blocked[lead.status]) return blocked[lead.status];
   if (lead.replied) return "Replied";
   if (
@@ -75,7 +77,7 @@ function eligibility(lead: Lead) {
  * of "Select all eligible" but can still be ticked individually.
  */
 function notALeadWarning(lead: Lead) {
-  if (!lead.leadType || lead.isRealLead) return "";
+  if (!lead.leadType || countsAsRealLead({ leadType: lead.leadType })) return "";
   return `Not a lead (${lead.leadType}) · include only if they are a prospective patient`;
 }
 function autoSelectable(lead: Lead) {
