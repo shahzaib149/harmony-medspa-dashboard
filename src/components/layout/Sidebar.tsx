@@ -78,11 +78,6 @@ const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar(
         DATA_CACHE_KEYS.overview,
         "/api/overview?range=30d",
       );
-    if (href === "/campaigns")
-      void preloadDashboardData(
-        DATA_CACHE_KEYS.campaignsSummary,
-        "/api/airtable/campaigns",
-      );
     if (href === "/leads")
       void preloadDashboardData(
         DATA_CACHE_KEYS.leads,

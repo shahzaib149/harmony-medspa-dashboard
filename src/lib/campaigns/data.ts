@@ -1,15 +1,26 @@
 import { listRecords, linkedIds, mapLead, textField } from "@/lib/airtable/leads-base";
 import { CAMPAIGNS, getCampaign } from "@/lib/campaigns/registry";
 import { isCampaignDateToday } from "@/lib/campaigns/campaign-date";
+import {
+  MESSAGE_LOG_FIELDS, MESSAGE_LOG_FIELDS_WITH_BODY, dateValue, mapMessageLog, messageLogQuery, sequenceFormula,
+} from "@/lib/campaigns/message-log";
+import { bustCache, withCache } from "@/lib/server-cache";
 import type { CampaignSummary, NurtureEnrollment } from "@/lib/types/campaigns";
 import type { MessageLog } from "@/types/message-log";
 
-function dateValue(value: string | null | undefined) { const time = Date.parse(value ?? ""); return Number.isFinite(time) ? time : 0; }
-function delivery(value: string) { return ["sent", "delivered", "success", "successful", "ok"].includes(value.toLowerCase()) ? "Sent" : ["failed", "rejected", "bounced", "undelivered", "error"].includes(value.toLowerCase()) ? "Failed" : "Pending"; }
+/** Cache key prefix cleared by invalidateLeadsBaseCache (every lead / nurture write). */
+export const CAMPAIGN_CACHE_PREFIX = "campaigns:";
 
-export async function campaignData() {
+/**
+ * Leads, Nurture Enrollments and the Message Log rows of the given sequences only.
+ * The summary skips Message Body; a campaign's conversation view asks for it.
+ */
+export async function campaignData(options: { sequences?: string[]; withBody?: boolean } = {}) {
+  const sequences = options.sequences ?? CAMPAIGNS.map((campaign) => campaign.sequence).filter((s): s is string => Boolean(s));
   const [leadRecords, enrollmentRecords, messageRecords] = await Promise.all([
-    listRecords("Leads"), listRecords("Nurture Enrollments"), listRecords("Message Log", new URLSearchParams({ "sort[0][field]": "Sent At", "sort[0][direction]": "desc" })),
+    listRecords("Leads"),
+    listRecords("Nurture Enrollments"),
+    listRecords("Message Log", messageLogQuery(sequenceFormula(sequences), options.withBody ? MESSAGE_LOG_FIELDS_WITH_BODY : MESSAGE_LOG_FIELDS)),
   ]);
   const leads = leadRecords.map(mapLead);
   const leadMap = new Map(leads.map((lead) => [lead.id, lead]));
@@ -18,13 +29,7 @@ export async function campaignData() {
     const lead = leadMap.get(linkedLeadId) ?? null;
     return { airtableRecordId: record.id, linkedLeadId, lead, status: (textField(record.fields, "Status") || "Active") as NurtureEnrollment["status"], currentStep: textField(record.fields, "Current Step"), nextSendAt: textField(record.fields, "Next Send At") || null, lastSentAt: textField(record.fields, "Last Sent At") || null, stopReason: textField(record.fields, "Stop Reason") || null, stoppedAtStep: textField(record.fields, "Stopped At Step") || null, createdAt: textField(record.fields, "Created At") || record.createdTime, notes: textField(record.fields, "Notes") || null };
   });
-  const messages: MessageLog[] = messageRecords.map((record) => {
-    const recipientLeadId = linkedIds(record.fields["Recipient Lead"])[0] ?? null;
-    const lead = recipientLeadId ? leadMap.get(recipientLeadId) : null;
-    const sentAt = textField(record.fields, "Sent At") || record.createdTime;
-    const raw = textField(record.fields, "Delivery Status");
-    return { id: record.id, recipientLeadId, recipientLeadName: lead?.name ?? "Deleted or unavailable lead", recipientLeadEmail: lead?.email ?? null, recipientLeadPhone: lead?.phone ?? null, recipientLeadStatus: lead?.status ?? null, isOrphaned: !lead, channel: (textField(record.fields, "Channel") || "Unknown") as MessageLog["channel"], sequence: textField(record.fields, "Sequence") || null, sequenceStep: textField(record.fields, "Sequence Step") || null, messageBody: textField(record.fields, "Message Body"), deliveryStatus: delivery(raw) as MessageLog["deliveryStatus"], rawDeliveryStatus: raw || null, sentAt, mandrillMessageId: textField(record.fields, "Mandrill Message ID") || null, errorReason: textField(record.fields, "Error Reason") || null, createdTime: record.createdTime };
-  }).sort((a, b) => dateValue(b.sentAt) - dateValue(a.sentAt));
+  const messages: MessageLog[] = messageRecords.map((record) => mapMessageLog(record, leadMap)).sort((a, b) => dateValue(b.sentAt) - dateValue(a.sentAt));
   return { leads, enrollments, messages };
 }
 
@@ -48,12 +53,25 @@ export function summarizeCampaigns(data: Awaited<ReturnType<typeof campaignData>
   });
 }
 
-export async function campaignDetail(slug: string) {
+/** All registry campaign summaries (stale-while-revalidate, cleared on lead/nurture writes). */
+export function cachedCampaignSummaries() {
+  return withCache(`${CAMPAIGN_CACHE_PREFIX}summary`, 300, async () => summarizeCampaigns(await campaignData()));
+}
+
+async function loadCampaignDetail(slug: string) {
   const definition = getCampaign(slug);
   if (!definition) return null;
-  const data = await campaignData();
-  const summary = summarizeCampaigns(data).find((item) => item.slug === slug)!;
-  if (slug === "14-day-nurture") return { campaign: summary, leads: data.enrollments, messages: data.messages.filter((message) => message.sequence === definition.sequence) };
-  const ids = new Set(data.messages.filter((message) => message.sequence === definition.sequence).map((message) => message.recipientLeadId));
-  return { campaign: summary, leads: data.leads.filter((lead) => lead.emailSentStatus || lead.smsSentStatus || ids.has(lead.id)), messages: data.messages.filter((message) => message.sequence === definition.sequence) };
+  const all = await campaignData();
+  const own = await campaignData({ sequences: definition.sequence ? [definition.sequence] : [], withBody: true });
+  const summary = summarizeCampaigns(all).find((item) => item.slug === slug)!;
+  if (slug === "14-day-nurture") return { campaign: summary, leads: own.enrollments, messages: own.messages };
+  const ids = new Set(own.messages.map((message) => message.recipientLeadId));
+  return { campaign: summary, leads: own.leads.filter((lead) => lead.emailSentStatus || lead.smsSentStatus || ids.has(lead.id)), messages: own.messages };
+}
+
+/** One campaign's workspace data, including message bodies for its Conversations tab. */
+export function campaignDetail(slug: string, forceRefresh = false) {
+  const key = `${CAMPAIGN_CACHE_PREFIX}detail:${slug}`;
+  if (forceRefresh) bustCache(key);
+  return withCache(key, 120, () => loadCampaignDetail(slug));
 }

@@ -16,27 +16,9 @@ function tables() {
   // Airtable accepts table names directly; use the CRM's existing base and token.
   return { patients: "Patients", enrollments: "Reactivation Enrollments" };
 }
-// Space request starts to respect Airtable's rate limit, while allowing independent
-// reads to overlap. Previously every request waited for the full previous network
-// response, multiplying latency across the campaign workspace.
-let requestStartQueue: Promise<void> = Promise.resolve();
-let lastRequestStartedAt = 0;
-async function waitForRequestSlot() {
-  const slot = requestStartQueue.then(async () => {
-    await new Promise(resolve => setTimeout(resolve, Math.max(0, 225 - (Date.now() - lastRequestStartedAt))));
-    lastRequestStartedAt = Date.now();
-  });
-  requestStartQueue = slot.catch(() => undefined);
-  await slot;
-}
+// Rate limiting and 429 backoff live in airtableFetch, shared by every Airtable read and write.
 export async function request(path: string, init?: RequestInit, api: "data" | "schema" = "data"): Promise<Response> {
-  await waitForRequestSlot();
-  let response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
-  if (response.status === 429) {
-    await new Promise(resolve => setTimeout(resolve, 30_000));
-    await waitForRequestSlot();
-    response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
-  }
+  const response = await airtableFetch(path, { ...init, cache: "no-store" }, api);
   if (!response.ok) throw new ReactivationError(response.status === 403 ? "Airtable access is missing. Check record and schema read permissions." : `Patient data request failed (${response.status}). Please retry.`, response.status === 404 ? 404 : 503);
   return response;
 }

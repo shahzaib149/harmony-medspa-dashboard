@@ -22,7 +22,8 @@ export function getCache<T>(key: string): T | null {
   const entry = store.get(key);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
-    store.delete(key);
+    // Keep a recently expired value: withCache may still serve it while refreshing.
+    if (Date.now() - entry.expiresAt > STALE_LIMIT_MS) store.delete(key);
     return null;
   }
   return entry.data as T;
@@ -49,17 +50,32 @@ export function bustCachePrefix(prefix: string): void {
   matches.forEach(invalidateKey);
 }
 
+/** An expired value younger than this is served at once while it refreshes in the background. */
+export const STALE_LIMIT_MS = 30 * 60_000;
+
+/**
+ * Stale-while-revalidate: a fresh value returns at once; an expired one (within
+ * STALE_LIMIT_MS) also returns at once and starts one background refresh. Only a
+ * cold or very old key, or one cleared by bustCache, makes the caller wait.
+ */
 export async function withCache<T>(
   key: string,
   ttlSeconds: number,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const cached = getCache<T>(key);
-  if (cached !== null) return cached;
+  const entry = store.get(key) as CacheEntry<T> | undefined;
+  if (entry && Date.now() <= entry.expiresAt) return entry.data;
+  if (entry && Date.now() - entry.expiresAt <= STALE_LIMIT_MS) {
+    if (!inFlight.has(key)) void load(key, ttlSeconds, fn).catch(() => undefined);
+    return entry.data;
+  }
 
   const pending = inFlight.get(key) as Promise<T> | undefined;
   if (pending) return pending;
+  return load(key, ttlSeconds, fn);
+}
 
+function load<T>(key: string, ttlSeconds: number, fn: () => Promise<T>): Promise<T> {
   const revision = revisions.get(key) ?? 0;
   const request: Promise<T> = fn()
     .then((fresh) => {

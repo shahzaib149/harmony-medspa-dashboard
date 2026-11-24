@@ -22,7 +22,8 @@ test("no automatic alert without a Speed-to-Lead classification", () => {
 });
 
 test("the profile shows the Hayden entry and the history route is viewer-protected", () => {
-  const client = readFileSync("src/app/leads/LeadsClient.tsx", "utf8");
+  // The lead details modal moved to the shared LeadUi module (used by Leads and campaign workspaces).
+  const client = readFileSync("src/components/leads/LeadUi.tsx", "utf8");
   assert.match(client, /<HaydenNotificationActivity lead=\{lead\}/);
   const route = readFileSync("src/app/api/airtable/leads/[id]/notify-hayden/route.ts", "utf8");
   assert.match(route, /export async function GET[\s\S]*requireRole\(request, "viewer"\)[\s\S]*lead_shared_with_hayden/);
