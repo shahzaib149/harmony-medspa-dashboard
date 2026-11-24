@@ -43,7 +43,7 @@ export type CampaignEntry = {
   /** Flight dates (inclusive, clinic time) when the campaign only runs for a set period. */
   flight?: { start: string; end: string };
   /**
-   * false when the Make call import (6807651) has no explicit row for this campaign yet:
+   * false when the Make call import (6807651) has no explicit row for this campaign:
    * it then writes the campaign name as Source / Line and the "gads" prefix, so the
    * dashboard importer does the same. The Calls view still files these calls under the
    * campaign code by Campaign ID.
@@ -68,9 +68,8 @@ export const CAMPAIGNS: readonly CampaignEntry[] = [
     totalBudget: 200,
     flight: { start: "2026-11-18", end: "2026-11-30" },
     lifecycle: "active",
-    callLine: "CS6 Local",
+    callLine: "CS6 Local Med Spa & Facials",
     callPrefix: "cs6",
-    makeMapped: false,
     adGroups: [
       { id: "205276469754", name: "Med Spa Sarasota", label: "Med Spa Sarasota (CS6)", landingPage: "/landing/november-specials" },
       { id: "202287702956", name: "Facials & Glo2Facial", label: "Facials & Glo2Facial (CS6)", landingPage: "/glo2facials" },
