@@ -9,6 +9,7 @@ import { CampaignMetricCard } from "@/components/campaigns/workspace/CampaignMet
 import { CommunicationOverview } from "@/components/campaigns/workspace/CommunicationOverview";
 import ConversationDrawer from "@/components/campaigns/workspace/ConversationDrawer";
 import CampaignLeadModal from "@/components/campaigns/workspace/CampaignLeadModal";
+import { useQuietRefresh } from "@/components/campaigns/workspace/useQuietRefresh";
 import {
   Avatar, ClearFilters, EmptyState, FilterSelect, JourneyRail, RowMenu, SearchField, TablePagination,
   WorkspaceHero, WorkspaceTabs, workspace as s, type RailStep,
@@ -62,6 +63,9 @@ export default function GiftCardCampaign({ initial, initialError }: { initial: G
   }
 
   // A status change updates the row and the counts at once (confirmations come from Message Log).
+  const takeFresh = useCallback((fresh: GiftCardWorkspace) => { setData(fresh); setError(""); }, []);
+  useQuietRefresh(data, "/api/gift-cards/campaign", takeFresh);
+
   const applyUpdate = useCallback((updated: Lead) => {
     setLead((current) => (current && current.id === updated.id ? updated : current));
     setData((current) => {

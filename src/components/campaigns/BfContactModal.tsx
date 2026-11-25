@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy, Mail, MessageSquare, X } from "lucide-react";
 import { SEND_HOUR_UTC_OFFSET, SEND_STEPS, isSendable, type AudienceContact } from "@/lib/black-friday/campaign";
 import { Avatar, Tag, workspace as s } from "@/components/campaigns/workspace/parts";
+import { OptOutControls } from "@/components/campaigns/BfOptOut";
 
 const longDate = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 
@@ -19,7 +20,14 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 }
 
 /** Detail popup for one of Hayden's Black Friday contacts (members and patients, not leads). */
-export default function BfContactModal({ contact, onClose, nowMs }: { contact: AudienceContact | null; onClose: () => void; /** Current time (from the workspace clock). */ nowMs: number }) {
+export default function BfContactModal({ contact, onClose, nowMs, onOptOut }: {
+  contact: AudienceContact | null;
+  onClose: () => void;
+  /** Current time (from the workspace clock). */
+  nowMs: number;
+  /** Editors only: called after emails / texts / everything were stopped for this contact. */
+  onOptOut?: (updated: AudienceContact, message: string) => void;
+}) {
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!contact) return;
@@ -78,6 +86,14 @@ export default function BfContactModal({ contact, onClose, nowMs }: { contact: A
             </div>
           </section>
 
+          {onOptOut || c.unsubscribed ? (
+            <section className={s.modalSection} aria-labelledby="bf-optout">
+              <p id="bf-optout" className={s.sectionLabel}>Unsubscribe</p>
+              <OptOutControls contact={c} onSaved={onOptOut ?? (() => undefined)} />
+              <p className="text-xs leading-5 text-[var(--text-muted)]">Use this when someone asks to stop, by reply, phone or in person. Emails from Nov 27 also carry their own unsubscribe link, and texts honour STOP.</p>
+            </section>
+          ) : null}
+
           <section className={s.modalSection} aria-labelledby="bf-sends">
             <p id="bf-sends" className={s.sectionLabel}>Black Friday sends</p>
             <ol className={s.timeline}>
@@ -87,7 +103,8 @@ export default function BfContactModal({ contact, onClose, nowMs }: { contact: A
                 const nextSlot = step.sendDates.map((d) => `${d}${SEND_HOUR_UTC_OFFSET}`).find((at) => Date.parse(at) > nowMs);
                 const text = got
                   ? `Sent by ${channels} · ${member ? "member" : "patient"} wording`
-                  : !isSendable(c) ? "Won't be sent: no usable channel"
+                  : c.unsubscribed ? "Won't be sent: unsubscribed"
+                    : !isSendable(c) ? "Won't be sent: no usable channel (emails and texts off)"
                     : nextSlot ? `Next send ${longDate(nextSlot)} ET` : "Window closed before this contact was reached";
                 return (
                   <li key={step.id} className={s.timelineItem}>

@@ -19,7 +19,7 @@ const EXEMPT: Record<string, string> = {
   "auth/login/route.ts":
     "public credential exchange endpoint; validates origin, credentials, and active profile before setting a session",
   "reactivation/unsubscribe/route.ts":
-    "public patient opt-out from email links; authorized by an HMAC-signed token bound to the patient record and can only set Opted Out",
+    "public opt-out from email links; authorized by an HMAC-signed token bound to the record and can only set Opted Out (reactivation patient) or turn Email OK off (Black Friday contact)",
   // Thin delegates that forward the (unchanged) Request to an already-protected
   // handler which performs the auth check.
   "airtable/message-log/route.ts":

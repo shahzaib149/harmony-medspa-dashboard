@@ -1,0 +1,86 @@
+/* Message thread (MessageThread.tsx) and the campaign inbox layout (BfInbox.tsx). */
+
+.thread { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+
+.divider { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--brand-primary); }
+.divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
+.dividerDate { order: 3; font-weight: 650; letter-spacing: .02em; text-transform: none; color: var(--text-muted); }
+
+/* Email card */
+.mail { overflow: hidden; border-radius: 18px; border: 1px solid var(--border-subtle); background: var(--surface-1); box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.mailFailed { border-color: var(--danger-border); }
+.mailHead { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-2); }
+.mailIcon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 10px; background: color-mix(in srgb, var(--brand-primary) 12%, transparent); color: var(--brand-primary); }
+.mailSubject { font-size: 14.5px; font-weight: 750; line-height: 1.35; color: var(--text-primary); }
+.mailMeta { margin-top: 2px; font-size: 12px; color: var(--text-muted); }
+.mailSide { display: grid; justify-items: end; gap: 6px; flex: none; font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.mailBody { padding: 16px 18px 18px; font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Text bubble (outgoing, so right-aligned) */
+.smsRow { display: grid; justify-items: end; gap: 5px; }
+.smsMeta, .smsFoot { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-muted); }
+.smsFoot { gap: 10px; }
+.bubble { max-width: min(100%, 460px); border-radius: 20px 20px 6px 20px; background: var(--brand-primary); color: var(--primary-foreground); padding: 11px 15px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 6px 16px -10px color-mix(in srgb, var(--brand-primary) 70%, transparent); }
+.bubble .link { color: inherit; text-decoration-color: color-mix(in srgb, currentColor 60%, transparent); }
+.bubbleFailed { background: var(--danger-bg); color: var(--danger-text); box-shadow: none; border: 1px solid var(--danger-border); }
+
+.link { color: var(--brand-primary); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--brand-primary) 40%, transparent); }
+.link:hover { text-decoration-color: currentColor; }
+
+.status { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 750; }
+.statusSent { background: var(--success-bg); color: var(--success-text); }
+.statusFailed { background: var(--danger-bg); color: var(--danger-text); }
+.statusPending { background: var(--warning-bg); color: var(--warning-text); }
+.error { margin: 0 16px 14px; border-radius: 10px; background: var(--danger-bg); padding: 8px 10px; font-size: 12px; color: var(--danger-text); }
+.smsRow .error { margin: 0; }
+
+/* ---------- Inbox layout ---------- */
+.inbox { display: grid; overflow: hidden; border-radius: 24px; border: 1px solid var(--border-subtle); background: var(--surface-1); box-shadow: var(--shadow-card); }
+@media (min-width: 1024px) {
+  .inbox { grid-template-columns: minmax(320px, 380px) minmax(0, 1fr); height: min(78vh, 860px); min-height: 560px; }
+}
+
+.list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border-subtle); }
+.listScroll { flex: 1; min-height: 0; overflow-y: auto; }
+.listItems { margin: 0; padding: 6px; list-style: none; }
+.row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; width: 100%; border-radius: 16px; padding: 12px; text-align: left; transition: background-color .12s ease; }
+.row:hover { background: var(--surface-hover); }
+.row:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: -2px; }
+.rowActive, .rowActive:hover { background: color-mix(in srgb, var(--brand-primary) 9%, var(--surface-1)); box-shadow: inset 3px 0 0 var(--brand-primary); }
+.rowTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rowName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 750; color: var(--text-primary); }
+.rowTime { flex: none; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rowMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.rowPreview { margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text-secondary); }
+.chan { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.chanOn { color: var(--success-text); }
+.chanOff { color: var(--text-muted); opacity: .6; text-decoration: line-through; }
+.chanFail { color: var(--danger-text); }
+
+.listPager { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--border-subtle); padding: 10px 12px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pagerButtons { display: flex; gap: 6px; }
+.pagerButtons button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--surface-1); color: var(--text-primary); }
+.pagerButtons button:disabled { opacity: .4; }
+
+.pane { display: none; min-height: 0; flex-direction: column; background: var(--background-subtle, var(--surface-2)); }
+@media (min-width: 1024px) { .pane { display: flex; } }
+.paneHead { display: grid; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-1); }
+.paneTitle { font-size: 19px; font-weight: 800; color: var(--text-primary); }
+.paneContacts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--text-secondary); }
+.paneContacts span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.paneScroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 22px 26px; }
+.paneFoot { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border-subtle); background: var(--surface-1); padding: 12px 22px; font-size: 12.5px; color: var(--text-secondary); }
+.paneFootIcon { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 9px; background: var(--surface-2); color: var(--brand-primary); }
+
+/* Below lg the thread opens as a full-screen sheet over the list. */
+.sheet { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; background: var(--surface-1); }
+.sheet .pane { display: flex; flex: 1; }
+.sheetBar { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-subtle); padding: 10px 12px; }
+@media (min-width: 1024px) { .sheet { display: none; } }
+
+.stepStrip { display: grid; gap: 10px; }
+@media (min-width: 768px) { .stepStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.stepCard { display: grid; gap: 6px; border-radius: 16px; border: 1px solid var(--border-subtle); background: var(--surface-1); padding: 12px 14px; }
+.stepCardTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 750; color: var(--text-secondary); }
+.stepCardFigures { display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.stepCardFigures b { color: var(--text-primary); font-size: 15px; }

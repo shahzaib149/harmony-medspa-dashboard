@@ -1,5 +1,6 @@
 import { applyPatientAction } from "@/lib/reactivation/server";
 import { verifyUnsubscribe } from "@/lib/reactivation/unsubscribe";
+import { optOutContact } from "@/lib/black-friday/audience-server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -29,7 +30,10 @@ export async function POST(request: Request) {
       : Response.json({ error: "This unsubscribe link is not valid." }, { status: 400 });
   }
   try {
-    await applyPatientAction(patientId, "opted-out");
+    // The same signed links go in Black Friday emails (BF Audience rows). Record ids are unique
+    // across tables, so a BF contact gets their emails stopped; anyone else is a reactivation patient.
+    const blackFriday = await optOutContact(patientId, "email", "email unsubscribe link");
+    if (!blackFriday) await applyPatientAction(patientId, "opted-out");
   } catch {
     return fromForm
       ? Response.redirect(new URL(`/unsubscribe?status=error&p=${patientId}&t=${token}`, url.origin), 303)

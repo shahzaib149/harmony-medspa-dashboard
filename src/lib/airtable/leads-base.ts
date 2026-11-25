@@ -2,18 +2,12 @@ import { AIRTABLE_LEADS_BASE_ID, getAirtableApiKey } from "@/lib/airtable/config
 import { AirtableRequestError, parseAirtableErrorResponse } from "@/lib/airtable/nurture-enrollment";
 import { retryDelayMs, waitForAirtableSlot } from "@/lib/airtable/throttle";
 
-import { linkedIds, textField, type AirtableRecord } from "@/lib/airtable/fields";
-export { linkedIds, textField, type AirtableRecord };
+import { linkedIds, normalizeUsPhone, textField, type AirtableRecord } from "@/lib/airtable/fields";
+export { linkedIds, normalizeUsPhone, textField, type AirtableRecord };
 
 const root = `https://api.airtable.com/v0/${AIRTABLE_LEADS_BASE_ID}`;
 const AIRTABLE_TIMEOUT_MS = 10_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-
-export function normalizeUsPhone(value: string): string | null {
-  const digits = value.replace(/\D/g, "");
-  const national = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
-  return national.length === 10 ? `+1${national}` : null;
-}
 
 export function safeAirtableError(status: number) {
   return status === 401 || status === 403 ? "Airtable access is not authorized" : `Airtable request failed (${status})`;

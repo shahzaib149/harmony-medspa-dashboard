@@ -4,18 +4,21 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  ArrowLeft, ArrowUpRight, Copy, Crown, Eye, Inbox, Mail, MessageSquare, RefreshCw, Send, Sparkles, UserRound, Users,
+  ArrowLeft, ArrowUpRight, BellOff, ClipboardList, Copy, Crown, Eye, Inbox, Mail, MessageSquare, RefreshCw, Send, Sparkles, UserRound, Users,
 } from "lucide-react";
-import CampaignConversationTable, { groupConversations, type Conversation } from "@/components/campaigns/CampaignConversationTable";
 import { CampaignMetricCard } from "@/components/campaigns/workspace/CampaignMetricCard";
 import { CommunicationOverview } from "@/components/campaigns/workspace/CommunicationOverview";
-import ConversationDrawer from "@/components/campaigns/workspace/ConversationDrawer";
 import CampaignLeadModal from "@/components/campaigns/workspace/CampaignLeadModal";
+import { useQuietRefresh } from "@/components/campaigns/workspace/useQuietRefresh";
 import {
   Avatar, ClearFilters, EmptyState, FilterSelect, JourneyRail, RowMenu, SearchField, SplitBar, Tag, TablePagination,
   WorkspaceHero, WorkspaceTabs, workspace as s, type RailStep,
 } from "@/components/campaigns/workspace/parts";
 import BfContactModal from "@/components/campaigns/BfContactModal";
+import BfInbox, { useBfThreads } from "@/components/campaigns/BfInbox";
+import { UnsubscribeListDialog } from "@/components/campaigns/BfOptOut";
+import { Toast } from "@/components/ui/Toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { DeliveryPill, StatusPill } from "@/components/leads/LeadUi";
 import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
 import { countdown, paginate, relativeTime } from "@/lib/campaigns/paginate";
@@ -47,6 +50,10 @@ export default function BlackFridayCampaign({ initial, initialError }: { initial
   const [refreshing, setRefreshing] = useState(false);
   const [contact, setContact] = useState<AudienceContact | null>(null);
   const [lead, setLead] = useState<Lead | null>(null);
+  const [toast, setToast] = useState<{ variant: "success" | "danger"; message: string } | null>(null);
+  const [listDialog, setListDialog] = useState(false);
+  const { can } = useAuth();
+  const canEdit = can("update:leads");
 
   const setTab = (key: TabKey) => router.replace(`${pathname}?tab=${key}`, { scroll: false });
 
@@ -64,6 +71,24 @@ export default function BlackFridayCampaign({ initial, initialError }: { initial
       setRefreshing(false);
     }
   }
+
+  const threads = useBfThreads(data);
+  const takeFresh = useCallback((fresh: BlackFridayWorkspace) => { setData(fresh); setError(""); }, []);
+  useQuietRefresh(data, "/api/black-friday/campaign", takeFresh);
+
+  // An opt-out saved from the popup, the inbox or the row menu: update the list on screen at once.
+  const contactSaved = useCallback((updated: AudienceContact, message: string) => {
+    setData((current) => current ? { ...current, audience: current.audience.map((c) => (c.id === updated.id ? updated : c)) } : current);
+    setContact((open) => (open && open.id === updated.id ? updated : open));
+    setToast({ variant: "success", message });
+  }, []);
+  const listApplied = useCallback((ids: string[], applied: number) => {
+    const hit = new Set(ids);
+    setData((current) => current ? { ...current, audience: current.audience.map((c) => (hit.has(c.id) ? { ...c, unsubscribed: true, emailOk: false, smsOk: false } : c)) } : current);
+    setListDialog(false);
+    setToast({ variant: "success", message: applied ? `Unsubscribed ${applied} contact${applied === 1 ? "" : "s"}. They won't get the remaining sends.` : "Everyone on that list was already unsubscribed." });
+  }, []);
+  useEffect(() => { if (!toast) return; const id = window.setTimeout(() => setToast(null), 5000); return () => window.clearTimeout(id); }, [toast]);
 
   const updateLead = useCallback((updated: Lead) => {
     setLead(updated);
@@ -112,15 +137,18 @@ export default function BlackFridayCampaign({ initial, initialError }: { initial
         { key: "overview", label: "Overview" },
         { key: "audience", label: "Hayden's list", count: m.contacts },
         { key: "leads", label: "Website leads", count: data.websiteLeads.length },
-        { key: "conversations", label: "Conversations", count: data.conversations.length },
+        // Website lead threads + list contacts who were sent at least one message.
+        { key: "conversations", label: "Conversations", count: threads.length },
       ]} />
 
       {tab === "overview" && <Overview data={data} now={now} onOpenLead={setLead} onTab={setTab} />}
-      {tab === "audience" && <Audience data={data} onOpen={setContact} />}
+      {tab === "audience" && <Audience data={data} onOpen={setContact} canEdit={canEdit} onMarkList={() => setListDialog(true)} />}
       {tab === "leads" && <WebsiteLeads leads={data.websiteLeads} messages={data.conversations} onOpen={setLead} />}
-      {tab === "conversations" && <Conversations data={data} />}
+      {tab === "conversations" && <BfInbox data={data} threads={threads} now={now} canEdit={canEdit} onOptOut={contactSaved} onOpenLead={setLead} />}
 
-      <BfContactModal contact={contact} onClose={() => setContact(null)} nowMs={now || Date.parse(data.generatedAt)} />
+      <BfContactModal contact={contact} onClose={() => setContact(null)} nowMs={now || Date.parse(data.generatedAt)} onOptOut={canEdit ? contactSaved : undefined} />
+      <UnsubscribeListDialog open={listDialog} onClose={() => setListDialog(false)} onApplied={listApplied} />
+      {toast ? <Toast variant={toast.variant} message={toast.message} onClose={() => setToast(null)} /> : null}
       <CampaignLeadModal lead={lead} onClose={() => setLead(null)} onUpdated={updateLead} />
     </div>
   );
@@ -190,6 +218,7 @@ function Overview({ data, now, onOpenLead, onTab }: { data: BlackFridayWorkspace
             ))}
           </div>
           <p className="text-xs leading-5 text-[var(--text-muted)]">{(m.contacts - reachable).toLocaleString()} contacts have no usable email or phone and are skipped. Households sharing an inbox or number get one message.</p>
+          <p className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]"><BellOff size={13} /> {data.audience.filter((c) => c.unsubscribed || /(Emails|Texts) stopped/.test(c.notes)).length.toLocaleString()} opted out ({m.unsubscribed.toLocaleString()} fully unsubscribed). They are skipped in the remaining sends.</p>
         </section>
 
         <section className={`${s.panel} ${s.panelPad}`} aria-labelledby="bf-activity">
@@ -226,7 +255,7 @@ function Overview({ data, now, onOpenLead, onTab }: { data: BlackFridayWorkspace
 
 /* ---------------- Hayden's list ---------------- */
 
-function Audience({ data, onOpen }: { data: BlackFridayWorkspace; onOpen: (c: AudienceContact) => void }) {
+function Audience({ data, onOpen, canEdit, onMarkList }: { data: BlackFridayWorkspace; onOpen: (c: AudienceContact) => void; canEdit: boolean; onMarkList: () => void }) {
   const [query, setQuery] = useState("");
   const [segment, setSegment] = useState("all");
   const [channel, setChannel] = useState("all");
@@ -246,6 +275,7 @@ function Audience({ data, onOpen }: { data: BlackFridayWorkspace; onOpen: (c: Au
       if (channel === "textsOff" && c.smsOk) return false;
       if (channel === "unreachable" && isSendable(c)) return false;
       if (channel === "unsubscribed" && !c.unsubscribed) return false;
+      if (channel === "optedOut" && !(c.unsubscribed || /(Emails|Texts) stopped/.test(c.notes))) return false;
       if (send.startsWith("got:") && !c.sentSteps.includes(send.slice(4))) return false;
       // Same rule as the send itself (and the progress rail): reachable, not unsubscribed, not a website lead.
       if (send.startsWith("due:") && (c.sentSteps.includes(send.slice(4)) || !isSendable(c))) return false;
@@ -260,12 +290,13 @@ function Audience({ data, onOpen }: { data: BlackFridayWorkspace; onOpen: (c: Au
         <div className={s.toolbarRow} style={{ "--filters": 3 } as CSSProperties}>
           <SearchField value={query} onChange={(v) => { setQuery(v); reset(); }} placeholder="Search name, email or phone" />
           <FilterSelect label="Segment" value={segment} onChange={(v) => { setSegment(v); reset(); }} options={[{ value: "all", label: "Members + patients" }, { value: "Member", label: "Members" }, { value: "Existing Patient", label: "Patients" }]} />
-          <FilterSelect label="Channel" value={channel} onChange={(v) => { setChannel(v); reset(); }} options={[{ value: "all", label: "Any channel" }, { value: "email", label: "Can email" }, { value: "sms", label: "Can text" }, { value: "textsOff", label: "Texts off" }, { value: "unreachable", label: "Not reachable" }, { value: "unsubscribed", label: "Unsubscribed" }]} />
+          <FilterSelect label="Channel" value={channel} onChange={(v) => { setChannel(v); reset(); }} options={[{ value: "all", label: "Any channel" }, { value: "email", label: "Can email" }, { value: "sms", label: "Can text" }, { value: "textsOff", label: "Texts off" }, { value: "unreachable", label: "Not reachable" }, { value: "unsubscribed", label: "Unsubscribed" }, { value: "optedOut", label: "Any opt-out" }]} />
           <FilterSelect label="Send" value={send} onChange={(v) => { setSend(v); reset(); }} options={[{ value: "all", label: "Any send" }, ...SEND_STEPS.map((st) => ({ value: `got:${st.id}`, label: `Got: ${SHORT[st.id]}` })), ...SEND_STEPS.map((st) => ({ value: `due:${st.id}`, label: `Not yet: ${SHORT[st.id]}` }))]} />
         </div>
         <div className={s.toolbarMeta}>
           <span>{filtered.length.toLocaleString()} of {data.audience.length.toLocaleString()} contacts</span>
           {filtering ? <ClearFilters onClear={() => { setQuery(""); setSegment("all"); setChannel("all"); setSend("all"); reset(); }} /> : null}
+          {canEdit ? <button type="button" className={`${s.btn} ml-auto`} style={{ minHeight: 34 }} onClick={onMarkList}><ClipboardList size={14} /> Mark unsubscribes</button> : null}
         </div>
       </div>
 
@@ -292,6 +323,7 @@ function Audience({ data, onOpen }: { data: BlackFridayWorkspace; onOpen: (c: Au
                         <button type="button" role="menuitem" onClick={() => { close(); onOpen(c); }}><Eye size={15} /> View details</button>
                         {c.email ? <button type="button" role="menuitem" onClick={() => { copy(c.email); close(); }}><Copy size={15} /> Copy email</button> : null}
                         {c.phone ? <button type="button" role="menuitem" onClick={() => { copy(c.phone); close(); }}><Copy size={15} /> Copy phone</button> : null}
+                        {canEdit && !c.unsubscribed ? <button type="button" role="menuitem" onClick={() => { close(); onOpen(c); }}><BellOff size={15} /> Unsubscribe…</button> : null}
                       </>}</RowMenu>
                     </td>
                   </tr>
@@ -412,37 +444,5 @@ function WebsiteLeads({ leads, messages, onOpen }: { leads: Lead[]; messages: Bl
         </>
       ) : <EmptyState icon={<Send size={22} />} title={query ? "No leads match" : "No Black Friday leads yet"} text={query ? "Try a different search." : "Leads from the Black Friday page and the Black Friday options on the ad landing pages appear here."} />}
     </section>
-  );
-}
-
-/* ---------------- Conversations ---------------- */
-
-function Conversations({ data }: { data: BlackFridayWorkspace }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  const conversations = useMemo(() => groupConversations(data.conversations, data.websiteLeads), [data.conversations, data.websiteLeads]);
-  const leadParam = params.get("lead");
-  const [picked, setPicked] = useState<Conversation | null>(null);
-  // ?lead= (from "Open conversation" links) opens that lead's thread directly.
-  const fromUrl = useMemo(() => (leadParam ? conversations.find((c) => c.leadId === leadParam) ?? null : null), [leadParam, conversations]);
-  const open = picked ?? fromUrl;
-  useEffect(() => { if (!leadParam) setPicked(null); }, [leadParam]);
-  const sent = data.conversations.filter((msg) => msg.deliveryStatus === "Sent").length;
-  const failed = data.conversations.filter((msg) => msg.deliveryStatus === "Failed").length;
-  const stats: [string, number][] = [["Conversations", conversations.length], ["Messages", data.conversations.length], ["Delivered", sent], ["Failed", failed]];
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {stats.map(([label, value]) => <CampaignMetricCard key={label} label={label} value={value.toLocaleString()} accent="var(--brand-primary)" />)}
-      </div>
-      {conversations.length ? (
-        <CampaignConversationTable conversations={conversations} onOpen={(c) => { setPicked(c); router.replace(`${pathname}?tab=conversations&lead=${c.leadId}`, { scroll: false }); }} />
-      ) : (
-        <div className={s.panel}><EmptyState icon={<Inbox size={22} />} title="No conversations yet" text="When a website Black Friday lead comes in, the instant reply and follow-ups they get appear here." /></div>
-      )}
-      {open ? <ConversationDrawer conversation={open} onClose={() => { setPicked(null); router.replace(`${pathname}?tab=conversations`, { scroll: false }); }} /> : null}
-    </div>
   );
 }
