@@ -1,179 +1,219 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
-import { CircleAlert, GitBranch, Megaphone, MessageSquare, RefreshCw, Search, Users, Zap } from "lucide-react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { Activity, ArrowRight, CalendarClock, Gift, Megaphone, MessageSquare, RefreshCw, Search, SearchX, Sparkles, Users, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
-import ReactivationCampaignCard from "@/components/reactivation/ReactivationCampaignCard";
-import { BlackFridayCampaignCard, GiftCardCampaignCard } from "@/components/campaigns/SeasonalCampaignCards";
-import { CampaignStatusBadge } from "@/components/campaigns/CampaignBadges";
-import { formatCampaignDate } from "@/lib/campaigns/campaign-date";
+import CampaignCard, { FailedCampaignCard } from "@/components/campaigns/CampaignCard";
+import CampaignSpotlight from "@/components/campaigns/CampaignSpotlight";
+import c from "@/components/campaigns/campaigns.module.css";
+import {
+  blackFridayCard, giftCardCard, reactivationCard, reactivationStatus, registryCard, showSpotlight, statusCounts, type CampaignCardModel,
+} from "@/lib/campaigns/card-model";
+import { countdown, relativeTime } from "@/lib/campaigns/paginate";
+import { useCountUp } from "@/lib/campaigns/useCountUp";
+import { BLACK_FRIDAY_NAME, BLACK_FRIDAY_PATH, SEND_STEPS, nextSend } from "@/lib/black-friday/campaign";
+import { GIFT_BONUS_ENDS_AT, GIFT_BONUS_STARTS_AT, GIFT_CARDS_NAME } from "@/lib/gift-cards/campaign";
 import { DEFAULT_CAMPAIGN } from "@/lib/reactivation/model";
-import { BLACK_FRIDAY_NAME } from "@/lib/black-friday/campaign";
-import { GIFT_CARDS_NAME } from "@/lib/gift-cards/campaign";
 import { CAMPAIGNS } from "@/lib/campaigns/registry";
 import type { CampaignsOverview } from "@/lib/campaigns/overview";
-import type { CampaignSummary } from "@/lib/types/campaigns";
-
-const TEXT = "var(--text-primary)";
-const MUTED = "var(--text-muted)";
-const PANEL = "var(--surface-1)";
 
 /** Registry campaigns + Black Friday + Gift Cards + Reactivation. */
 export const TOTAL_CAMPAIGNS = CAMPAIGNS.length + 3;
 
-function CardSkeleton() {
-  return (
-    <div className="grid gap-4 rounded-2xl border p-5" style={{ background: PANEL, borderColor: "var(--border-subtle)" }}>
-      <div className="flex items-center gap-3"><Skeleton className="size-11 rounded-xl" /><div className="grid flex-1 gap-2"><Skeleton className="h-4 w-1/2 rounded-full" /><Skeleton className="h-3 w-3/4 rounded-full" /></div></div>
-      <div className="flex gap-2"><Skeleton className="h-6 w-24 rounded-full" /><Skeleton className="h-6 w-14 rounded-full" /></div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{[0, 1, 2, 3].map((cell) => <Skeleton key={cell} className="h-14 rounded-xl" />)}</div>
-    </div>
-  );
-}
+const STATUS_ORDER = ["Active", "Scheduled", "Paused", "Idle", "Ended"];
+const TYPES = [["All", "All types"], ["Automatic", "Automatic"], ["Manual Enrollment", "Manual"]] as const;
 
-/** Streaming fallback: the KPI row and one placeholder per campaign. */
+// Ticks every 30s so countdowns and "x ago" stay current; 0 during server render.
+const subscribeClock = (cb: () => void) => { const t = window.setInterval(cb, 30_000); return () => window.clearInterval(t); };
+const clock = () => Math.floor(Date.now() / 30_000) * 30_000;
+function useNow() { return useSyncExternalStore(subscribeClock, clock, () => 0); }
+
+/** Streaming fallback in the shape of the page. */
 export function CampaignsSkeleton() {
   return (
-    <div className="space-y-5 sm:space-y-6" role="status" aria-label="Loading campaigns">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[104px] rounded-xl" />)}</div>
-      <Skeleton className="h-11 rounded-xl" />
-      <div className="grid gap-4 md:grid-cols-2">{Array.from({ length: TOTAL_CAMPAIGNS }, (_, i) => <CardSkeleton key={i} />)}</div>
+    <div className={c.page} role="status" aria-label="Loading campaigns">
+      <Skeleton className="h-[230px] rounded-[28px]" />
+      <div className={c.kpis}>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[126px] rounded-[20px]" />)}</div>
+      <Skeleton className="h-[66px] rounded-[20px]" />
+      <Skeleton className="h-[220px] rounded-[26px]" />
+      <div className={c.grid}>{Array.from({ length: TOTAL_CAMPAIGNS - 1 }, (_, i) => <Skeleton key={i} className="h-[330px] rounded-[24px]" />)}</div>
     </div>
   );
 }
 
-function FailedCard({ name, onRetry, retrying }: { name: string; onRetry: () => void; retrying: boolean }) {
+type Item = { key: string; name: string; status: string; type: string; text: string; model: CampaignCardModel | null };
+
+function Kpi({ label, value, hint, icon, accent, index }: { label: string; value: number; hint: string; icon: ReactNode; accent: string; index: number }) {
+  const shown = Math.round(useCountUp(value)).toLocaleString("en-US");
   return (
-    <div className="grid min-h-[208px] place-items-center rounded-2xl border p-5 text-center" style={{ background: PANEL, borderColor: "var(--warning-border)" }}>
-      <div className="grid justify-items-center gap-2">
-        <CircleAlert size={20} style={{ color: "var(--warning-text)" }} />
-        <p className="text-sm font-bold" style={{ color: TEXT }}>{name}</p>
-        <p className="text-xs" style={{ color: MUTED }}>Couldn&apos;t load this campaign&apos;s numbers.</p>
-        <button type="button" onClick={onRetry} disabled={retrying} className="mt-1 inline-flex min-h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-bold" style={{ borderColor: "var(--border-strong)", color: TEXT }}>
-          <RefreshCw size={13} className={retrying ? "animate-spin" : ""} /> Try again
-        </button>
+    <div className={`${c.kpi} ${c.rise}`} style={{ "--accent": accent, "--i": index } as CSSProperties}>
+      <div className={c.kpiTop}><span className={c.kpiLabel}>{label}</span><span className={c.kpiIcon}>{icon}</span></div>
+      <p className={c.kpiValue}>{shown}</p>
+      <p className={c.kpiHint}>{hint}</p>
+    </div>
+  );
+}
+
+type LiveItem = { key: string; icon: ReactNode; accent: string; title: string; text: string };
+
+/** "Live now": rotates through what is happening across the campaigns. */
+function LiveNow({ items }: { items: LiveItem[] }) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (items.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % items.length), 5000);
+    return () => window.clearInterval(id);
+  }, [items.length]);
+  const item = items[index % Math.max(1, items.length)];
+  if (!item) return null;
+  return (
+    <aside className={c.live} aria-label="Live now">
+      <div className={c.liveHead}>
+        <span className="inline-flex items-center"><span className={c.liveDot} aria-hidden="true" />Live now</span>
+        <span className={c.liveDots}>
+          {items.map((it, i) => <button key={it.key} type="button" aria-label={`Show ${it.title}`} aria-current={i === index % items.length ? "true" : undefined} onClick={() => setIndex(i)} />)}
+        </span>
       </div>
-    </div>
+      <div key={item.key} className={c.liveItem} aria-live="polite" style={{ "--accent": item.accent } as CSSProperties}>
+        <span className={c.liveIcon}>{item.icon}</span>
+        <div className="min-w-0"><p className={c.liveTitle}>{item.title}</p><p className={c.liveText}>{item.text}</p></div>
+      </div>
+    </aside>
   );
 }
-
-function RegistryCard({ campaign }: { campaign: CampaignSummary }) {
-  return (
-    <Link
-      href={`/campaigns/${campaign.slug}`}
-      className="block rounded-2xl border p-4 transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)] sm:p-5"
-      style={{ background: PANEL, borderColor: `${campaign.accent ?? "#C9A84C"}33` }}
-    >
-      <article>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 gap-3">
-            <div className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: `${campaign.accent ?? "#C9A84C"}18`, color: campaign.accent ?? "#C9A84C" }}>
-              {campaign.slug === "speed-to-lead" ? <Zap size={20} /> : <GitBranch size={20} />}
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-base font-bold sm:text-lg" style={{ color: TEXT }}>{campaign.name}</h2>
-              <p className="mt-1 line-clamp-2 text-sm leading-5" style={{ color: MUTED }}>{campaign.description}</p>
-            </div>
-          </div>
-          <CampaignStatusBadge status={campaign.status} />
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2 text-[11px]" style={{ color: MUTED }}>
-          {campaign.type ? <span className="rounded-full bg-[var(--surface-2)] px-2 py-1">{campaign.type}</span> : null}
-          {(campaign.channels ?? []).map((channel) => <span key={channel} className="rounded-full bg-[var(--surface-2)] px-2 py-1">{channel}</span>)}
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {([["Leads", campaign.totalLeads], ["Active", campaign.activeLeads], ["Completed", campaign.completedLeads], ["Messages", campaign.messagesSent]] as const).map(([label, value]) => (
-            <div key={label} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
-              <p className="font-bold tabular-nums" style={{ color: TEXT }}>{value}</p>
-              <p className="text-[10px]" style={{ color: MUTED }}>{label}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 border-t border-[var(--border-subtle)] pt-3">
-          <p className="text-xs" style={{ color: MUTED }}>Last activity: {formatCampaignDate(campaign.lastActivity, "No activity yet")}</p>
-        </div>
-      </article>
-    </Link>
-  );
-}
-
-type Entry = { key: string; name: string; description: string; status: string; type: string; node: ReactNode };
 
 export default function CampaignsClient({ initial }: { initial: CampaignsOverview }) {
   const [data, setData] = useState(initial);
-  const [retrying, setRetrying] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
   const [type, setType] = useState("All");
+  const clockNow = useNow();
+  const now = clockNow || Date.parse(data.generatedAt);
 
-  async function retry() {
-    setRetrying(true);
+  async function refresh() {
+    setRefreshing(true);
     try {
       const response = await fetch("/api/airtable/campaigns?refresh=1", { cache: "no-store" });
       if (response.ok) setData(await response.json() as CampaignsOverview);
     } finally {
-      setRetrying(false);
+      setRefreshing(false);
     }
   }
 
-  const reactivationState = data.reactivation ? (data.reactivation.metrics.active ? "Active" : data.reactivation.paused ? "Paused" : "Idle") : "Idle";
+  // Fixed order: lead automations, then the seasonal campaigns, then patient reactivation.
+  const items: Item[] = useMemo(() => {
+    const registry: Item[] = data.campaigns
+      ? data.campaigns.map((s) => ({ key: s.slug, name: s.name, status: s.status, type: s.type, text: s.description, model: registryCard(s) }))
+      : CAMPAIGNS.map((s) => ({ key: s.slug, name: s.name, status: s.status, type: s.type, text: s.description, model: null }));
+    const bf = data.blackFriday ? blackFridayCard(data.blackFriday) : null;
+    const gift = data.giftCards ? giftCardCard(data.giftCards) : null;
+    const reactivationOk = data.reactivation || !data.failed.includes("reactivation");
+    return [
+      ...registry,
+      { key: "black-friday", name: BLACK_FRIDAY_NAME, status: data.blackFriday?.status ?? "Active", type: "Automatic", text: bf?.description ?? "", model: bf },
+      { key: "gift-cards", name: GIFT_CARDS_NAME, status: data.giftCards?.status ?? "Active", type: "Automatic", text: gift?.description ?? "", model: gift },
+      { key: "reactivation", name: DEFAULT_CAMPAIGN, status: reactivationStatus(data.reactivation), type: "Manual Enrollment", text: "", model: reactivationOk ? reactivationCard(data.reactivation) : null },
+    ];
+  }, [data]);
 
-  // Fixed order: lead automations, then the seasonal workspaces, then patient reactivation.
-  const entries: Entry[] = useMemo(() => {
-    const registry: Entry[] = data.campaigns
-      ? data.campaigns.map((c) => ({ key: c.slug, name: c.name, description: c.description, status: c.status, type: c.type ?? "", node: <RegistryCard campaign={c} /> }))
-      : CAMPAIGNS.map((c) => ({ key: c.slug, name: c.name, description: c.description, status: c.status, type: c.type ?? "", node: <FailedCard name={c.name} onRetry={() => void retry()} retrying={retrying} /> }));
-    const bf: Entry = { key: "black-friday", name: BLACK_FRIDAY_NAME, description: "Black Friday members patients", status: data.blackFriday?.status ?? "Active", type: "Automatic",
-      node: data.blackFriday ? <BlackFridayCampaignCard data={data.blackFriday} query="" status="All" type="All" /> : <FailedCard name={BLACK_FRIDAY_NAME} onRetry={() => void retry()} retrying={retrying} /> };
-    const gift: Entry = { key: "gift-cards", name: GIFT_CARDS_NAME, description: "Gift card requests bonus", status: data.giftCards?.status ?? "Active", type: "Automatic",
-      node: data.giftCards ? <GiftCardCampaignCard data={data.giftCards} query="" status="All" type="All" /> : <FailedCard name={GIFT_CARDS_NAME} onRetry={() => void retry()} retrying={retrying} /> };
-    const reactivation: Entry = { key: "reactivation", name: DEFAULT_CAMPAIGN, description: "Three-step email follow-up for returning patients", status: reactivationState, type: "Manual Enrollment",
-      node: data.reactivation || !data.failed.includes("reactivation") ? <ReactivationCampaignCard query="" status="All" type="All" data={data.reactivation} /> : <FailedCard name={DEFAULT_CAMPAIGN} onRetry={() => void retry()} retrying={retrying} /> };
-    return [...registry, bf, gift, reactivation];
-  }, [data, retrying, reactivationState]);
-
-  const visible = entries.filter((e) => (status === "All" || e.status === status) && (type === "All" || e.type === type) && `${e.name} ${e.description}`.toLowerCase().includes(query.toLowerCase()));
+  const matches = (item: Item, ignoreStatus = false) =>
+    (ignoreStatus || status === "All" || item.status === status) && (type === "All" || item.type === type)
+    && `${item.name} ${item.text}`.toLowerCase().includes(query.trim().toLowerCase());
+  const spotlight = showSpotlight(data.blackFriday) && data.blackFriday ? data.blackFriday : null;
+  const visible = items.filter((item) => matches(item));
+  const spotlightVisible = !!spotlight && visible.some((item) => item.key === "black-friday");
+  const gridItems = visible.filter((item) => !(spotlight && item.key === "black-friday"));
+  const counts = statusCounts(items.filter((item) => matches(item, true)).map((item) => item.status));
+  // Statuses with campaigns, plus the selected one so it never vanishes mid-search.
+  const statusPills = ["All", ...STATUS_ORDER.filter((s) => counts[s] || s === status)];
 
   const registry = data.campaigns ?? [];
-  const summaryCards = [
-    { label: "Total Campaigns", value: TOTAL_CAMPAIGNS, icon: <Megaphone size={18} /> },
-    { label: "Active Campaigns", value: entries.filter((e) => e.status === "Active").length, icon: <Zap size={18} /> },
-    { label: "Campaign Contacts", value: registry.reduce((t, c) => t + c.totalLeads, 0) + (data.reactivation?.metrics.total ?? 0) + (data.blackFriday?.metrics.contacts ?? 0) + (data.giftCards?.metrics.requests ?? 0), icon: <Users size={18} /> },
-    { label: "Messages Sent", value: registry.reduce((t, c) => t + c.messagesSent, 0) + (data.reactivation?.metrics.email ?? 0) + (data.blackFriday?.metrics.messagesSent ?? 0) + (data.giftCards?.metrics.confirmations ?? 0), icon: <MessageSquare size={18} /> },
+  const running = items.filter((item) => item.status === "Active").length;
+  const kpis = [
+    { label: "Campaigns running", value: running, hint: `of ${TOTAL_CAMPAIGNS} campaigns`, icon: <Megaphone size={18} />, accent: "var(--brand-primary)" },
+    { label: "People in campaigns", value: registry.reduce((t, s) => t + s.totalLeads, 0) + (data.reactivation?.metrics.total ?? 0) + (data.blackFriday?.metrics.contacts ?? 0) + (data.giftCards?.metrics.requests ?? 0), hint: "leads, patients and Black Friday contacts", icon: <Users size={18} />, accent: "#4ecdc4" },
+    { label: "Messages sent", value: registry.reduce((t, s) => t + s.messagesSent, 0) + (data.reactivation?.metrics.email ?? 0) + (data.blackFriday?.metrics.messagesSent ?? 0) + (data.giftCards?.metrics.confirmations ?? 0), hint: "emails and texts, all campaigns", icon: <MessageSquare size={18} />, accent: "#b9786a" },
+    { label: "In progress now", value: registry.reduce((t, s) => t + s.activeLeads, 0) + (data.reactivation?.metrics.active ?? 0) + (data.giftCards?.metrics.open ?? 0), hint: "mid-sequence or awaiting follow-up", icon: <Activity size={18} />, accent: "#6f9a82" },
   ];
 
+  const next = data.blackFriday ? nextSend(data.blackFriday.steps, new Date(now)) : null;
+  const latest = items.map((item) => item.model).filter((m): m is CampaignCardModel => !!m && !!m.lastActivity)
+    .sort((a, b) => Date.parse(b.lastActivity) - Date.parse(a.lastActivity))[0];
+  const bonus = now < Date.parse(GIFT_BONUS_STARTS_AT) ? "upcoming" : now < Date.parse(GIFT_BONUS_ENDS_AT) ? "live" : "ended";
+  const live: LiveItem[] = [
+    ...(next ? [{ key: "bf", icon: <CalendarClock size={19} />, accent: "#b9786a", title: `Black Friday · ${SEND_STEPS.find((s) => s.id === next.step.id)?.label}`, text: `Next send ${countdown(Date.parse(next.at), now)}, to ${next.step.remaining.toLocaleString("en-US")} people` }] : []),
+    ...(data.blackFriday ? [{ key: "reach", icon: <Sparkles size={19} />, accent: "#c9a84c", title: `${data.blackFriday.metrics.reached.toLocaleString("en-US")} people reached`, text: `${data.blackFriday.metrics.messagesSent.toLocaleString("en-US")} Black Friday emails and texts so far` }] : []),
+    ...(bonus !== "ended" ? [{ key: "gift", icon: <Gift size={19} />, accent: "#c8a46a", title: bonus === "live" ? "Gift card bonus is live" : "Gift card bonus starts Nov 27", text: bonus === "live" ? `10% back on $100+ · ends ${countdown(Date.parse(GIFT_BONUS_ENDS_AT), now)}` : `10% back on $100+ · ${countdown(Date.parse(GIFT_BONUS_STARTS_AT), now)}` }] : []),
+    ...(latest ? [{ key: "latest", icon: <Zap size={19} />, accent: latest.accent, title: `Latest: ${latest.name}`, text: `Last activity ${relativeTime(latest.lastActivity, now)}` }] : []),
+  ];
+  const filtering = Boolean(query) || status !== "All" || type !== "All";
+
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {summaryCards.map((card) => (
-          <div key={card.label} className="min-w-0 rounded-xl border p-3.5 sm:p-4" style={{ background: PANEL, borderColor: "rgba(201,168,76,.14)" }}>
-            <span className="text-[#C9A84C]">{card.icon}</span>
-            <p className="mt-2 text-xl font-bold tabular-nums sm:mt-3 sm:text-2xl" style={{ color: TEXT }}>{card.value.toLocaleString()}</p>
-            <p className="mt-0.5 text-[11px] leading-4 sm:text-xs" style={{ color: MUTED }}>{card.label}</p>
+    <div className={c.page}>
+      <section className={`${c.hero} ${c.rise}`} aria-labelledby="campaigns-title">
+        <span className={`${c.orb} ${c.orbA}`} aria-hidden="true" /><span className={`${c.orb} ${c.orbB}`} aria-hidden="true" /><span className={`${c.orb} ${c.orbC}`} aria-hidden="true" />
+        <span className={c.grain} aria-hidden="true" />
+        <div className={c.heroGrid}>
+          <div>
+            <span className={c.eyebrow}>Growth automations</span>
+            <h1 id="campaigns-title" className={`${c.heroTitle} font-serif`}>Campaign <em>command center</em></h1>
+            <p className={c.heroText}>
+              {running} of {TOTAL_CAMPAIGNS} campaigns running.{next ? ` Next Black Friday send (${SEND_STEPS.find((s) => s.id === next.step.id)?.label.toLowerCase()}) goes out ${countdown(Date.parse(next.at), now)}.` : ""} Every lead, patient and message in one place.
+            </p>
+            <div className={c.heroActions}>
+              {spotlight ? <Link href={BLACK_FRIDAY_PATH} prefetch className={c.btnGold}><Sparkles size={15} /> Black Friday workspace <ArrowRight size={15} /></Link> : null}
+              <button type="button" className={c.btn} onClick={() => void refresh()} disabled={refreshing}><RefreshCw size={15} className={refreshing ? "animate-spin" : ""} /> {refreshing ? "Refreshing…" : "Refresh"}</button>
+            </div>
           </div>
-        ))}
-      </div>
+          <LiveNow items={live} />
+        </div>
+      </section>
 
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_170px_190px] sm:gap-3">
-        <label className="relative min-w-0">
-          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" size={16} color={MUTED} />
-          <input aria-label="Search campaigns" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search campaigns"
-            className="h-11 w-full rounded-xl border bg-[var(--input-bg)] pl-10 pr-3 text-sm text-[var(--text-primary)]" style={{ borderColor: "var(--border-subtle)" }} />
+      <section className={c.kpis} aria-label="Campaign totals">
+        {kpis.map((kpi, i) => <Kpi key={kpi.label} {...kpi} index={i + 1} />)}
+      </section>
+
+      <div className={`${c.toolbar} ${c.rise}`} style={{ "--i": 4 } as CSSProperties}>
+        <label className={c.search}>
+          <Search size={16} />
+          <input aria-label="Search campaigns" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search campaigns" />
         </label>
-        <select aria-label="Campaign status" value={status} onChange={(e) => setStatus(e.target.value)} className="h-11 w-full rounded-xl border bg-[var(--input-bg)] px-3 text-sm text-[var(--text-primary)]" style={{ borderColor: "var(--border-subtle)" }}>
-          {["All", "Active", "Paused", "Idle", "Scheduled", "Ended"].map((o) => <option key={o}>{o}</option>)}
-        </select>
-        <select aria-label="Campaign type" value={type} onChange={(e) => setType(e.target.value)} className="h-11 w-full rounded-xl border bg-[var(--input-bg)] px-3 text-sm text-[var(--text-primary)]" style={{ borderColor: "var(--border-subtle)" }}>
-          {["All", "Automatic", "Manual Enrollment"].map((o) => <option key={o}>{o}</option>)}
-        </select>
+        <div className={c.pills} role="group" aria-label="Filter by status">
+          {statusPills.map((s) => (
+            <button key={s} type="button" aria-pressed={status === s} className={`${c.pill} ${status === s ? c.pillActive : ""}`} onClick={() => setStatus(s)}>
+              {s} <span className={c.pillCount}>{counts[s] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+        <div className={c.pills} role="group" aria-label="Filter by type">
+          {TYPES.map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={type === value} className={`${c.pill} ${type === value ? c.pillActive : ""}`} onClick={() => setType(value)}>{label}</button>
+          ))}
+        </div>
       </div>
 
-      {visible.length ? (
-        <div className="grid gap-4 md:grid-cols-2">{visible.map((e) => <div key={e.key} className="min-w-0">{e.node}</div>)}</div>
-      ) : (
-        <div className="rounded-2xl border p-10 text-center text-sm" style={{ color: MUTED, borderColor: "var(--border-subtle)", background: PANEL }}>No campaigns match these filters.</div>
-      )}
+      {spotlightVisible && spotlight ? <CampaignSpotlight data={spotlight} now={now} /> : null}
+
+      {gridItems.length ? (
+        <div className={c.grid}>
+          {gridItems.map((item, i) => (
+            <div key={item.key} className="min-w-0">
+              {item.model
+                ? <CampaignCard model={item.model} index={i + 5} now={now} />
+                : <FailedCampaignCard name={item.name} index={i + 5} onRetry={() => void refresh()} retrying={refreshing} />}
+            </div>
+          ))}
+        </div>
+      ) : !spotlightVisible ? (
+        <div className={c.empty}>
+          <span className={c.emptyIcon}><SearchX size={24} /></span>
+          <p className={`${c.emptyTitle} font-serif`}>No campaigns match</p>
+          <p className={c.emptyText}>Try another search, or show every campaign.</p>
+          {filtering ? <button type="button" className={c.btn} onClick={() => { setQuery(""); setStatus("All"); setType("All"); }}>Clear filters</button> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

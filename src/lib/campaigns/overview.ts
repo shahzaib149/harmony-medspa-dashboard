@@ -5,7 +5,7 @@ import { campaignData, summarizeCampaigns } from "@/lib/campaigns/data";
 import { campaignSummary } from "@/lib/reactivation/server";
 import { blackFridaySummary, giftCardSummary } from "@/lib/black-friday/server";
 import type { CampaignSummary } from "@/lib/types/campaigns";
-import type { ReactivationCampaignSummary } from "@/components/reactivation/ReactivationCampaignCard";
+import type { ReactivationCampaignSummary } from "@/lib/reactivation/campaign";
 import type { BlackFridayCampaignSummary } from "@/lib/black-friday/campaign";
 import type { GiftCardCampaignSummary } from "@/lib/gift-cards/campaign";
 

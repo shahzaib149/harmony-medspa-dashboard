@@ -2,6 +2,8 @@ import { DEFAULT_CAMPAIGN, summarizeReactivation, type Enrollment, type Patient,
 
 export const REACTIVATION_PATH = "/campaigns/patient-reactivation";
 export type ReactivationCampaignData = ReturnType<typeof buildCampaign>;
+/** What the /campaigns card needs (no patient or message lists). */
+export type ReactivationCampaignSummary = Pick<ReactivationCampaignData, "campaign" | "metrics" | "paused" | "lastActivity" | "generatedAt">;
 export function buildCampaign(patients:Patient[], all:Enrollment[], messages:PatientMessage[]) {
   const enrollments=all.filter(e=>e.campaign===DEFAULT_CAMPAIGN);
   const ids=new Set(enrollments.map(e=>e.id));
